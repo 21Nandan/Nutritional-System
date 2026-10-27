@@ -1,10 +1,4 @@
 {
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "data/**, models/**, backend/**",
-      "maxDuration": 15
-    }
-  },
   "rewrites": [
     {
       "source": "/api/(.*)",
