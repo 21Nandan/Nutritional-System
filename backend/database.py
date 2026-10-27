@@ -5,18 +5,40 @@ No transmission of sensitive personal information to third-party endpoints.
 """
 
 import os
+import shutil
 import sqlite3
 import json
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DB_PATH = os.path.join(BASE_DIR, "data", "eatgood_app.db")
+SOURCE_DB_PATH = os.path.join(BASE_DIR, "data", "eatgood_app.db")
+
+# In serverless environments (Vercel / Lambda), the deployment root is read-only.
+# Copy database to /tmp to ensure full read/write support.
+if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    TMP_DIR = "/tmp/eatgood_data"
+    os.makedirs(TMP_DIR, exist_ok=True)
+    DB_PATH = os.path.join(TMP_DIR, "eatgood_app.db")
+    if not os.path.exists(DB_PATH) and os.path.exists(SOURCE_DB_PATH):
+        try:
+            shutil.copyfile(SOURCE_DB_PATH, DB_PATH)
+        except Exception as e:
+            print(f"Notice: Failed to copy database to /tmp: {e}")
+            DB_PATH = SOURCE_DB_PATH
+else:
+    DB_PATH = SOURCE_DB_PATH
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except Exception as e:
+        # Graceful fallback to memory database if filesystem is completely locked
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        return conn
 
 def init_db():
     conn = get_connection()

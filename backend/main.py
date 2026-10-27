@@ -10,7 +10,7 @@ import json
 import uuid
 import re
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -48,8 +48,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "uploads"))
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+@app.middleware("http")
+async def ensure_api_prefix(request: Request, call_next):
+    # If incoming path does not start with /api and is not docs/openapi/health/root,
+    # normalize path to start with /api so all routes match reliably across serverless environments
+    path = request.scope.get("path", "")
+    if path and not path.startswith("/api") and not path.startswith("/docs") and not path.startswith("/openapi.json") and path != "/health" and path != "/":
+        request.scope["path"] = f"/api{path}"
+    response = await call_next(request)
+    return response
+
+# Serverless-safe upload directory
+if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    UPLOAD_DIR = "/tmp/eatgood_uploads"
+else:
+    UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "uploads"))
+
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except Exception:
+    UPLOAD_DIR = "/tmp"
+
+@app.get("/api/health")
+@app.get("/health")
+def health_check():
+    count = len(data_loader.products_df) if data_loader.products_df is not None else 0
+    return {
+        "status": "healthy",
+        "service": "EATGOOD API",
+        "database": "connected",
+        "products_count": count,
+        "environment": "serverless" if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) else "local"
+    }
 
 # ----------------- Models -----------------
 class UserProfileModel(BaseModel):

@@ -19,14 +19,24 @@ import logging
 from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 from PIL import Image, ImageOps
-import cv2
-import pytesseract
+
+try:
+    import cv2
+except Exception:
+    cv2 = None
+
+try:
+    import pytesseract
+except Exception:
+    pytesseract = None
 
 logger = logging.getLogger("eatgood.ocr")
 
 # Resolve Tesseract executable path
 def get_tesseract_path() -> Optional[str]:
     """Finds available Tesseract binary on the host system."""
+    if pytesseract is None:
+        return None
     env_cmd = os.environ.get("TESSERACT_CMD")
     if env_cmd and os.path.exists(env_cmd):
         return env_cmd
@@ -113,18 +123,16 @@ def preprocess_image_for_ocr(image_path: str) -> Tuple[np.ndarray, Dict[str, Any
         h = int(h * scale)
         rgb_pil = rgb_pil.resize((w, h), Image.Resampling.BICUBIC)
 
-    # Convert to OpenCV RGB numpy array
-    cv_rgb = np.array(rgb_pil)
-
-    # 3. Grayscale
-    gray = cv2.cvtColor(cv_rgb, cv2.COLOR_RGB2GRAY)
-
-    # 4. Bilateral filtering (preserves edges better than Gaussian blur)
-    denoised = cv2.bilateralFilter(gray, d=7, sigmaColor=50, sigmaSpace=50)
-
-    # 5. CLAHE (Adaptive contrast enhancement)
-    clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
-    enhanced = clahe.apply(denoised)
+    # Preprocessing: OpenCV (if available) or Pillow
+    if cv2 is not None:
+        cv_rgb = np.array(rgb_pil)
+        gray = cv2.cvtColor(cv_rgb, cv2.COLOR_RGB2GRAY)
+        denoised = cv2.bilateralFilter(gray, d=7, sigmaColor=50, sigmaSpace=50)
+        clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+        enhanced = clahe.apply(denoised)
+    else:
+        gray_pil = rgb_pil.convert("L")
+        enhanced = np.array(ImageOps.autocontrast(gray_pil, cutoff=2))
 
     metadata = {
         "original_size": (orig_w, orig_h),

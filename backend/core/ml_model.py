@@ -11,8 +11,21 @@ import joblib
 import pandas as pd
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "eatgood_model.joblib")
-METADATA_PATH = os.path.join(BASE_DIR, "models", "model_metadata.json")
+
+def resolve_model_paths():
+    candidates = [
+        os.path.join(BASE_DIR, "models"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models")),
+        os.path.abspath(os.path.join(os.getcwd(), "models")),
+        "/var/task/models"
+    ]
+    for c in candidates:
+        mp = os.path.join(c, "eatgood_model.joblib")
+        if os.path.exists(mp):
+            return mp, os.path.join(c, "model_metadata.json")
+    return os.path.join(candidates[0], "eatgood_model.joblib"), os.path.join(candidates[0], "model_metadata.json")
+
+MODEL_PATH, METADATA_PATH = resolve_model_paths()
 
 class EatGoodMLService:
     def __init__(self):

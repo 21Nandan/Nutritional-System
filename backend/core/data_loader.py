@@ -9,7 +9,21 @@ import pandas as pd
 import numpy as np
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+
+def resolve_data_dir() -> str:
+    candidates = [
+        os.path.join(BASE_DIR, "data"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data")),
+        os.path.abspath(os.path.join(os.getcwd(), "data")),
+        os.path.abspath(os.path.join(os.getcwd(), "..", "data")),
+        "/var/task/data"
+    ]
+    for c in candidates:
+        if os.path.exists(os.path.join(c, "products_standardized.csv")):
+            return c
+    return candidates[0]
+
+DATA_DIR = resolve_data_dir()
 
 class DataLoaderService:
     def __init__(self):
