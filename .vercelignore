@@ -1,0 +1,13 @@
+.git
+.github
+backend/venv
+frontend/node_modules
+node_modules
+.pytest_cache
+**/__pycache__
+*.pyc
+data/uploads
+frontend/data/uploads
+tests
+backend/tests
+frontend/backend/tests
