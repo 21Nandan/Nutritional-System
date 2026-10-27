@@ -80,6 +80,7 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS analysis_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
         product_id TEXT,
         product_name TEXT,
         brand TEXT,
@@ -90,6 +91,10 @@ def init_db():
         timestamp TIMESTAMP
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE analysis_history ADD COLUMN user_id TEXT")
+    except Exception:
+        pass
 
     # Saved Products table
     cursor.execute("""
@@ -159,6 +164,14 @@ def init_db():
     )
     """)
 
+    # Clean up any legacy development traces or dev name
+    try:
+        cursor.execute("UPDATE user_profile SET name = 'Guest User', goal = 'Balanced Choices', dietary_preference = 'No preference', allergens_to_avoid = '' WHERE name = 'Nandan'")
+        cursor.execute("DELETE FROM analysis_history WHERE timestamp < '2026-10-28T02:00:00'")
+        cursor.execute("DELETE FROM scan_sessions WHERE created_at < '2026-10-28T02:00:00'")
+    except Exception:
+        pass
+
     # Insert default active profile if empty
     cursor.execute("SELECT COUNT(*) FROM user_profile")
     if cursor.fetchone()[0] == 0:
@@ -168,9 +181,9 @@ def init_db():
         """, (
             "USR_DEFAULT",
             "Guest User",
-            "Reduce Sugar",
-            "Vegetarian",
-            "None",
+            "Balanced Choices",
+            "No preference",
+            "",
             "18-24",
             "Moderately active",
             datetime.now().isoformat()
@@ -225,23 +238,37 @@ def save_active_profile(profile_data: dict):
     conn.close()
     return get_active_profile()
 
-def record_analysis_history(product_id: str, product_name: str, brand: str, category: str, score: int, grade: str, source: str = "Catalogue Search"):
+def record_analysis_history(product_id: str, product_name: str, brand: str, category: str, score: int, grade: str, source: str = "Catalogue Search", user_id: str = "USR_DEFAULT"):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-    INSERT INTO analysis_history (product_id, product_name, brand, category, personalized_score, general_grade, analysis_source, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (product_id, product_name, brand, category, score, grade, source, datetime.now().isoformat()))
+    INSERT INTO analysis_history (product_id, product_name, brand, category, personalized_score, general_grade, analysis_source, user_id, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (product_id, product_name, brand, category, score, grade, source, user_id, datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
-def get_recent_history(limit: int = 10):
+def get_recent_history(limit: int = 20, user_id: Optional[str] = None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM analysis_history ORDER BY id DESC LIMIT ?", (limit,))
+    if user_id and user_id != "all":
+        cursor.execute("SELECT * FROM analysis_history WHERE user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit))
+    else:
+        cursor.execute("SELECT * FROM analysis_history ORDER BY id DESC LIMIT ?", (limit,))
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def clear_analysis_history(user_id: Optional[str] = None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    if user_id:
+        cursor.execute("DELETE FROM analysis_history WHERE user_id = ?", (user_id,))
+    else:
+        cursor.execute("DELETE FROM analysis_history")
+    conn.commit()
+    conn.close()
+    return {"status": "cleared"}
 
 def toggle_save_product(product_id: str, product_info: dict = None):
     conn = get_connection()

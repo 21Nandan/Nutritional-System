@@ -44,6 +44,27 @@ export default function ProductAssessment({
     marketing_claims: ''
   });
 
+  const recordLocalInteraction = (data) => {
+    if (!data || !data.product_id) return;
+    try {
+      const stored = localStorage.getItem('eatgood_interaction_history');
+      let hist = stored ? JSON.parse(stored) : [];
+      hist = hist.filter(h => h.product_id !== data.product_id);
+      hist.unshift({
+        id: Date.now(),
+        product_id: data.product_id,
+        product_name: data.product_name || 'Food Product',
+        brand: data.brand || 'General',
+        category: data.category || 'Food Item',
+        personalized_score: data.layer2_personalized?.personalized_score ?? null,
+        general_grade: data.layer1_general?.grade || 'N/A',
+        analysis_source: data.is_custom ? 'Custom Label Scan' : (data.data_source || 'Catalogue Assessment'),
+        timestamp: new Date().toISOString()
+      });
+      localStorage.setItem('eatgood_interaction_history', JSON.stringify(hist.slice(0, 30)));
+    } catch (e) {}
+  };
+
   useEffect(() => {
     if (productId && !initialAssessment) {
       setLoading(true);
@@ -51,6 +72,7 @@ export default function ProductAssessment({
         .then(res => res.json())
         .then(data => {
           setAssessment(data);
+          recordLocalInteraction(data);
           if (data.is_saved !== undefined) {
             setIsSaved(data.is_saved);
           }
@@ -68,6 +90,7 @@ export default function ProductAssessment({
         .catch(err => console.error(err));
     } else if (initialAssessment) {
       setAssessment(initialAssessment);
+      recordLocalInteraction(initialAssessment);
       if (initialAssessment.is_saved !== undefined) {
         setIsSaved(initialAssessment.is_saved);
       }

@@ -14,19 +14,56 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
   }, []);
 
   const loadDashboardData = () => {
+    // 1. Load client-recorded interaction history from localStorage
+    let localHist = [];
+    try {
+      const savedHist = localStorage.getItem('eatgood_interaction_history');
+      if (savedHist) localHist = JSON.parse(savedHist);
+    } catch (e) {}
+
+    // 2. Fetch user-partitioned history and saved from backend
+    const clientId = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
     Promise.all([
-      fetch('/api/history').then(res => res.json()),
-      fetch('/api/saved').then(res => res.json())
+      fetch(`/api/history?user_id=${encodeURIComponent(clientId)}`, {
+        headers: { 'X-User-Id': clientId }
+      }).then(res => res.json()).catch(() => []),
+      fetch('/api/saved').then(res => res.json()).catch(() => ({ saved_products: [] }))
     ])
-      .then(([histData, savedData]) => {
-        setHistory(histData || []);
+      .then(([apiHist, savedData]) => {
+        const combined = [...localHist];
+        if (Array.isArray(apiHist)) {
+          apiHist.forEach(item => {
+            if (!combined.some(c => c.product_id === item.product_id)) {
+              combined.push(item);
+            }
+          });
+        }
+        // Exclude any legacy localhost developer records (before 2026-10-28 02:00 UTC)
+        const cleanHistory = combined.filter(item => {
+          if (!item.timestamp) return true;
+          return new Date(item.timestamp) > new Date('2026-10-28T02:00:00Z');
+        });
+        setHistory(cleanHistory);
         setSavedProducts(savedData.saved_products || []);
         setLoading(false);
       })
       .catch(err => {
         console.error(err);
+        setHistory(localHist);
         setLoading(false);
       });
+  };
+
+  const handleClearHistory = () => {
+    try {
+      localStorage.removeItem('eatgood_interaction_history');
+    } catch (e) {}
+    setHistory([]);
+    const clientId = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
+    fetch(`/api/history?user_id=${encodeURIComponent(clientId)}`, {
+      method: 'DELETE',
+      headers: { 'X-User-Id': clientId }
+    }).catch(() => {});
   };
 
   const handleRemoveSaved = (productId) => {
@@ -125,9 +162,28 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
                 Recent Assessments
               </h3>
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-              {history.length} logged
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
+                {history.length} logged
+              </span>
+              {history.length > 0 && (
+                <button
+                  onClick={handleClearHistory}
+                  style={{
+                    fontSize: '0.72rem',
+                    color: '#c62828',
+                    background: '#ffebee',
+                    border: '1px solid #ffcdd2',
+                    padding: '3px 8px',
+                    borderRadius: 4,
+                    cursor: 'pointer'
+                  }}
+                  title="Clear all recent assessment history on this device"
+                >
+                  Clear History
+                </button>
+              )}
+            </div>
           </div>
 
           {loading ? (

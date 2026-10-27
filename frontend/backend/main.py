@@ -26,7 +26,7 @@ from backend.core.barcode_utils import validate_barcode
 from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
 from backend.database import (
     get_active_profile, save_active_profile,
-    record_analysis_history, get_recent_history,
+    record_analysis_history, get_recent_history, clear_analysis_history,
     toggle_save_product, get_saved_product_ids,
     is_product_saved, get_saved_products_records, get_saved_product,
     record_scan_session, get_recent_scan_sessions,
@@ -253,7 +253,7 @@ def contribute_new_product(payload: ProductContributionRequest):
     }
 
 @app.get("/api/products/barcode/{barcode}")
-def lookup_product_by_barcode(barcode: str):
+def lookup_product_by_barcode(barcode: str, request: Request = None):
     """
     Layered barcode product discovery:
     1. Validates barcode format (EAN-13, EAN-8, UPC-A, UPC-E).
@@ -284,6 +284,7 @@ def lookup_product_by_barcode(barcode: str):
         alts = get_healthier_alternatives(local_prod, profile)
         alts_list = alts.get("alternatives", []) if isinstance(alts, dict) else alts
 
+        uid = (request.headers.get("x-user-id") if request else None) or "USR_DEFAULT"
         record_analysis_history(
             product_id=local_prod["product_id"],
             product_name=local_prod["product_name"],
@@ -291,7 +292,8 @@ def lookup_product_by_barcode(barcode: str):
             category=local_prod["category"],
             score=assessment["layer2_personalized"]["personalized_score"],
             grade=assessment["layer1_general"].get("grade", "N/A"),
-            source="Barcode Scan (Local Catalogue)"
+            source="Barcode Scan (Local Catalogue)",
+            user_id=uid
         )
 
         return {
@@ -389,6 +391,7 @@ def lookup_product_by_barcode(barcode: str):
         alts = get_healthier_alternatives(off_prod, profile)
         alts_list = alts.get("alternatives", []) if isinstance(alts, dict) else alts
 
+        uid = (request.headers.get("x-user-id") if request else None) or "USR_DEFAULT"
         record_analysis_history(
             product_id=off_prod["product_id"],
             product_name=off_prod["product_name"],
@@ -396,7 +399,8 @@ def lookup_product_by_barcode(barcode: str):
             category=off_prod["category"],
             score=assessment["layer2_personalized"]["personalized_score"],
             grade=assessment["layer1_general"].get("grade", "N/A"),
-            source="Barcode Scan (Open Food Facts)"
+            source="Barcode Scan (Open Food Facts)",
+            user_id=uid
         )
 
         return {
@@ -440,7 +444,7 @@ def lookup_product_by_barcode(barcode: str):
         )
 
 @app.get("/api/products/{product_id}")
-def get_product_assessment(product_id: str):
+def get_product_assessment(product_id: str, request: Request = None):
     """
     Returns full product details along with comprehensive Layer 1, Layer 2, Layer 3 assessment
     tailored to the active user profile.
@@ -518,6 +522,7 @@ def get_product_assessment(product_id: str):
     assessment["is_saved"] = is_product_saved(product_id)
 
     # Record analysis history
+    uid = (request.headers.get("x-user-id") if request else None) or "USR_DEFAULT"
     record_analysis_history(
         product_id=product["product_id"],
         product_name=product["product_name"],
@@ -525,13 +530,14 @@ def get_product_assessment(product_id: str):
         category=product["category"],
         score=assessment["layer2_personalized"]["personalized_score"],
         grade=assessment["layer1_general"].get("grade", "N/A"),
-        source="Product Catalogue"
+        source="Product Catalogue",
+        user_id=uid
     )
 
     return assessment
 
 @app.post("/api/products/assess")
-def assess_custom_food(input_data: ManualNutritionInput):
+def assess_custom_food(input_data: ManualNutritionInput, request: Request = None):
     """
     Assesses manually entered nutrition facts or user-confirmed OCR values.
     """
@@ -546,6 +552,7 @@ def assess_custom_food(input_data: ManualNutritionInput):
     assessment["is_custom"] = True
     assessment["raw_input"] = prod_dict
 
+    uid = (request.headers.get("x-user-id") if request else None) or "USR_DEFAULT"
     record_analysis_history(
         product_id="CUSTOM_SCAN",
         product_name=input_data.product_name,
@@ -553,7 +560,8 @@ def assess_custom_food(input_data: ManualNutritionInput):
         category=input_data.category,
         score=assessment["layer2_personalized"]["personalized_score"],
         grade=assessment["layer1_general"].get("grade", "N/A"),
-        source="Label Scan / Manual Entry"
+        source="Label Scan / Manual Entry",
+        user_id=uid
     )
 
     return assessment
@@ -746,8 +754,15 @@ def get_data_audit():
     return data_loader.get_audit_metrics()
 
 @app.get("/api/history")
-def get_history(limit: int = 10):
-    return get_recent_history(limit=limit)
+def get_history(request: Request, limit: int = 20, user_id: Optional[str] = None):
+    uid = user_id or request.headers.get("x-user-id")
+    return get_recent_history(limit=limit, user_id=uid)
+
+@app.delete("/api/history")
+@app.post("/api/history/clear")
+def clear_history_endpoint(request: Request, user_id: Optional[str] = None):
+    uid = user_id or request.headers.get("x-user-id")
+    return clear_analysis_history(user_id=uid)
 
 @app.post("/api/saved/{product_id}")
 def save_product(product_id: str, payload: dict = Body(default=None)):

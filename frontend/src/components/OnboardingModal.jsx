@@ -56,7 +56,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
   };
 
   const [formData, setFormData] = useState({
-    name: activeProfile?.name || 'Guest User',
+    name: (activeProfile?.name && activeProfile.name !== 'Nandan' && activeProfile.name !== 'Guest User') ? activeProfile.name : '',
     goals: parseGoals(activeProfile?.goal),
     dietary_preference: activeProfile?.dietary_preference || 'No preference',
     allergens: activeProfile?.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : [],
@@ -69,7 +69,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
     if (activeProfile) {
       setFormData(prev => ({
         ...prev,
-        name: activeProfile.name || prev.name,
+        name: (activeProfile.name && activeProfile.name !== 'Nandan' && activeProfile.name !== 'Guest User') ? activeProfile.name : prev.name,
         goals: parseGoals(activeProfile.goal || prev.goals.join(', ')),
         dietary_preference: activeProfile.dietary_preference || prev.dietary_preference,
         allergens: activeProfile.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : prev.allergens,

@@ -104,8 +104,38 @@ export default function App() {
     }
   });
 
-  const [activeProfile, setActiveProfile] = useState(null);
+  const [activeProfile, setActiveProfile] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eatgood_user_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.name && parsed.name !== 'Nandan') {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return {
+      user_id: 'USR_DEFAULT',
+      name: 'Guest User',
+      goal: 'Balanced Choices',
+      dietary_preference: 'No preference',
+      allergens_to_avoid: '',
+      age_group: '18-24',
+      activity_level: 'Moderately active'
+    };
+  });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Initialize or retrieve persistent device client ID
+  useEffect(() => {
+    try {
+      let cid = localStorage.getItem('eatgood_client_id');
+      if (!cid) {
+        cid = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+        localStorage.setItem('eatgood_client_id', cid);
+      }
+    } catch (e) {}
+  }, []);
 
   // First-time visit onboarding & terms acceptance state
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
@@ -211,20 +241,35 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Fetch active profile on load
+  // Fetch active profile on load with client identity
   useEffect(() => {
-    fetch('/api/profile')
+    const cid = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
+    fetch(`/api/profile?user_id=${encodeURIComponent(cid)}`, {
+      headers: { 'X-User-Id': cid }
+    })
       .then(res => res.json())
-      .then(data => setActiveProfile(data))
+      .then(data => {
+        if (data) {
+          const sanitized = {
+            ...data,
+            name: (data.name && data.name !== 'Nandan') ? data.name : 'Guest User'
+          };
+          setActiveProfile(prev => {
+            const localSaved = localStorage.getItem('eatgood_user_profile');
+            if (localSaved) {
+              try {
+                const parsed = JSON.parse(localSaved);
+                if (parsed && parsed.name && parsed.name !== 'Nandan') {
+                  return parsed;
+                }
+              } catch (e) {}
+            }
+            return sanitized;
+          });
+        }
+      })
       .catch(err => {
         console.error('Error fetching profile:', err);
-        setActiveProfile({
-          user_id: 'USR_DEFAULT',
-          name: 'Guest User',
-          goal: 'Balanced Choices',
-          dietary_preference: 'No preference',
-          allergens_to_avoid: ''
-        });
       });
   }, []);
 
@@ -286,13 +331,31 @@ export default function App() {
   };
 
   const handleSaveProfile = (newProfile) => {
+    const cid = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
+    const profileToSave = { ...newProfile, user_id: cid };
+
+    try {
+      localStorage.setItem('eatgood_user_profile', JSON.stringify(profileToSave));
+    } catch (e) {}
+    setActiveProfile(profileToSave);
+
     fetch('/api/profile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newProfile)
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-User-Id': cid
+      },
+      body: JSON.stringify(profileToSave)
     })
       .then(res => res.json())
-      .then(saved => setActiveProfile(saved))
+      .then(saved => {
+        if (saved && saved.name && saved.name !== 'Nandan') {
+          setActiveProfile(saved);
+          try {
+            localStorage.setItem('eatgood_user_profile', JSON.stringify(saved));
+          } catch (e) {}
+        }
+      })
       .catch(err => console.error(err));
   };
 
