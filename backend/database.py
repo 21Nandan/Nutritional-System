@@ -12,7 +12,24 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-SOURCE_DB_PATH = os.path.join(BASE_DIR, "data", "eatgood_app.db")
+
+def resolve_source_db_path() -> str:
+    candidates = [
+        os.path.join(BASE_DIR, "data", "eatgood_app.db"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "eatgood_app.db")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "eatgood_app.db")),
+        os.path.abspath(os.path.join(os.getcwd(), "data", "eatgood_app.db")),
+        os.path.abspath(os.path.join(os.getcwd(), "frontend", "data", "eatgood_app.db")),
+        os.path.abspath(os.path.join(os.getcwd(), "..", "data", "eatgood_app.db")),
+        "/var/task/data/eatgood_app.db",
+        "/var/task/frontend/data/eatgood_app.db"
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
+
+SOURCE_DB_PATH = resolve_source_db_path()
 
 # In serverless environments (Vercel / Lambda), the deployment root is read-only.
 # Copy database to /tmp to ensure full read/write support.

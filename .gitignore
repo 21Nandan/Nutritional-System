@@ -1,6 +1,7 @@
 # Python
 backend/venv/
 venv/
+**/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -16,6 +17,7 @@ yarn-error.log*
 
 # OS & IDE
 .DS_Store
+**/.DS_Store
 .idea/
 .vscode/
 
@@ -23,3 +25,4 @@ yarn-error.log*
 scripts/ocr_helper
 data/uploads/*
 !data/uploads/.gitkeep
+frontend/data/uploads/*

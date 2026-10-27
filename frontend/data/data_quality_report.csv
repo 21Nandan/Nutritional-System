@@ -1,0 +1,11 @@
+Metric,Count,Percentage,Evaluation Status
+Total Records in Dataset,852,100.0%,Complete
+"Calibrated Categories (Snacks, Cereals, Beverages)",560,65.7%,Calibrated
+"Uncalibrated Categories (Biscuits, Sweets, Instant, Dairy, Condiments)",292,34.3%,"Displays Data, No Calibrated Grade"
+Atwater Calorie Discrepancies (>50 kcal or >25%),78,9.2%,Requires Source Audit
+Macronutrient Total Exceeds Serving Size,13,1.5%,Label Discrepancy Flagged
+Unspecified / Ambiguous Measurement Basis,40,4.7%,Standardization Halted Pending Verification
+Missing Added Sugars Declaration,30,3.5%,Treated as Missing (Not 0)
+Missing Trans Fat Declaration,20,2.3%,Treated as Missing (Not 0)
+Missing Dietary Fibre Declaration,15,1.8%,Treated as Missing (Not 0)
+Missing or Undeclared Allergen Info,87,10.2%,Allergen Status Unknown (Never Assumed Safe)

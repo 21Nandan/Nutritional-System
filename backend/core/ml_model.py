@@ -15,9 +15,13 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 def resolve_model_paths():
     candidates = [
         os.path.join(BASE_DIR, "models"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models")),
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models")),
         os.path.abspath(os.path.join(os.getcwd(), "models")),
-        "/var/task/models"
+        os.path.abspath(os.path.join(os.getcwd(), "frontend", "models")),
+        os.path.abspath(os.path.join(os.getcwd(), "..", "models")),
+        "/var/task/models",
+        "/var/task/frontend/models"
     ]
     for c in candidates:
         mp = os.path.join(c, "eatgood_model.joblib")

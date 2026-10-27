@@ -1,5 +1,15 @@
 {
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "data/**, models/**, backend/**",
+      "maxDuration": 15
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
