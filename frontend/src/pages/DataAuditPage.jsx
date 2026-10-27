@@ -126,7 +126,6 @@ export default function DataAuditPage({ onSelectProduct }) {
               Standardization & Missing-Data Protocols:
             </h4>
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
-              <li><strong>Preservation of Original Values:</strong> Raw source declarations in <code>packaged_foods_india.csv</code> are never destructively overwritten.</li>
               <li><strong>No Automatic Zero-Filling:</strong> Missing sugars, sodium, trans fat, or fibre values are stored as null (blank), never substituted with 0.0g.</li>
               <li><strong>Refusal of Unverifiable Basis:</strong> Records with ambiguous serving units or unconfirmed measurement basis have standardization halted until manufacturer audit.</li>
             </ul>
