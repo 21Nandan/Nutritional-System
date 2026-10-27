@@ -8,13 +8,20 @@ import pandas as pd
 from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import assess_personalized_suitability, assess_general_nutrition
 
-def get_healthier_alternatives(current_product_id: str, user_profile: dict, limit: int = 4):
+def get_healthier_alternatives(current_product_or_id, user_profile: dict, limit: int = 4):
     """
     Finds healthier alternative products in the same category that match the user's goals.
+    Accepts either a string product_id or a product dictionary.
     Never recommends products with allergen conflicts.
     Explains the comparative nutritional delta (e.g. -40% sugar, +3x fibre).
     """
-    current_product = data_loader.get_product_by_id(current_product_id)
+    if isinstance(current_product_or_id, dict):
+        current_product = current_product_or_id
+        current_product_id = current_product.get("product_id", "")
+    else:
+        current_product_id = str(current_product_or_id)
+        current_product = data_loader.get_product_by_id(current_product_id)
+
     if not current_product:
         return {"current_product": None, "alternatives": [], "message": "Product not found."}
 
@@ -24,15 +31,16 @@ def get_healthier_alternatives(current_product_id: str, user_profile: dict, limi
     if df is None or df.empty:
         return {"current_product": current_product, "alternatives": [], "message": "Product database empty."}
 
-    # Filter to same category, excluding self
+    # Filter to same category, excluding self and redundant duplicate variants
     candidates_df = df[(df["category"] == category) & (df["product_id"] != current_product_id)].copy()
+    candidates_df = candidates_df[~candidates_df["product_name"].str.contains(r'\(Variant\s*\d+\)', case=False, na=False)]
 
     # Prefer verified data confidence status
     candidates = candidates_df.replace({float('nan'): None}).to_dict(orient="records")
 
     goal = user_profile.get("goal", "Balanced Choices")
     curr_assessment = assess_personalized_suitability(current_product, user_profile)
-    curr_score = curr_assessment["personalized_score"]
+    curr_score = curr_assessment["personalized_score"] or 0
 
     alternatives = []
 
@@ -43,7 +51,7 @@ def get_healthier_alternatives(current_product_id: str, user_profile: dict, limi
         if suitability["has_critical_allergen_conflict"] or suitability["preference_conflict"]:
             continue
 
-        cand_score = suitability["personalized_score"]
+        cand_score = suitability["personalized_score"] or 0
 
         # Only recommend if better or comparable with meaningful positive attributes
         if cand_score >= curr_score or cand_score >= 70:
@@ -101,7 +109,7 @@ def get_healthier_alternatives(current_product_id: str, user_profile: dict, limi
             })
 
     # Sort by personalized score descending
-    alternatives.sort(key=lambda x: x["personalized_score"], reverse=True)
+    alternatives.sort(key=lambda x: x["personalized_score"] or 0, reverse=True)
 
     return {
         "current_product": {

@@ -1,25 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Shield, BookOpen, Database, HeartHandshake } from 'lucide-react';
+import logoImg from '../assets/logo.png';
+import LegalModal from './LegalModal';
 
 export default function Footer({ setActivePage }) {
+  const [legalModalOpen, setLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState('privacy');
+
+  const openLegal = (tab) => {
+    setLegalModalTab(tab);
+    setLegalModalOpen(true);
+  };
+
   return (
     <footer className="footer">
       <div className="footer-inner">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              background: '#58a834',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontWeight: 800
-            }}>
-              E
-            </div>
+            <img 
+              src={logoImg} 
+              alt="EATGOOD Logo" 
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                background: '#fff',
+                padding: 2,
+                objectFit: 'contain'
+              }} 
+            />
             <h3 style={{ color: '#fff', fontSize: '1.2rem', margin: 0 }}>EATGOOD</h3>
           </div>
           <p style={{ color: '#b0c9bb', lineHeight: 1.6, fontSize: '0.85rem', marginBottom: 16 }}>
@@ -38,7 +47,7 @@ export default function Footer({ setActivePage }) {
             <li><a href="#scanner" onClick={(e) => { e.preventDefault(); setActivePage('scanner'); }}>Label Scanner</a></li>
             <li><a href="#catalogue" onClick={(e) => { e.preventDefault(); setActivePage('catalogue'); }}>Product Catalogue</a></li>
             <li><a href="#compare" onClick={(e) => { e.preventDefault(); setActivePage('compare'); }}>Product Comparison</a></li>
-            <li><a href="#dashboard" onClick={(e) => { e.preventDefault(); setActivePage('dashboard'); }}>User Dashboard</a></li>
+            <li><a href="#profile" onClick={(e) => { e.preventDefault(); setActivePage('profile'); }}>User Profile</a></li>
           </ul>
         </div>
 
@@ -46,8 +55,22 @@ export default function Footer({ setActivePage }) {
           <h4>Standards & Data</h4>
           <ul>
             <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>Data Quality Audit</a></li>
-            <li><a href="#standards" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>WHO & FSSAI Standards</a></li>
-            <li><span style={{ color: '#7e9e8c' }}>Simulated ML Training Ethics</span></li>
+            <li>
+              <a 
+                href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet" 
+                rel="noopener noreferrer"
+              >
+                WHO Food Guidelines ↗
+              </a>
+            </li>
+            <li>
+              <a 
+                href="https://www.fssai.gov.in/" 
+                rel="noopener noreferrer"
+              >
+                FSSAI Food Standards ↗
+              </a>
+            </li>
           </ul>
         </div>
 
@@ -60,14 +83,56 @@ export default function Footer({ setActivePage }) {
         </div>
       </div>
 
-      <div className="footer-bottom">
-        <div>&copy; 2026 EATGOOD Team. All rights reserved. Locally executed food intelligence platform.</div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <span>FastAPI Microservice</span>
-          <span>•</span>
-          <span>Scikit-Learn Architecture</span>
+      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: 20, maxWidth: 1240, margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, paddingBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img 
+              src={logoImg} 
+              alt="EATGOOD Logo" 
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: '#fff',
+                padding: 2,
+                objectFit: 'contain'
+              }} 
+            />
+            <span style={{ color: '#fff', fontWeight: 600, fontSize: '0.92rem' }}>EATGOOD</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: '#8da698', fontSize: '0.82rem' }}>
+            <a 
+              href="#privacy" 
+              onClick={(e) => { e.preventDefault(); openLegal('privacy'); }}
+              style={{ color: '#8da698', textDecoration: 'none', cursor: 'pointer' }}
+            >
+              Privacy Policy
+            </a>
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+            <a 
+              href="#terms" 
+              onClick={(e) => { e.preventDefault(); openLegal('terms'); }}
+              style={{ color: '#8da698', textDecoration: 'none', cursor: 'pointer' }}
+            >
+              Terms & Conditions
+            </a>
+          </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 14, display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ color: '#8da698', fontSize: '0.78rem', lineHeight: 1.6 }}>
+            <div>Made with ❤️ in RVCE &nbsp;•&nbsp; v1.0.0</div>
+            <div>&copy; 2026 EATGOOD &nbsp;•&nbsp; All rights reserved</div>
+          </div>
         </div>
       </div>
+
+      <LegalModal
+        isOpen={legalModalOpen}
+        onClose={() => setLegalModalOpen(false)}
+        initialTab={legalModalTab}
+      />
     </footer>
   );
 }

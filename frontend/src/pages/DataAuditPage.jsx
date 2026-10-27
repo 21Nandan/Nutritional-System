@@ -52,7 +52,7 @@ export default function DataAuditPage({ onSelectProduct }) {
           Dataset Quality & Discrepancy Inspection
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Real-time audit of the 852 Indian packaged products dataset, documenting Atwater calorie anomalies, serving size contradictions, and standardization rules.
+          Real-time audit of the Indian packaged products dataset, documenting Atwater calorie anomalies, serving size contradictions, and standardization rules.
         </p>
       </div>
 

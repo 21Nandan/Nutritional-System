@@ -1,19 +1,43 @@
 import React, { useState } from 'react';
 import { 
   Upload, Camera, FileText, CheckCircle2, AlertTriangle, 
-  HelpCircle, Sparkles, ArrowRight, RefreshCw, Barcode, Search 
+  HelpCircle, Sparkles, ArrowRight, RefreshCw, Barcode, Search,
+  ChevronDown, ChevronUp, Info, Smartphone, ExternalLink,
+  PlusCircle, Globe, ShieldCheck, Zap
 } from 'lucide-react';
+import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
+import ProductContributionModal from '../components/ProductContributionModal';
 
-export default function LabelScanner({ onAssessmentGenerated, onSelectProduct }) {
-  const [mode, setMode] = useState('upload'); // 'upload', 'manual', 'barcode'
+export default function LabelScanner({ 
+  onAssessmentGenerated, 
+  onSelectProduct,
+  formData: propFormData,
+  setFormData: propSetFormData,
+  mode: propMode,
+  setMode: propSetMode
+}) {
+  const [internalMode, setInternalMode] = useState('upload'); // 'upload', 'manual', 'barcode'
+  const mode = propMode !== undefined ? propMode : internalMode;
+  const setMode = propSetMode || setInternalMode;
+
   const [file, setFile] = useState(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState(null);
+  const [showRawText, setShowRawText] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeError, setBarcodeError] = useState('');
 
-  // Editable confirmation form state
-  const [formData, setFormData] = useState({
+  // Barcode Scanner & Layered Discovery State
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [barcodeSearching, setBarcodeSearching] = useState(false);
+  const [barcodeLookupStep, setBarcodeLookupStep] = useState('');
+  const [barcodeFoundResult, setBarcodeFoundResult] = useState(null);
+  const [barcodeNotFoundInfo, setBarcodeNotFoundInfo] = useState(null);
+  const [isContributionModalOpen, setIsContributionModalOpen] = useState(false);
+  const [contributionBarcode, setContributionBarcode] = useState('');
+
+  // Editable confirmation form state (preserves inputs across views)
+  const [internalFormData, setInternalFormData] = useState({
     product_name: '',
     brand: '',
     category: 'Snacks',
@@ -34,15 +58,20 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
     allergens_declared: '',
     marketing_claims: ''
   });
+  const formData = propFormData !== undefined ? propFormData : internalFormData;
+  const setFormData = propSetFormData || setInternalFormData;
 
+  const [fieldStatuses, setFieldStatuses] = useState({});
+  const [fieldNotes, setFieldNotes] = useState({});
+  const [confidenceScores, setConfidenceScores] = useState({});
   const [suspiciousFlags, setSuspiciousFlags] = useState([]);
   const [evaluating, setEvaluating] = useState(false);
 
-  const handleFileUpload = async (e) => {
-    const uploadedFile = e.target.files[0];
+  const processUploadedFile = async (uploadedFile) => {
     if (!uploadedFile) return;
     setFile(uploadedFile);
     setOcrLoading(true);
+    setOcrResult(null);
 
     const body = new FormData();
     body.append('file', uploadedFile);
@@ -56,14 +85,19 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
       setOcrResult(data);
       setOcrLoading(false);
 
+      if (data.status === 'error') {
+        alert(data.detail || data.message || 'OCR processing failed. You can enter details manually.');
+        return;
+      }
+
       // Prepopulate confirmation form with OCR results
       const vals = data.extracted_values || {};
       setFormData(prev => ({
         ...prev,
         product_name: prev.product_name || uploadedFile.name.replace(/\.[^/.]+$/, ''),
-        serving_size: vals.serving_size != null ? String(vals.serving_size) : '100',
-        serving_size_unit: vals.serving_size_unit || 'g',
-        measurement_basis: vals.measurement_basis || 'per 100g',
+        serving_size: vals.serving_size != null ? String(vals.serving_size) : prev.serving_size || '100',
+        serving_size_unit: vals.serving_size_unit || prev.serving_size_unit || 'g',
+        measurement_basis: vals.measurement_basis || prev.measurement_basis || 'per 100g',
         energy_kcal: vals.energy_kcal != null ? String(vals.energy_kcal) : '',
         carbohydrates_g: vals.carbohydrates_g != null ? String(vals.carbohydrates_g) : '',
         sugars_g: vals.sugars_g != null ? String(vals.sugars_g) : '',
@@ -77,29 +111,79 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
         ingredients: vals.ingredients || prev.ingredients
       }));
 
+      setFieldStatuses(data.field_statuses || {});
+      setFieldNotes(data.field_notes || {});
+      setConfidenceScores(data.confidence_scores || {});
       setSuspiciousFlags(data.suspicious_flags || []);
     } catch (err) {
       console.error(err);
       setOcrLoading(false);
-      alert('OCR extraction failed. You can proceed with manual entry below.');
+      alert('OCR network request failed. You can proceed with manual entry below.');
     }
   };
 
-  const handleBarcodeSearch = async (e) => {
-    e.preventDefault();
-    if (!barcodeInput.trim()) return;
+  const handleFileUpload = (e) => {
+    processUploadedFile(e.target.files[0]);
+  };
+
+  const handleBarcodeLookup = async (codeToLookup) => {
+    const code = String(codeToLookup !== undefined ? codeToLookup : barcodeInput).trim();
+    if (!code) {
+      setBarcodeError('Please enter a barcode number.');
+      return;
+    }
     setBarcodeError('');
+    setBarcodeSearching(true);
+    setBarcodeLookupStep('Querying local catalogue & Open Food Facts...');
+    setBarcodeFoundResult(null);
+    setBarcodeNotFoundInfo(null);
+    setIsCameraActive(false);
+
     try {
-      const res = await fetch(`/api/products?query=${encodeURIComponent(barcodeInput.trim())}&limit=1`);
+      const res = await fetch(`/api/products/barcode/${encodeURIComponent(code)}`);
       const data = await res.json();
-      if (data.products && data.products.length > 0) {
-        onSelectProduct(data.products[0].product_id);
+      setBarcodeSearching(false);
+
+      if (res.ok && data.status === 'found') {
+        setBarcodeFoundResult(data);
+      } else if (res.status === 404) {
+        setBarcodeNotFoundInfo({
+          barcode: code,
+          format: data.detail?.barcode_format || 'EAN / UPC',
+          message: data.detail?.message || `Barcode ${code} was not found in the local catalogue or Open Food Facts.`
+        });
       } else {
-        setBarcodeError(`No product found with barcode "${barcodeInput}". Try manual entry or label photo upload.`);
+        const errorDetail = data.detail?.message || data.detail || 'Barcode lookup failed.';
+        setBarcodeError(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
       }
     } catch (err) {
-      setBarcodeError('Failed to search barcode database.');
+      console.error(err);
+      setBarcodeSearching(false);
+      setBarcodeError('Network error connecting to barcode service. Please check your connection.');
     }
+  };
+
+  const handleBarcodeSearch = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    handleBarcodeLookup(barcodeInput);
+  };
+
+  const handleViewBarcodeAssessment = (foundResult) => {
+    if (!foundResult) return;
+    if (foundResult.source === 'local_database' && foundResult.product?.product_id) {
+      onSelectProduct(foundResult.product.product_id);
+    } else if (foundResult.assessment) {
+      onAssessmentGenerated(foundResult.assessment, foundResult.product);
+    }
+  };
+
+  const handleOpenContribution = (code) => {
+    setContributionBarcode(code || barcodeInput || '');
+    setIsContributionModalOpen(true);
+  };
+
+  const handleContributionSuccess = (productObj) => {
+    handleBarcodeLookup(productObj.barcode);
   };
 
   const handleGenerateAssessment = async (e) => {
@@ -143,7 +227,7 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
       });
       const assessmentData = await res.json();
       setEvaluating(false);
-      onAssessmentGenerated(assessmentData);
+      onAssessmentGenerated(assessmentData, formData);
     } catch (err) {
       console.error(err);
       setEvaluating(false);
@@ -151,31 +235,100 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
     }
   };
 
+  const renderFieldBadge = (fieldKey) => {
+    const status = fieldStatuses[fieldKey];
+    const note = fieldNotes[fieldKey];
+    const conf = confidenceScores[fieldKey];
+
+    if (status === 'extracted') {
+      return (
+        <span 
+          style={{
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            color: '#2e7d32',
+            background: '#e8f5e9',
+            padding: '2px 6px',
+            borderRadius: 4,
+            marginLeft: 6
+          }}
+          title={conf ? `OCR Confidence: ${Math.round(conf * 100)}%` : 'Extracted from OCR'}
+        >
+          ✓ {conf ? `${Math.round(conf * 100)}%` : 'Extracted'}
+        </span>
+      );
+    }
+    if (status === 'needs_review') {
+      return (
+        <span 
+          style={{
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            color: '#b73800',
+            background: '#fff3e0',
+            padding: '2px 6px',
+            borderRadius: 4,
+            marginLeft: 6
+          }}
+          title={note || 'Anomaly or repair flagged — verify against packaging'}
+        >
+          ⚠️ Review
+        </span>
+      );
+    }
+    if (ocrResult && status === 'not_found') {
+      return (
+        <span 
+          style={{
+            fontSize: '0.68rem',
+            fontWeight: 500,
+            color: '#84988d',
+            background: '#f1f5ef',
+            padding: '2px 6px',
+            borderRadius: 4,
+            marginLeft: 6
+          }}
+        >
+          Manual
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="label-scanner">
       <div style={{ marginBottom: 28, textAlign: 'center', maxWidth: 700, margin: '0 auto 28px' }}>
-        <h1 style={{ fontSize: '2.2rem', color: 'var(--color-primary)', marginBottom: 8 }}>
+        <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', color: 'var(--color-primary)', marginBottom: 8 }}>
           Food Label Scanner & Analysis
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Upload a food label photo for automated OCR extraction, look up a barcode, or manually enter nutrition facts.
+          Upload a food label photo for automated OCR extraction, snap a picture on mobile, look up a barcode, or manually enter nutrition facts.
         </p>
       </div>
 
       {/* Mode Switcher */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
         <button
           className={`btn-secondary ${mode === 'upload' ? 'active' : ''}`}
           onClick={() => setMode('upload')}
-          style={{ background: mode === 'upload' ? 'var(--color-primary)' : '#fff', color: mode === 'upload' ? '#fff' : 'inherit' }}
+          style={{ 
+            background: mode === 'upload' ? 'var(--color-primary)' : '#fff', 
+            color: mode === 'upload' ? '#fff' : 'inherit',
+            minHeight: 44
+          }}
         >
           <Camera size={16} />
-          <span>Upload Label Image (OCR)</span>
+          <span>Upload Label (OCR)</span>
         </button>
         <button
           className={`btn-secondary ${mode === 'barcode' ? 'active' : ''}`}
           onClick={() => setMode('barcode')}
-          style={{ background: mode === 'barcode' ? 'var(--color-primary)' : '#fff', color: mode === 'barcode' ? '#fff' : 'inherit' }}
+          style={{ 
+            background: mode === 'barcode' ? 'var(--color-primary)' : '#fff', 
+            color: mode === 'barcode' ? '#fff' : 'inherit',
+            minHeight: 44
+          }}
         >
           <Barcode size={16} />
           <span>Barcode Lookup</span>
@@ -183,108 +336,528 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
         <button
           className={`btn-secondary ${mode === 'manual' ? 'active' : ''}`}
           onClick={() => setMode('manual')}
-          style={{ background: mode === 'manual' ? 'var(--color-primary)' : '#fff', color: mode === 'manual' ? '#fff' : 'inherit' }}
+          style={{ 
+            background: mode === 'manual' ? 'var(--color-primary)' : '#fff', 
+            color: mode === 'manual' ? '#fff' : 'inherit',
+            minHeight: 44
+          }}
         >
           <FileText size={16} />
           <span>Manual Entry</span>
         </button>
       </div>
 
-      {/* Mode 1: Barcode Lookup */}
+      {/* Mode 1: Barcode Lookup & Camera Scanner */}
       {mode === 'barcode' && (
-        <div className="card" style={{ maxWidth: 600, margin: '0 auto 30px', textAlign: 'center' }}>
-          <Barcode size={40} color="var(--color-primary)" style={{ margin: '0 auto 12px' }} />
-          <h3 style={{ fontSize: '1.2rem', marginBottom: 6 }}>Barcode Number Lookup</h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>
-            Search the 852 Indian packaged products catalogue using an EAN-13 barcode (e.g. <code>8901030123456</code>).
-          </p>
-          <form onSubmit={handleBarcodeSearch} style={{ display: 'flex', gap: 8, maxWidth: 420, margin: '0 auto' }}>
-            <input
-              type="text"
-              placeholder="Enter barcode digits..."
-              value={barcodeInput}
-              onChange={e => setBarcodeInput(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid var(--color-border)',
-                fontSize: '0.95rem'
-              }}
-            />
-            <button type="submit" className="btn-primary" style={{ padding: '10px 18px' }}>
-              Lookup
-            </button>
-          </form>
-          {barcodeError && (
-            <div style={{ color: '#c62828', fontSize: '0.85rem', marginTop: 12, background: '#ffebee', padding: 8, borderRadius: 6 }}>
-              {barcodeError}
+        <div style={{ maxWidth: 680, margin: '0 auto 30px' }}>
+          {/* Active Camera Viewfinder */}
+          {isCameraActive && (
+            <div style={{ marginBottom: 20 }}>
+              <BarcodeCameraScanner
+                isScanningActive={isCameraActive}
+                onScan={(detectedCode) => handleBarcodeLookup(detectedCode)}
+                onClose={() => setIsCameraActive(false)}
+              />
+            </div>
+          )}
+
+          {/* Lookup In Progress State */}
+          {barcodeSearching && (
+            <div className="card" style={{ textAlign: 'center', padding: '36px 20px', marginBottom: 20 }}>
+              <RefreshCw size={32} className="spin" color="var(--color-primary)" style={{ margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
+              <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', marginBottom: 6 }}>
+                Searching Product Barcode...
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+                {barcodeLookupStep || 'Checking local database and Open Food Facts...'}
+              </p>
+            </div>
+          )}
+
+          {/* State 1: Barcode Found Result Card */}
+          {barcodeFoundResult && !barcodeSearching && (
+            <div className="card" style={{ border: '2px solid #2e7d32', padding: 24, marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span 
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        background: barcodeFoundResult.source === 'local_database' ? '#e8f5e9' : 
+                                    (barcodeFoundResult.source === 'user_contributed' ? '#fff3e0' : '#e1f5fe'),
+                        color: barcodeFoundResult.source === 'local_database' ? '#2e7d32' : 
+                               (barcodeFoundResult.source === 'user_contributed' ? '#e65100' : '#0288d1'),
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4
+                      }}
+                    >
+                      <ShieldCheck size={13} />
+                      {barcodeFoundResult.source === 'local_database' ? 'Local EATGOOD Catalogue' :
+                       barcodeFoundResult.source === 'user_contributed' ? 'User Contributed (Pending Review)' :
+                       'Open Food Facts (v3 API)'}
+                    </span>
+
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', background: '#f5f5f5', padding: '3px 8px', borderRadius: 4 }}>
+                      {barcodeFoundResult.barcode_format || 'EAN-13'}: <strong>{barcodeFoundResult.barcode}</strong>
+                    </span>
+                  </div>
+
+                  <h2 style={{ fontSize: '1.4rem', color: 'var(--color-primary)', marginBottom: 4 }}>
+                    {barcodeFoundResult.product?.product_name || 'Packaged Food Product'}
+                  </h2>
+
+                  <div style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+                    {barcodeFoundResult.product?.brand || 'Brand'} • {barcodeFoundResult.product?.category || 'Category'}
+                  </div>
+                </div>
+
+                {/* Score Preview Pill */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ textAlign: 'center', padding: '8px 14px', background: 'var(--color-surface-alt)', borderRadius: 10, border: '1px solid var(--color-border)' }}>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', textTransform: 'uppercase' }}>
+                      General Grade
+                    </span>
+                    <span className={`grade-badge grade-${barcodeFoundResult.assessment?.layer1_general?.grade || 'NA'}`} style={{ width: 32, height: 32, fontSize: '1.1rem', marginTop: 2 }}>
+                      {barcodeFoundResult.assessment?.layer1_general?.grade || 'N/A'}
+                    </span>
+                  </div>
+
+                  {barcodeFoundResult.assessment?.layer2_personalized?.personalized_score != null && (
+                    <div style={{ textAlign: 'center', padding: '8px 14px', background: 'var(--color-surface-alt)', borderRadius: 10, border: '1px solid var(--color-border)' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', textTransform: 'uppercase' }}>
+                        Goal Match
+                      </span>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#2e7d32', marginTop: 2, display: 'block' }}>
+                        {barcodeFoundResult.assessment.layer2_personalized.personalized_score}/100
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Product Thumbnail if available from OFF */}
+              {barcodeFoundResult.product?.image_url && (
+                <div style={{ marginBottom: 14, textAlign: 'center' }}>
+                  <img 
+                    src={barcodeFoundResult.product.image_url} 
+                    alt={barcodeFoundResult.product.product_name} 
+                    style={{ maxHeight: 140, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--color-border)' }} 
+                  />
+                </div>
+              )}
+
+              {/* Open Food Facts Attribution Notice */}
+              {barcodeFoundResult.openfoodfacts_attribution && (
+                <div style={{
+                  background: '#f8f9fa',
+                  border: '1px solid #e9ecef',
+                  borderRadius: 6,
+                  padding: '8px 12px',
+                  fontSize: '0.75rem',
+                  color: 'var(--color-text-muted)',
+                  marginBottom: 16
+                }}>
+                  {barcodeFoundResult.openfoodfacts_attribution}
+                </div>
+              )}
+
+              {/* Primary Actions */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => handleViewBarcodeAssessment(barcodeFoundResult)}
+                  style={{ flex: 1, minWidth: 200, padding: '12px 20px', minHeight: 46, fontSize: '0.95rem' }}
+                >
+                  <Sparkles size={16} />
+                  <span>View Full Assessment & Alternatives</span>
+                  <ArrowRight size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setBarcodeFoundResult(null);
+                    setBarcodeNotFoundInfo(null);
+                    setBarcodeInput('');
+                    setIsCameraActive(true);
+                  }}
+                  style={{ padding: '12px 18px', minHeight: 46, fontSize: '0.9rem' }}
+                >
+                  <RefreshCw size={15} />
+                  <span>Scan Another Barcode</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* State 2: Barcode Not Found Card */}
+          {barcodeNotFoundInfo && !barcodeSearching && (
+            <div className="card" style={{ border: '2px solid #ff9800', padding: 24, marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <div style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  background: '#fff3e0',
+                  color: '#e65100',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', color: '#b73800', margin: 0 }}>
+                    Product Not Found
+                  </h3>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginTop: 2 }}>
+                    Barcode: <strong>{barcodeNotFoundInfo.barcode}</strong> ({barcodeNotFoundInfo.format})
+                  </div>
+                </div>
+              </div>
+
+              <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 18 }}>
+                {barcodeNotFoundInfo.message} You can add it directly to your local database, scan its nutrition table photo via OCR, or search by product name.
+              </p>
+
+              {/* Action Buttons for Not Found State */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => handleOpenContribution(barcodeNotFoundInfo.barcode)}
+                  style={{
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  <PlusCircle size={15} />
+                  <span>Contribute This Product</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      product_name: prev.product_name || `Product ${barcodeNotFoundInfo.barcode}`
+                    }));
+                    setMode('upload');
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Camera size={15} />
+                  <span>Scan Label via OCR</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setBarcodeNotFoundInfo(null);
+                    setBarcodeFoundResult(null);
+                    setIsCameraActive(true);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  <RefreshCw size={15} />
+                  <span>Rescan / Try Another</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Default State: Barcode Hub Controls */}
+          {!barcodeFoundResult && !barcodeNotFoundInfo && !barcodeSearching && (
+            <div className="card" style={{ textAlign: 'center', padding: '30px 20px' }}>
+              <Barcode size={44} color="var(--color-primary)" style={{ margin: '0 auto 12px' }} />
+              <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', marginBottom: 6 }}>
+                Barcode Scanner & Product Discovery
+              </h2>
+              <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', maxWidth: 500, margin: '0 auto 20px', lineHeight: 1.4 }}>
+                Scan retail food barcodes with your camera or enter the digits. Matches against our local Indian catalogue, then Open Food Facts.
+              </p>
+
+              {/* Main Camera Scan Button */}
+              {!isCameraActive && (
+                <div style={{ marginBottom: 24 }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setBarcodeError('');
+                      setIsCameraActive(true);
+                    }}
+                    style={{
+                      padding: '12px 28px',
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minHeight: 48,
+                      boxShadow: '0 4px 14px rgba(20, 56, 40, 0.25)'
+                    }}
+                  >
+                    <Camera size={18} />
+                    <span>Open Camera Barcode Scanner</span>
+                  </button>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: 8 }}>
+                    Prefers back camera • Flashlight support on mobile • 100% offline detection
+                  </div>
+                </div>
+              )}
+
+              {/* Divider */}
+              <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--color-border)' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
+                <span style={{ padding: '0 12px', fontSize: '0.78rem', color: 'var(--color-text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Or Enter Digits Manually
+                </span>
+                <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
+              </div>
+
+              {/* Manual Input Form */}
+              <form onSubmit={handleBarcodeSearch} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: 440, margin: '0 auto 16px' }}>
+                <input
+                  type="text"
+                  placeholder="Enter 8-13 digit barcode..."
+                  value={barcodeInput}
+                  onChange={e => setBarcodeInput(e.target.value)}
+                  style={{
+                    flex: 1,
+                    minWidth: 200,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border)',
+                    fontSize: '0.95rem',
+                    minHeight: 44
+                  }}
+                />
+                <button type="submit" className="btn-primary" style={{ padding: '10px 20px', minHeight: 44 }}>
+                  Lookup
+                </button>
+              </form>
+
+              {/* Sample Test Barcodes */}
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
+                <span>Try quick sample:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeInput('8903585650756');
+                    handleBarcodeLookup('8903585650756');
+                  }}
+                  style={{ background: '#f0f4ef', border: '1px solid #d5dfd3', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.72rem' }}
+                >
+                  Local Catalogue (8903585650756)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeInput('5449000000996');
+                    handleBarcodeLookup('5449000000996');
+                  }}
+                  style={{ background: '#f0f4ef', border: '1px solid #d5dfd3', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.72rem' }}
+                >
+                  Open Food Facts (5449000000996)
+                </button>
+              </div>
+
+              {barcodeError && (
+                <div style={{ color: '#c62828', fontSize: '0.85rem', marginTop: 14, background: '#ffebee', padding: 10, borderRadius: 8 }}>
+                  {barcodeError}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
+      {/* Product Contribution Modal */}
+      <ProductContributionModal
+        isOpen={isContributionModalOpen}
+        onClose={() => setIsContributionModalOpen(false)}
+        initialBarcode={contributionBarcode}
+        onSuccessAssessment={handleContributionSuccess}
+      />
+
       {/* Mode 2: Label Image Upload */}
       {mode === 'upload' && (
-        <div className="card" style={{ maxWidth: 720, margin: '0 auto 30px' }}>
+        <div className="card" style={{ maxWidth: 740, margin: '0 auto 30px' }}>
           <div style={{
             border: '2px dashed var(--color-border)',
             borderRadius: 12,
-            padding: '36px 20px',
+            padding: '30px 16px',
             textAlign: 'center',
             background: 'var(--color-surface-alt)',
-            cursor: 'pointer',
             position: 'relative'
           }}>
-            <input
-              type="file"
-              accept="image/png, image/jpeg, image/webp"
-              onChange={handleFileUpload}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                opacity: 0,
-                cursor: 'pointer',
-                width: '100%',
-                height: '100%'
-              }}
-            />
             <Upload size={36} color="var(--color-accent)" style={{ margin: '0 auto 12px' }} />
             <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', marginBottom: 6 }}>
-              Drop Food Label Photo or Click to Browse
+              Select or Photograph Food Label
             </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 12 }}>
-              Supports PNG, JPEG images of nutrition facts tables or ingredient lists.
+            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 18 }}>
+              Supports PNG, JPEG, WebP photos of nutrition tables or ingredient panels.
             </p>
-            <div style={{ display: 'inline-block', fontSize: '0.75rem', color: 'var(--color-text-subtle)', background: '#fff', padding: '4px 10px', borderRadius: 4, border: '1px solid var(--color-border)' }}>
-              Engine: Optical Character Recognition (100% Offline Local Inference)
+
+            {/* Action Buttons for Mobile & Desktop */}
+            <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <label 
+                className="btn-primary" 
+                style={{ 
+                  cursor: 'pointer', 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: 8, 
+                  minHeight: 44,
+                  padding: '10px 20px',
+                  borderRadius: 8
+                }}
+              >
+                <Upload size={16} />
+                <span>Choose Image</span>
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg, image/webp"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+
+              <label 
+                className="btn-secondary" 
+                style={{ 
+                  cursor: 'pointer', 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: 8, 
+                  minHeight: 44,
+                  padding: '10px 20px',
+                  borderRadius: 8,
+                  background: '#fff',
+                  border: '1px solid var(--color-border)'
+                }}
+              >
+                <Smartphone size={16} />
+                <span>Take Photo (Camera)</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
             </div>
           </div>
 
           {ocrLoading && (
             <div style={{ marginTop: 20, textAlign: 'center', padding: 20, background: '#eaf6e5', borderRadius: 8, color: 'var(--color-primary)' }}>
               <RefreshCw size={24} className="spin" style={{ margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontWeight: 700 }}>Extracting label text using OCR...</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Parsing serving sizes, macro values, and ingredients</div>
+              <div style={{ fontWeight: 700 }}>Extracting label text using local OCR...</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Running Tesseract 5 with OpenCV preprocessing & cross-field verification</div>
             </div>
           )}
 
           {ocrResult && (
             <div style={{ marginTop: 20, background: '#f8faf7', border: '1px solid var(--color-border)', borderRadius: 8, padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-accent)' }}>
-                  ✓ OCR EXTRACTED TEXT
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ 
+                    fontSize: '0.78rem', 
+                    fontWeight: 700, 
+                    color: ocrResult.status === 'success' ? '#2e7d32' : (ocrResult.status === 'partial' ? '#b73800' : '#c62828'),
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4
+                  }}>
+                    {ocrResult.status === 'success' && <CheckCircle2 size={14} />}
+                    {ocrResult.status === 'partial' && <AlertTriangle size={14} />}
+                    {ocrResult.status.toUpperCase()}
+                  </span>
+                  {ocrResult.ocr_confidence > 0 && (
+                    <span style={{ fontSize: '0.72rem', background: '#eaf6e5', color: 'var(--color-accent)', padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>
+                      {Math.round(ocrResult.ocr_confidence * 100)}% Confidence
+                    </span>
+                  )}
+                </div>
                 <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
                   {ocrResult.ocr_engine}
                 </span>
               </div>
-              <div style={{ maxHeight: 120, overflowY: 'auto', background: '#fff', border: '1px solid #e2e8e0', borderRadius: 6, padding: 10, fontSize: '0.75rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-                {ocrResult.raw_text}
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 8 }}>
-                ⚠️ <strong>Transparency Check:</strong> Verify or adjust the extracted values in the confirmation form below before generating the final assessment.
-              </div>
+
+              {ocrResult.message && (
+                <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 10 }}>
+                  {ocrResult.message}
+                </div>
+              )}
+
+              {/* Raw OCR Text Accordion */}
+              {ocrResult.raw_text && (
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowRawText(prev => !prev)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      color: 'var(--color-primary)',
+                      padding: '6px 0',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>{showRawText ? 'Hide Raw OCR Text' : 'View Raw Extracted Text'}</span>
+                    {showRawText ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+
+                  {showRawText && (
+                    <div style={{ 
+                      maxHeight: 180, 
+                      overflowY: 'auto', 
+                      background: '#fff', 
+                      border: '1px solid #e2e8e0', 
+                      borderRadius: 6, 
+                      padding: 10, 
+                      fontSize: '0.75rem', 
+                      fontFamily: 'monospace', 
+                      whiteSpace: 'pre-wrap',
+                      marginTop: 6
+                    }}>
+                      {ocrResult.raw_text}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -293,7 +866,7 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
       {/* Editable Confirmation Form */}
       <form onSubmit={handleGenerateAssessment} className="card" style={{ maxWidth: 840, margin: '0 auto' }}>
         <div style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 16, marginBottom: 20 }}>
-          <h2 style={{ fontSize: '1.4rem', color: 'var(--color-primary)' }}>
+          <h2 style={{ fontSize: 'clamp(1.2rem, 3vw, 1.4rem)', color: 'var(--color-primary)' }}>
             Editable Nutrition & Ingredient Confirmation
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
@@ -317,10 +890,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
         )}
 
         {/* Basic Product Info */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 18 }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-              Product Name *
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+              <span>Product Name *</span>
             </label>
             <input
               type="text"
@@ -333,8 +906,8 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-              Brand
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+              <span>Brand</span>
             </label>
             <input
               type="text"
@@ -346,8 +919,8 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-              Category *
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+              <span>Category *</span>
             </label>
             <select
               value={formData.category}
@@ -367,10 +940,11 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
         </div>
 
         {/* Serving Size and Measurement Basis */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 14, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 18 }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-              Serving Size
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+              <span>Serving Size</span>
+              {renderFieldBadge('serving_size')}
             </label>
             <input
               type="number"
@@ -383,8 +957,8 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-              Unit
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+              <span>Unit</span>
             </label>
             <select
               value={formData.serving_size_unit}
@@ -397,8 +971,8 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-              Measurement Basis
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+              <span>Measurement Basis</span>
             </label>
             <select
               value={formData.measurement_basis}
@@ -424,7 +998,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           </h4>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Calories (kcal)</label>
+              <label style={labelStyle}>
+                <span>Calories (kcal)</span>
+                {renderFieldBadge('energy_kcal')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -433,10 +1010,34 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
                 onChange={e => setFormData({ ...formData, energy_kcal: e.target.value })}
                 style={inputStyle}
               />
+              {fieldNotes['energy_kcal'] && (
+                <div style={{ fontSize: '0.68rem', color: '#b73800', marginTop: 2 }}>{fieldNotes['energy_kcal']}</div>
+              )}
             </div>
 
             <div>
-              <label style={labelStyle}>Total Sugars (g)</label>
+              <label style={labelStyle}>
+                <span>Carbs (g)</span>
+                {renderFieldBadge('carbohydrates_g')}
+              </label>
+              <input
+                type="number"
+                step="any"
+                placeholder="e.g. 64.0"
+                value={formData.carbohydrates_g}
+                onChange={e => setFormData({ ...formData, carbohydrates_g: e.target.value })}
+                style={inputStyle}
+              />
+              {fieldNotes['carbohydrates_g'] && (
+                <div style={{ fontSize: '0.68rem', color: '#b73800', marginTop: 2 }}>{fieldNotes['carbohydrates_g']}</div>
+              )}
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                <span>Total Sugars (g)</span>
+                {renderFieldBadge('sugars_g')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -448,7 +1049,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
             </div>
 
             <div>
-              <label style={labelStyle}>Added Sugars (g)</label>
+              <label style={labelStyle}>
+                <span>Added Sugars (g)</span>
+                {renderFieldBadge('added_sugars_g')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -460,7 +1064,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
             </div>
 
             <div>
-              <label style={labelStyle}>Sodium (mg)</label>
+              <label style={labelStyle}>
+                <span>Sodium (mg)</span>
+                {renderFieldBadge('sodium_mg')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -469,10 +1076,16 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
                 onChange={e => setFormData({ ...formData, sodium_mg: e.target.value })}
                 style={inputStyle}
               />
+              {fieldNotes['sodium_mg'] && (
+                <div style={{ fontSize: '0.68rem', color: '#56695e', marginTop: 2 }}>{fieldNotes['sodium_mg']}</div>
+              )}
             </div>
 
             <div>
-              <label style={labelStyle}>Protein (g)</label>
+              <label style={labelStyle}>
+                <span>Protein (g)</span>
+                {renderFieldBadge('protein_g')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -484,7 +1097,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
             </div>
 
             <div>
-              <label style={labelStyle}>Total Fat (g)</label>
+              <label style={labelStyle}>
+                <span>Total Fat (g)</span>
+                {renderFieldBadge('total_fat_g')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -496,7 +1112,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
             </div>
 
             <div>
-              <label style={labelStyle}>Saturated Fat (g)</label>
+              <label style={labelStyle}>
+                <span>Saturated Fat (g)</span>
+                {renderFieldBadge('saturated_fat_g')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -508,7 +1127,10 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
             </div>
 
             <div>
-              <label style={labelStyle}>Dietary Fibre (g)</label>
+              <label style={labelStyle}>
+                <span>Dietary Fibre (g)</span>
+                {renderFieldBadge('dietary_fibre_g')}
+              </label>
               <input
                 type="number"
                 step="any"
@@ -517,14 +1139,18 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
                 onChange={e => setFormData({ ...formData, dietary_fibre_g: e.target.value })}
                 style={inputStyle}
               />
+              {fieldNotes['dietary_fibre_g'] && (
+                <div style={{ fontSize: '0.68rem', color: '#b73800', marginTop: 2 }}>{fieldNotes['dietary_fibre_g']}</div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Ingredients & Allergens */}
         <div style={{ marginBottom: 18 }}>
-          <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
-            Ingredients List
+          <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
+            <span>Ingredients List</span>
+            {renderFieldBadge('ingredients')}
           </label>
           <textarea
             rows={3}
@@ -535,7 +1161,7 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
               Declared Allergens (Box Notice)
@@ -569,9 +1195,9 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
             type="submit"
             className="btn-accent"
             disabled={evaluating}
-            style={{ padding: '12px 28px', fontSize: '1rem' }}
+            style={{ padding: '12px 28px', fontSize: '1rem', minHeight: 48, width: '100%', maxWidth: 320 }}
           >
-            {evaluating ? 'Analyzing...' : 'Generate 3-Layer Assessment'}
+            {evaluating ? 'Analyzing...' : 'Generate Assessment'}
             <ArrowRight size={18} />
           </button>
         </div>
@@ -582,15 +1208,18 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
 
 const inputStyle = {
   width: '100%',
-  padding: '8px 12px',
-  borderRadius: 6,
+  padding: '10px 12px',
+  borderRadius: 8,
   border: '1px solid var(--color-border)',
-  fontSize: '0.88rem',
-  background: '#fff'
+  fontSize: '0.9rem',
+  background: '#fff',
+  minHeight: 42,
+  boxSizing: 'border-box'
 };
 
 const labelStyle = {
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
   fontSize: '0.75rem',
   fontWeight: 600,
   color: 'var(--color-text-muted)',

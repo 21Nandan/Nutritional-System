@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, AlertCircle, CheckCircle2, ChevronRight, Bookmark, ArrowLeftRight, Shield } from 'lucide-react';
+import { Search, Filter, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, ChevronUp, Bookmark, ArrowLeftRight, Shield } from 'lucide-react';
 
 export default function ProductCatalogue({ onSelectProduct, onCompareProduct, activeProfile }) {
   const [products, setProducts] = useState([]);
@@ -10,7 +10,38 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
   const [selectedCat, setSelectedCat] = useState('All');
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const pageSize = 30;
+  const [savedIds, setSavedIds] = useState([]);
+  const [pageSize, setPageSize] = useState('All');
+
+  // Filter Drawer State & Nutritional Filter States (Default: show everything / all products)
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [sugarFilter, setSugarFilter] = useState('all'); // 'all', 'healthy' (<= 10g), 'low' (<= 5g)
+  const [sodiumFilter, setSodiumFilter] = useState('all'); // 'all', 'healthy' (<= 400mg), 'low' (<= 140mg)
+  const [satFatFilter, setSatFatFilter] = useState('all'); // 'all', 'healthy' (<= 4g), 'low' (<= 1.5g)
+  const [fibreFilter, setFibreFilter] = useState('all'); // 'all', 'good' (>= 3g), 'high' (>= 6g)
+  const [proteinFilter, setProteinFilter] = useState('all'); // 'all', 'good' (>= 7g), 'high' (>= 12g)
+
+  const isHealthyLevel = sugarFilter === 'healthy' && sodiumFilter === 'healthy' && satFatFilter === 'healthy' && fibreFilter === 'all' && proteinFilter === 'all';
+  const isFiltered = sugarFilter !== 'all' || sodiumFilter !== 'all' || satFatFilter !== 'all' || fibreFilter !== 'all' || proteinFilter !== 'all';
+
+  const applyHealthyDefaults = () => {
+    setSugarFilter('healthy');
+    setSodiumFilter('healthy');
+    setSatFatFilter('healthy');
+    setFibreFilter('all');
+    setProteinFilter('all');
+    setIsFilterOpen(true);
+    setPage(0);
+  };
+
+  const clearAllFilters = () => {
+    setSugarFilter('all');
+    setSodiumFilter('all');
+    setSatFatFilter('all');
+    setFibreFilter('all');
+    setProteinFilter('all');
+    setPage(0);
+  };
 
   useEffect(() => {
     fetch('/api/products/categories')
@@ -20,20 +51,61 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
         setCalibratedCats(data.calibrated_categories || []);
       })
       .catch(err => console.error(err));
+
+    fetch('/api/saved')
+      .then(res => res.json())
+      .then(data => {
+        const ids = (data.saved_products || []).map(p => p.product_id);
+        setSavedIds(ids);
+      })
+      .catch(err => console.error(err));
   }, []);
+
+  const toggleSaveInCatalogue = (prod) => {
+    fetch(`/api/saved/${prod.product_id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prod)
+    })
+      .then(res => res.json())
+      .then(data => {
+        setSavedIds(prev => 
+          data.is_saved ? [...prev, prod.product_id] : prev.filter(id => id !== prod.product_id)
+        );
+      })
+      .catch(err => console.error(err));
+  };
 
   useEffect(() => {
     fetchProducts();
-  }, [query, selectedCat, page]);
+  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter]);
 
   const fetchProducts = () => {
     setLoading(true);
+    const limitNum = pageSize === 'All' ? 1000 : Number(pageSize);
+    const offsetNum = pageSize === 'All' ? 0 : page * limitNum;
     const params = new URLSearchParams({
       query,
       category: selectedCat,
-      limit: pageSize,
-      offset: page * pageSize
+      limit: limitNum,
+      offset: offsetNum
     });
+
+    if (sugarFilter === 'healthy') params.append('max_sugars', '10');
+    else if (sugarFilter === 'low') params.append('max_sugars', '5');
+
+    if (sodiumFilter === 'healthy') params.append('max_sodium', '400');
+    else if (sodiumFilter === 'low') params.append('max_sodium', '140');
+
+    if (satFatFilter === 'healthy') params.append('max_sat_fat', '4');
+    else if (satFatFilter === 'low') params.append('max_sat_fat', '1.5');
+
+    if (fibreFilter === 'good') params.append('min_fibre', '3');
+    else if (fibreFilter === 'high') params.append('min_fibre', '6');
+
+    if (proteinFilter === 'good') params.append('min_protein', '7');
+    else if (proteinFilter === 'high') params.append('min_protein', '12');
+
     fetch(`/api/products?${params.toString()}`)
       .then(res => res.json())
       .then(data => {
@@ -56,7 +128,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           Indian Packaged Food Catalogue
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Explore 852 audited retail products across 8 categories with authentic nutritional and ingredient profiles.
+          Explore audited retail products across categories with authentic nutritional and ingredient profiles.
         </p>
       </div>
 
@@ -128,6 +200,338 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           })}
         </div>
 
+        {/* Filter Options Toolbar (Collapsible via arrow at the side) */}
+        <div style={{
+          marginTop: 16,
+          paddingTop: 16,
+          borderTop: '1px solid var(--color-border)'
+        }}>
+          <div 
+            onClick={() => setIsFilterOpen(prev => !prev)}
+            style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              flexWrap: 'wrap', 
+              gap: 10,
+              cursor: 'pointer',
+              userSelect: 'none',
+              padding: '4px 0'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Filter size={16} color="var(--color-primary)" />
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Filter Options:
+                </span>
+              </div>
+              {isHealthyLevel ? (
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '3px 9px',
+                  borderRadius: 12,
+                  background: '#e8f5e9',
+                  color: '#2e7d32',
+                  border: '1px solid #c8e6c9',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}>
+                  <CheckCircle2 size={13} />
+                  Healthy Level (Sugar ≤ 10g • Sodium ≤ 400mg • Sat Fat ≤ 4g)
+                </span>
+              ) : isFiltered ? (
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '3px 9px',
+                  borderRadius: 12,
+                  background: '#fff3e0',
+                  color: '#e65100',
+                  border: '1px solid #ffe0b2'
+                }}>
+                  Custom Filters Active
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  padding: '3px 9px',
+                  borderRadius: 12,
+                  background: '#f5f5f5',
+                  color: 'var(--color-text-subtle)'
+                }}>
+                  Showing Everything (Default: All Products)
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  applyHealthyDefaults();
+                }}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '0.76rem',
+                  fontWeight: isHealthyLevel ? 800 : 600,
+                  borderRadius: 6,
+                  border: isHealthyLevel ? '1px solid #2e7d32' : '1px solid var(--color-border)',
+                  background: isHealthyLevel ? '#e8f5e9' : '#fff',
+                  color: isHealthyLevel ? '#2e7d32' : 'var(--color-text-main)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+              >
+                <span>🌿 Reset to Healthy Level</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clearAllFilters();
+                }}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '0.76rem',
+                  fontWeight: !isFiltered ? 800 : 500,
+                  borderRadius: 6,
+                  border: !isFiltered ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  background: !isFiltered ? 'var(--color-primary)' : '#fff',
+                  color: !isFiltered ? '#fff' : 'var(--color-text-muted)',
+                  cursor: 'pointer'
+                }}
+              >
+                Show All Products
+              </button>
+
+              {/* Arrow toggle button at the side */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFilterOpen(prev => !prev);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 10px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border)',
+                  background: isFilterOpen ? 'var(--color-surface-alt)' : '#fff',
+                  color: 'var(--color-primary)',
+                  cursor: 'pointer',
+                  marginLeft: 4
+                }}
+                title={isFilterOpen ? "Collapse filter options" : "Open filter options"}
+              >
+                <span>{isFilterOpen ? 'Hide' : 'Open Filters'}</span>
+                <ChevronDown 
+                  size={15} 
+                  style={{
+                    transform: isFilterOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease'
+                  }}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Pills Grid (Collapsible) */}
+          {isFilterOpen && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 12,
+            background: 'var(--color-surface-alt)',
+            padding: '12px 14px',
+            borderRadius: 8,
+            border: '1px solid var(--color-border)',
+            marginTop: 12
+          }}>
+            {/* Sugar Filter */}
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
+                Sugar (per 100g)
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[
+                  { id: 'healthy', label: 'Healthy (≤10g)' },
+                  { id: 'low', label: 'Low (≤5g)' },
+                  { id: 'all', label: 'All' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { setSugarFilter(opt.id); setPage(0); }}
+                    style={{
+                      flex: 1,
+                      padding: '5px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: sugarFilter === opt.id ? 800 : 500,
+                      borderRadius: 4,
+                      border: sugarFilter === opt.id ? '1px solid #2e7d32' : '1px solid var(--color-border)',
+                      background: sugarFilter === opt.id ? '#2e7d32' : '#fff',
+                      color: sugarFilter === opt.id ? '#fff' : 'var(--color-text-main)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sodium Filter */}
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
+                Sodium (per 100g)
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[
+                  { id: 'healthy', label: 'Healthy (≤400mg)' },
+                  { id: 'low', label: 'Low (≤140mg)' },
+                  { id: 'all', label: 'All' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { setSodiumFilter(opt.id); setPage(0); }}
+                    style={{
+                      flex: 1,
+                      padding: '5px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: sodiumFilter === opt.id ? 800 : 500,
+                      borderRadius: 4,
+                      border: sodiumFilter === opt.id ? '1px solid #2e7d32' : '1px solid var(--color-border)',
+                      background: sodiumFilter === opt.id ? '#2e7d32' : '#fff',
+                      color: sodiumFilter === opt.id ? '#fff' : 'var(--color-text-main)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Saturated Fat Filter */}
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
+                Saturated Fat
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[
+                  { id: 'healthy', label: 'Healthy (≤4g)' },
+                  { id: 'low', label: 'Low (≤1.5g)' },
+                  { id: 'all', label: 'All' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { setSatFatFilter(opt.id); setPage(0); }}
+                    style={{
+                      flex: 1,
+                      padding: '5px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: satFatFilter === opt.id ? 800 : 500,
+                      borderRadius: 4,
+                      border: satFatFilter === opt.id ? '1px solid #2e7d32' : '1px solid var(--color-border)',
+                      background: satFatFilter === opt.id ? '#2e7d32' : '#fff',
+                      color: satFatFilter === opt.id ? '#fff' : 'var(--color-text-main)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dietary Fibre */}
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
+                Dietary Fibre
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'good', label: 'Source (≥3g)' },
+                  { id: 'high', label: 'High (≥6g)' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { setFibreFilter(opt.id); setPage(0); }}
+                    style={{
+                      flex: 1,
+                      padding: '5px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: fibreFilter === opt.id ? 800 : 500,
+                      borderRadius: 4,
+                      border: fibreFilter === opt.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                      background: fibreFilter === opt.id ? 'var(--color-primary)' : '#fff',
+                      color: fibreFilter === opt.id ? '#fff' : 'var(--color-text-main)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Protein */}
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
+                Protein
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'good', label: 'Source (≥7g)' },
+                  { id: 'high', label: 'High (≥12g)' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { setProteinFilter(opt.id); setPage(0); }}
+                    style={{
+                      flex: 1,
+                      padding: '5px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: proteinFilter === opt.id ? 800 : 500,
+                      borderRadius: 4,
+                      border: proteinFilter === opt.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                      background: proteinFilter === opt.id ? 'var(--color-primary)' : '#fff',
+                      color: proteinFilter === opt.id ? '#fff' : 'var(--color-text-main)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          )}
+        </div>
+
         {/* Calibrated Notice */}
         <div style={{
           marginTop: 14,
@@ -137,14 +541,41 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           color: 'var(--color-text-muted)',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 10
         }}>
           <div>
             <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Calibrated Scope (Active Benchmarking):</span>
             <span style={{ marginLeft: 6 }}>Snacks, Breakfast Cereals, Packaged Beverages</span>
           </div>
-          <div style={{ fontWeight: 600 }}>
-            Showing {products.length} of {total} products
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}>
+              <span style={{ color: 'var(--color-text-subtle)' }}>Show:</span>
+              {[30, 60, 'All'].map(size => (
+                <button
+                  key={size}
+                  onClick={() => { setPageSize(size); setPage(0); }}
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: 4,
+                    fontSize: '0.75rem',
+                    fontWeight: pageSize === size ? 700 : 500,
+                    border: '1px solid var(--color-border)',
+                    background: pageSize === size ? 'var(--color-primary)' : '#fff',
+                    color: pageSize === size ? '#fff' : 'var(--color-text-main)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
+              {pageSize === 'All' || products.length >= total
+                ? `Showing all ${total} ${isHealthyLevel ? 'healthy ' : (isFiltered ? 'filtered ' : '')}${selectedCat === 'All' ? '' : selectedCat + ' '}products`
+                : `Showing ${page * Number(pageSize) + 1}–${Math.min((page + 1) * Number(pageSize), total)} of ${total} ${isHealthyLevel ? 'healthy ' : (isFiltered ? 'filtered ' : '')}products`}
+            </div>
           </div>
         </div>
       </div>
@@ -155,10 +586,32 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           Loading products...
         </div>
       ) : products.length === 0 ? (
-        <div style={{ padding: '60px 0', textAlign: 'center', background: '#fff', borderRadius: 12, border: '1px solid var(--color-border)' }}>
+        <div style={{ padding: '60px 20px', textAlign: 'center', background: '#fff', borderRadius: 12, border: '1px solid var(--color-border)' }}>
           <AlertCircle size={36} color="var(--color-text-subtle)" style={{ margin: '0 auto 12px' }} />
           <h3 style={{ fontSize: '1.2rem', marginBottom: 6 }}>No matching products found</h3>
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.88rem' }}>Try adjusting your search terms or selecting 'All' categories.</p>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.88rem', maxWidth: 480, margin: '0 auto 16px' }}>
+            {isFiltered
+              ? `No products in ${selectedCat === 'All' ? 'the catalogue' : selectedCat} meet all currently active nutritional limits.`
+              : 'Try adjusting your search terms or selecting another category.'}
+          </p>
+          {isFiltered && (
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                className="btn-primary"
+                onClick={clearAllFilters}
+                style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+              >
+                Show All Products (Clear Filters)
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => { setSatFatFilter('all'); setSodiumFilter('all'); setPage(0); }}
+                style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+              >
+                Relax Sodium & Fat Limits
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{
@@ -253,6 +706,18 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
 
                   <button
                     className="btn-secondary"
+                    style={{ padding: '7px 10px', color: savedIds.includes(prod.product_id) ? '#c62828' : 'inherit' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSaveInCatalogue(prod);
+                    }}
+                    title={savedIds.includes(prod.product_id) ? "Remove from Saved" : "Save Product"}
+                  >
+                    <Bookmark size={14} fill={savedIds.includes(prod.product_id) ? '#c62828' : 'none'} />
+                  </button>
+
+                  <button
+                    className="btn-secondary"
                     style={{ padding: '7px 10px' }}
                     onClick={() => onCompareProduct(prod.product_id)}
                     title="Add to Compare"
@@ -267,7 +732,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       )}
 
       {/* Pagination */}
-      {total > pageSize && (
+      {pageSize !== 'All' && total > Number(pageSize) && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 32 }}>
           <button
             className="btn-secondary"
@@ -278,13 +743,13 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
             Previous
           </button>
           <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', fontWeight: 600 }}>
-            Page {page + 1} of {Math.ceil(total / pageSize)}
+            Page {page + 1} of {Math.ceil(total / Number(pageSize))}
           </span>
           <button
             className="btn-secondary"
-            disabled={(page + 1) * pageSize >= total}
+            disabled={(page + 1) * Number(pageSize) >= total}
             onClick={() => setPage(p => p + 1)}
-            style={{ opacity: (page + 1) * pageSize >= total ? 0.5 : 1 }}
+            style={{ opacity: (page + 1) * Number(pageSize) >= total ? 0.5 : 1 }}
           >
             Next
           </button>

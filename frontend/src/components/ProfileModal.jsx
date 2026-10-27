@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Check, AlertCircle, Info, ShieldAlert } from 'lucide-react';
+import { useLockBodyScroll } from './useLockBodyScroll';
 
 const GOALS = [
   { id: 'Reduce Sugar', title: 'Reduce Sugar', desc: 'Prioritizes foods with lower verified sugar and penalizes high sugar content.' },
@@ -29,18 +30,61 @@ const COMMON_ALLERGENS = [
   'Sulphites'
 ];
 
+const ACTIVITY_LEVELS = [
+  { id: 'Sedentary', title: 'Sedentary', desc: 'Little or no exercise; desk job.' },
+  { id: 'Lightly active', title: 'Lightly Active', desc: 'Light exercise or walking 1–3 days/wk.' },
+  { id: 'Moderately active', title: 'Moderately Active', desc: 'Moderate workout/sports 3–5 days/wk.' },
+  { id: 'Very active', title: 'Very Active', desc: 'Hard daily exercise or heavy physical work.' }
+];
+
 export default function ProfileModal({ isOpen, onClose, activeProfile, onSaveProfile }) {
-  if (!isOpen) return null;
+  useLockBodyScroll(isOpen);
+
+  const parseGoals = (goalStr) => {
+    if (!goalStr) return ['Balanced Choices'];
+    const parts = goalStr.split(',').map(s => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : ['Balanced Choices'];
+  };
 
   const [formData, setFormData] = useState({
-    name: activeProfile?.name || 'Health Conscious User',
-    goal: activeProfile?.goal || 'Balanced Choices',
+    name: activeProfile?.name || 'Guest User',
+    goals: parseGoals(activeProfile?.goal),
     dietary_preference: activeProfile?.dietary_preference || 'No preference',
     allergens: activeProfile?.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : [],
     customAllergen: '',
     age_group: activeProfile?.age_group || '18-24',
     activity_level: activeProfile?.activity_level || 'Moderately active'
   });
+
+  useEffect(() => {
+    if (activeProfile && isOpen) {
+      setFormData({
+        name: activeProfile.name || 'Guest User',
+        goals: parseGoals(activeProfile.goal),
+        dietary_preference: activeProfile.dietary_preference || 'No preference',
+        allergens: activeProfile.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : [],
+        customAllergen: '',
+        age_group: activeProfile.age_group || '18-24',
+        activity_level: activeProfile.activity_level || 'Moderately active'
+      });
+    }
+  }, [activeProfile, isOpen]);
+
+  if (!isOpen) return null;
+
+  const toggleGoal = (goalId) => {
+    setFormData(prev => {
+      const exists = prev.goals.includes(goalId);
+      let nextGoals;
+      if (exists) {
+        if (prev.goals.length === 1) return prev; // Retain at least one goal
+        nextGoals = prev.goals.filter(g => g !== goalId);
+      } else {
+        nextGoals = [...prev.goals, goalId];
+      }
+      return { ...prev, goals: nextGoals };
+    });
+  };
 
   const toggleAllergen = (allg) => {
     setFormData(prev => {
@@ -67,7 +111,7 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
     const payload = {
       ...activeProfile,
       name: formData.name,
-      goal: formData.goal,
+      goal: formData.goals.join(', '),
       dietary_preference: formData.dietary_preference,
       allergens_to_avoid: formData.allergens.join(', '),
       age_group: formData.age_group,
@@ -92,18 +136,23 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
           </button>
         </div>
 
-        {/* 1. Primary Nutrition Goal */}
+        {/* 1. Nutrition Goals */}
         <div style={{ marginBottom: 24 }}>
-          <label style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', marginBottom: 8, color: 'var(--color-primary)' }}>
-            1. Primary Nutrition Goal *
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+            <label style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-primary)', margin: 0 }}>
+              1. Nutrition Goals *
+            </label>
+            <span style={{ fontSize: '0.78rem', color: 'var(--color-accent)', fontWeight: 600 }}>
+              (Select one or more)
+            </span>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
             {GOALS.map(g => {
-              const isSelected = formData.goal === g.id;
+              const isSelected = formData.goals.includes(g.id);
               return (
                 <div
                   key={g.id}
-                  onClick={() => setFormData({ ...formData, goal: g.id })}
+                  onClick={() => toggleGoal(g.id)}
                   style={{
                     padding: '10px 14px',
                     borderRadius: 8,
@@ -117,7 +166,18 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
                     <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
                       {g.title}
                     </span>
-                    {isSelected && <Check size={16} color="var(--color-accent)" />}
+                    <div style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 4,
+                      border: isSelected ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
+                      background: isSelected ? 'var(--color-accent)' : '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {isSelected && <Check size={14} color="#fff" strokeWidth={3} />}
+                    </div>
                   </div>
                   <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 4, margin: 0 }}>
                     {g.desc}
@@ -211,6 +271,48 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
               Add
             </button>
           </form>
+        </div>
+
+        {/* 4. Daily Activity Level */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+            <label style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-primary)', margin: 0 }}>
+              4. Daily Activity Level *
+            </label>
+            <span style={{ fontSize: '0.78rem', color: 'var(--color-accent)', fontWeight: 600 }}>
+              (Please select your activity level)
+            </span>
+          </div>
+          <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: 10 }}>
+            Select your regular physical activity level to calculate and contextualize your daily nutritional requirements:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+            {ACTIVITY_LEVELS.map(act => {
+              const isSelected = formData.activity_level === act.id;
+              return (
+                <div
+                  key={act.id}
+                  onClick={() => setFormData({ ...formData, activity_level: act.id })}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: isSelected ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
+                    background: isSelected ? 'var(--color-accent-subtle)' : '#fff',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
+                    {act.title}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4, lineHeight: 1.3 }}>
+                    {act.desc}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* 4. Optional Context */}

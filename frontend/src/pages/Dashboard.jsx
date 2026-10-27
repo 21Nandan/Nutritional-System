@@ -4,12 +4,16 @@ import {
   ArrowRight, ScanLine, Search, ChevronRight, Award, AlertCircle 
 } from 'lucide-react';
 
-export default function Dashboard({ setActivePage, onSelectProduct, activeProfile, onOpenProfile }) {
+export default function Dashboard({ setActivePage, onSelectProduct, activeProfile, onOpenProfile, onRetakeOnboarding }) {
   const [history, setHistory] = useState([]);
   const [savedProducts, setSavedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = () => {
     Promise.all([
       fetch('/api/history').then(res => res.json()),
       fetch('/api/saved').then(res => res.json())
@@ -23,16 +27,25 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
         console.error(err);
         setLoading(false);
       });
-  }, []);
+  };
+
+  const handleRemoveSaved = (productId) => {
+    fetch(`/api/saved/${productId}`, { method: 'POST' })
+      .then(res => res.json())
+      .then(() => {
+        setSavedProducts(prev => prev.filter(p => p.product_id !== productId));
+      })
+      .catch(err => console.error(err));
+  };
 
   return (
     <div className="dashboard-page">
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: '2.2rem', color: 'var(--color-primary)', marginBottom: 8 }}>
-          Personalized Food Assessment Dashboard
+          User Profile & Nutrition Overview
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Overview of your dietary objectives, recent product audits, saved food items, and safety alerts.
+          Manage your dietary preferences, track your product assessments, and view saved food items.
         </p>
       </div>
 
@@ -57,16 +70,22 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
               <User size={24} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: 0 }}>
-                  {activeProfile?.name || 'Health Conscious User'}
+                  {activeProfile?.name || 'Guest User'}
                 </h3>
                 <span className="badge badge-verified" style={{ fontSize: '0.72rem' }}>
                   {activeProfile?.dietary_preference || 'No preference'}
                 </span>
+                <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
+                  Activity: {activeProfile?.activity_level || 'Moderately active'}
+                </span>
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                Active Goal: <strong style={{ color: 'var(--color-primary)' }}>{activeProfile?.goal || 'Balanced Choices'}</strong>
+                Goal: <strong style={{ color: 'var(--color-primary)' }}>{activeProfile?.goal || 'Balanced Choices'}</strong>
+                <span style={{ marginLeft: 8, color: 'var(--color-text-muted)' }}>
+                  • Activity Level: <strong style={{ color: 'var(--color-primary)' }}>{activeProfile?.activity_level || 'Moderately active'}</strong>
+                </span>
                 {activeProfile?.allergens_to_avoid && (
                   <span style={{ marginLeft: 8, color: '#c62828' }}>
                     • Allergens: {activeProfile.allergens_to_avoid}
@@ -76,9 +95,21 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
             </div>
           </div>
 
-          <button className="btn-secondary" onClick={onOpenProfile} style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
-            Configure Nutrition Goals
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn-secondary" onClick={onOpenProfile} style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
+              Configure Profile & Activity
+            </button>
+            {onRetakeOnboarding && (
+              <button 
+                className="btn-secondary" 
+                onClick={onRetakeOnboarding} 
+                style={{ padding: '8px 14px', fontSize: '0.82rem', background: '#fff' }}
+                title="Review terms of service and retake the initial onboarding setup"
+              >
+                Review Terms & Setup
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -106,7 +137,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
               <ScanLine size={32} color="var(--color-text-subtle)" style={{ margin: '0 auto 10px' }} />
               <h4 style={{ fontSize: '1rem', marginBottom: 4 }}>No food analyses yet</h4>
               <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 14 }}>
-                Analyze a product label or search the 852-item catalogue to populate your evaluation history.
+                Analyze a product label or search the catalogue to populate your evaluation history.
               </p>
               <button 
                 className="btn-primary" 
@@ -152,7 +183,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
                         {item.general_grade || 'NA'}
                       </span>
                       <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: 2 }}>
-                        {item.personalized_score}/100
+                        {item.personalized_score != null ? `${item.personalized_score}/100` : 'N/A'}
                       </div>
                     </div>
                     <ChevronRight size={16} color="var(--color-text-subtle)" />
@@ -220,7 +251,25 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
                       {p.category}
                     </span>
                   </div>
-                  <ChevronRight size={16} color="var(--color-text-subtle)" />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveSaved(p.product_id);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 4,
+                        color: '#c62828'
+                      }}
+                      title="Remove from Saved"
+                    >
+                      <Bookmark size={16} fill="#c62828" />
+                    </button>
+                    <ChevronRight size={16} color="var(--color-text-subtle)" />
+                  </div>
                 </div>
               ))}
             </div>

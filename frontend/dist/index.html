@@ -2,14 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2316382b'><circle cx='12' cy='12' r='10' fill='%2362b33c'/><path d='M12 6v6l4 2' stroke='%23ffffff' stroke-width='2' stroke-linecap='round'/></svg>" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20261027" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20261027" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20261027" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20261027" />
+    <link rel="shortcut icon" href="/favicon.ico?v=20261027" />
+    <script>
+      (function() {
+        var v = '20261027b';
+        var head = document.head || document.getElementsByTagName('head')[0];
+        ['/favicon.svg?v=' + v, '/favicon-32x32.png?v=' + v, '/apple-touch-icon.png?v=' + v].forEach(function(url) {
+          var link = document.createElement('link');
+          link.rel = url.indexOf('apple') !== -1 ? 'apple-touch-icon' : 'icon';
+          if (url.indexOf('.svg') !== -1) link.type = 'image/svg+xml';
+          else if (url.indexOf('.png') !== -1) link.type = 'image/png';
+          link.href = url;
+          head.appendChild(link);
+        });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EATGOOD — AI Food Safety & Nutrition Assessment</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-SGN-X_yW.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-ME0_UiEL.css">
+    <script type="module" crossorigin src="/assets/index-DAQmtTjJ.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-ABCt2lyF.css">
   </head>
   <body>
     <div id="root"></div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  ScanLine, Search, ShieldCheck, Sparkles, ArrowRight, CheckCircle2, 
+  ScanLine, Search, ShieldCheck, ArrowRight, CheckCircle2, 
   AlertTriangle, Check, Layers, Cpu, HeartPulse, Scale, FileText, ExternalLink 
 } from 'lucide-react';
 
@@ -18,22 +18,6 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
         maxWidth: 880,
         margin: '0 auto'
       }}>
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          background: 'var(--color-accent-subtle)',
-          color: 'var(--color-primary)',
-          padding: '6px 16px',
-          borderRadius: 'var(--radius-full)',
-          fontSize: '0.85rem',
-          fontWeight: 700,
-          marginBottom: 20
-        }}>
-          <Sparkles size={16} color="var(--color-accent)" />
-          <span>AI-Powered Food Safety & Nutrition Intelligence Platform</span>
-        </div>
-
         <h1 style={{
           fontSize: '3.1rem',
           lineHeight: 1.15,
@@ -73,7 +57,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             onClick={() => setActivePage('catalogue')}
           >
             <Search size={18} />
-            <span>Explore 852 Indian Products</span>
+            <span>Explore Indian Products</span>
           </button>
         </div>
 
@@ -280,7 +264,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
         </div>
       </section>
 
-      {/* 4. How the System Works — Research Methodology Flow */}
+      {/* 4. How the System Works — Simple 4-Step Process */}
       <section style={{
         background: 'var(--color-primary-dark)',
         color: '#fff',
@@ -290,11 +274,11 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
       }}>
         <div style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 36px' }}>
           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-accent-light)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            System Architecture
+            How It Works
           </span>
           <h2 style={{ fontSize: '1.9rem', color: '#fff', marginTop: 6 }}>How EATGOOD Evaluates Foods</h2>
           <p style={{ fontSize: '0.9rem', color: '#b0c9bb', marginTop: 6 }}>
-            Our multi-stage intelligence pipeline integrates OCR, standard calibration, and explainable AI.
+            A transparent, 4-step process from food label to personalized assessment.
           </p>
         </div>
 
@@ -304,14 +288,14 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           gap: 16
         }}>
           {[
-            { step: '01', title: 'Data Audit', desc: '852 Indian packaged products audited for Atwater consistency and serving size anomalies.' },
-            { step: '02', title: 'OCR Extraction', desc: 'AI-assisted OCR captures labels with mandatory user-editable confirmation.' },
-            { step: '03', title: 'Standard Calibration', desc: 'WHO SEARO & FSSAI INR criteria applied strictly to calibrated categories.' },
-            { step: '04', title: 'Personalized Scoring', desc: '0-100 score reflects user goals while hard allergen conflicts trigger red exclusions.' }
+            { step: '01', title: 'Scan or Search', desc: 'Upload a label photo, enter values manually, or search across packaged foods.' },
+            { step: '02', title: 'Confirm Nutrition', desc: 'Verify extracted serving size, ingredients, and nutrients with an editable confirmation step.' },
+            { step: '03', title: 'Standards Benchmark', desc: 'Assess nutrient levels against established WHO and FSSAI guidelines for high sugar, sodium, and fat.' },
+            { step: '04', title: 'Personalized Result', desc: 'Get a tailored suitability score, clear allergen alerts, and healthier same-category alternatives.' }
           ].map(s => (
             <div key={s.step} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 20, border: '1px solid rgba(255,255,255,0.1)' }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-accent-light)', marginBottom: 6 }}>
-                PHASE {s.step}
+                STEP {s.step}
               </div>
               <h4 style={{ color: '#fff', fontSize: '1.05rem', marginBottom: 6 }}>{s.title}</h4>
               <p style={{ fontSize: '0.8rem', color: '#b0c9bb', lineHeight: 1.5, margin: 0 }}>{s.desc}</p>
@@ -337,7 +321,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
               Responsible AI & Data Transparency Commitments
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              • <strong>Experimental Model Disclosure:</strong> The trained model in <code>models/eatgood_model.joblib</code> was trained on 1,500 simulated user-product examples. Its 100% test accuracy is an artifact of synthetic data generation and does not represent independent clinical efficacy.
+              • <strong>Experimental Model Disclosure:</strong> The machine learning model was trained on simulated user-product examples. Model testing reflects synthetic data consistency and does not represent independent clinical efficacy.
               <br />
               • <strong>No Silent Zeros:</strong> Missing sugar, sodium, or fibre declarations are kept explicitly missing and are never silently converted into zeroes.
               <br />
@@ -349,7 +333,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
                 style={{ padding: '6px 14px', fontSize: '0.82rem' }}
                 onClick={() => setActivePage('audit')}
               >
-                Inspect Data Quality Audit Report (78 Flagged Products)
+                Inspect Data Quality Audit Report
               </button>
             </div>
           </div>

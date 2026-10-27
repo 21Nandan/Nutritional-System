@@ -1,46 +1,50 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
-  Sparkles, Search, ScanLine, ArrowLeftRight, 
-  BarChart3, ShieldCheck, UserCheck 
+  Home, Search, ScanLine, ArrowLeftRight, 
+  User, ShieldCheck, Menu, X 
 } from 'lucide-react';
+import logoImg from '../assets/logo.png';
 
-export default function Navbar({ activePage, setActivePage, activeProfile, onOpenProfile }) {
+export default function Navbar({ activePage, setActivePage }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const navItems = [
-    { id: 'landing', label: 'Home', icon: Sparkles },
+    { id: 'landing', label: 'Home', icon: Home },
     { id: 'scanner', label: 'Label Scanner', icon: ScanLine },
-    { id: 'catalogue', label: 'Catalogue (852)', labelSub: 'Products', icon: Search },
+    { id: 'catalogue', label: 'Catalogue', labelSub: 'Products', icon: Search },
     { id: 'compare', label: 'Compare', icon: ArrowLeftRight },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { id: 'profile', label: 'Profile', icon: User },
     { id: 'audit', label: 'Data Quality Audit', icon: ShieldCheck }
   ];
+
+  const handleNavClick = (id) => {
+    setActivePage(id);
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header className="navbar">
       <div className="nav-inner">
         <div 
           className="brand-logo" 
-          onClick={() => setActivePage('landing')} 
-          style={{ cursor: 'pointer' }}
+          onClick={() => handleNavClick('landing')} 
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
         >
-          <div style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, #143828 0%, #58a834 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 800,
-            fontSize: '1.1rem'
-          }}>
-            E
-          </div>
+          <img 
+            src={logoImg} 
+            alt="EATGOOD Logo" 
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              objectFit: 'contain'
+            }}
+          />
           <span>EATGOOD</span>
-          <span className="brand-pill">AI Platform</span>
         </div>
 
-        <nav className="nav-links">
+        {/* Desktop Navigation Links */}
+        <nav className="nav-links desktop-nav">
           {navItems.map(item => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
@@ -48,7 +52,7 @@ export default function Navbar({ activePage, setActivePage, activeProfile, onOpe
               <button
                 key={item.id}
                 className={`nav-btn ${isActive ? 'active' : ''}`}
-                onClick={() => setActivePage(item.id)}
+                onClick={() => handleNavClick(item.id)}
               >
                 <Icon size={16} />
                 <span>{item.label}</span>
@@ -57,16 +61,75 @@ export default function Navbar({ activePage, setActivePage, activeProfile, onOpe
           })}
         </nav>
 
-        <div className="user-profile-pill" onClick={onOpenProfile} title="Configure Profile">
-          <UserCheck size={16} color="#58a834" />
-          <div>
-            <span style={{ color: 'var(--color-text-main)' }}>{activeProfile?.goal || 'Balanced Choices'}</span>
-            <span style={{ color: 'var(--color-text-subtle)', marginLeft: 6, fontSize: '0.75rem' }}>
-              ({activeProfile?.dietary_preference || 'No pref'})
-            </span>
+        {/* Mobile Hamburger Toggle Button */}
+        <button 
+          className="mobile-menu-toggle"
+          onClick={() => setMobileMenuOpen(prev => !prev)}
+          aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+          style={{
+            display: 'none',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 44,
+            height: 44,
+            borderRadius: 8,
+            color: 'var(--color-primary)',
+            background: 'var(--color-surface-alt)',
+            border: '1px solid var(--color-border)',
+            cursor: 'pointer'
+          }}
+        >
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+      </div>
+
+      {/* Mobile Menu Dropdown / Drawer */}
+      {mobileMenuOpen && (
+        <div 
+          className="mobile-nav-drawer"
+          style={{
+            borderTop: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+            padding: '12px 16px 20px',
+            boxShadow: 'var(--shadow-md)'
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {navItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activePage === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 16px',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '0.95rem',
+                    fontWeight: 600,
+                    textAlign: 'left',
+                    color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
+                    background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
+                    border: 'none',
+                    width: '100%',
+                    cursor: 'pointer',
+                    minHeight: 44
+                  }}
+                >
+                  <Icon size={18} color={isActive ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)' }} />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }

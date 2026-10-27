@@ -131,3 +131,66 @@ def test_misleading_claims_evaluation():
     # No added sugar check (has liquid glucose in ingredients)
     no_added_eval = next(e for e in evals if e["claim"] == "No Added Sugar")
     assert no_added_eval["status"] == "Potential inconsistency"
+
+def test_incomplete_data_no_score():
+    """Verifies that products with incomplete nutrition declarations do NOT receive a personalized score."""
+    incomplete_prod = {
+        "product_id": "CUSTOM_SCAN",
+        "product_name": "qwe",
+        "category": "Snacks",
+        "energy_kcal": None,
+        "sugars_g": None,
+        "sodium_mg": None,
+        "saturated_fat_g": None
+    }
+    profile = {"goal": "Balanced Choices", "dietary_preference": "No preference", "allergens_to_avoid": ""}
+    res = assess_personalized_suitability(incomplete_prod, profile)
+    
+    assert res["personalized_score"] is None, "Incomplete product must NOT have a numeric personalized score!"
+    assert res["has_insufficient_data"] is True
+    assert res["calculation_breakdown"] is None
+    assert "Insufficient Data" in res["suitability_status"]
+
+def test_score_calculation_breakdown_and_scale():
+    """Verifies 1–100 scale calibration and transparent step-by-step formula breakdown."""
+    prod = {
+        "product_id": "TEST_OATS",
+        "product_name": "Rolled Oats",
+        "category": "Breakfast Cereals",
+        "energy_kcal": 380,
+        "sugars_g": 1.2,
+        "sodium_mg": 20,
+        "protein_g": 13.0,
+        "dietary_fibre_g": 10.0,
+        "saturated_fat_g": 1.1,
+        "trans_fat_g": 0.0
+    }
+    profile = {"goal": "Reduce Sugar", "dietary_preference": "Vegetarian", "allergens_to_avoid": ""}
+    res = assess_personalized_suitability(prod, profile)
+    
+    assert res["personalized_score"] is not None
+    assert 1 <= res["personalized_score"] <= 100
+    assert res["calculation_breakdown"] is not None
+    
+    breakdown = res["calculation_breakdown"]
+    assert breakdown["base_score"] == 70
+    assert len(breakdown["steps"]) >= 3
+    # Check that steps include starting base score and low sugar bonus
+    assert breakdown["steps"][0]["factor"] == "Baseline Profile Neutral Score"
+    assert any("Reduce Sugar" in s["factor"] for s in breakdown["steps"])
+    assert breakdown["steps"][-1]["type"] == "final"
+    assert breakdown["steps"][-1]["running_total"] == res["personalized_score"]
+
+def test_product_catalogue_nutritional_filters():
+    """Verifies that search_products filters accurately by nutrient limits."""
+    # Test healthy sugar filter (<= 10g) in Breakfast Cereals
+    healthy_cereals = data_loader.search_products(category="Breakfast Cereals", max_sugars=10.0, max_sodium=400.0, max_sat_fat=4.0)
+    assert healthy_cereals["total"] == 55
+    for p in healthy_cereals["products"]:
+        assert p["sugars_g"] <= 10.0
+        assert p["sodium_mg"] <= 400.0
+        assert p["saturated_fat_g"] <= 4.0
+
+    # Test unfiltered count in Breakfast Cereals
+    all_cereals = data_loader.search_products(category="Breakfast Cereals")
+    assert all_cereals["total"] == 160

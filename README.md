@@ -8,7 +8,12 @@
 
 ## 1. Quick Start & Execution
 
-The application is completely self-contained and runs entirely locally.
+The application is completely self-contained, offline-capable, and runs entirely locally.
+
+### Prerequisites
+- **Python 3.9+**
+- **Node.js 18+** & npm
+- **Tesseract 5+** (Homebrew on macOS: `brew install tesseract`)
 
 ### Start the Application (Single Command)
 ```bash
@@ -30,16 +35,94 @@ npm run dev
 ```
 Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
-### Run Automated Unit Tests:
+### Run Automated Unit, OCR & Barcode Tests:
 ```bash
-PYTHONPATH=. backend/venv/bin/pytest backend/tests/test_eatgood_core.py -v
+PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v
 ```
+*(All 27 automated unit, OCR, barcode format, Open Food Facts, and contribution tests pass).*
 
 ---
 
-## 2. Project Architecture & 3-Layer Assessment Engine
+## 2. Technology Stack
 
-EATGOOD implements a modular, explainable hybrid architecture:
+| Layer | Component | Version / Technology | Key Role |
+|---|---|---|---|
+| **Frontend** | React & Vite | React 18, Vite 6, Lucide React | Single-page responsive UI, camera upload, editable confirmation screen |
+| **Styling** | CSS3 & Design System | Vanilla CSS with CSS Variables | Editorial nature theme (`#143828`), mobile-first responsive grid system |
+| **Backend** | Python & FastAPI | Python 3.9+, FastAPI, Uvicorn | RESTful API, validation, standards evaluation, provenance tracking |
+| **Data Engine** | Pandas & NumPy | Pandas 2.2+, NumPy 2.0+ | Dataset normalization, calorie consistency audits, Atwater cross-checks |
+| **Computer Vision** | OpenCV & Pillow | OpenCV 5.0+, Pillow 11.3+ | EXIF orientation, CLAHE contrast enhancement, bilateral filtering, resizing |
+| **OCR Engine** | Tesseract 5 & pytesseract | Tesseract 5.5.3, pytesseract 0.3.13 | Local offline optical character recognition, bounding box and confidence data |
+| **Database** | SQLite 3 | Embedded SQLite (`data/eatgood_app.db`) | Local user profiles, scan session logs, analysis history, saved products |
+| **Testing** | pytest & HTTPX | pytest 8.4+, HTTPX 0.28+ | Automated core logic, OCR regression fixtures, and API upload integration tests |
+
+---
+
+## 3. Database Architecture Decision: SQLite vs. MongoDB
+
+An architectural evaluation was conducted between SQLite and MongoDB for local persistence:
+
+### Architectural Analysis:
+1. **Local-First & Offline Mandate:** EATGOOD is strictly designed as a zero-cloud-egress, local-first personal health tool. It does not transmit food-label photos, diet preferences, or scan history to third parties.
+2. **Operational Overhead:** MongoDB requires running a separate background daemon (`mongod`), managing disk socket locks, memory caches, and external service lifecycles. If `mongod` fails to launch or is not installed, the application breaks.
+3. **Storage Efficiency & Performance:** SQLite is embedded directly into the Python process (`sqlite3` built into standard library). It stores profiles, saved products, and full scan history in a compact, portable 40KB file (`data/eatgood_app.db`) with instant sub-millisecond query latency and zero configuration.
+4. **Structured Provenance:** Scan sessions, raw OCR text, structured JSON nutrition snapshots, and user profiles are cleanly structured in SQLite with transactional integrity.
+
+### Engineering Decision:
+**Retain and enhance SQLite.** SQLite perfectly satisfies all project requirements without introducing unnecessary infrastructure complexity. 
+A dedicated `scan_sessions` table was added to record every local OCR upload:
+- `scan_id`: Unique identifier (`scn_{uuid}`)
+- `filename`: Uploaded file name
+- `image_path`: Path to stored local image
+- `ocr_engine`: OCR engine version string (`Tesseract 5.5.3 (Local)`)
+- `raw_text`: Complete unedited OCR string
+- `status`: Session extraction status (`success`, `partial`, `no_text_found`)
+- `extracted_data`: JSON snapshot of extracted nutrition metrics
+- `confidence`: Average word confidence score (0.0 to 1.0)
+- `created_at`: ISO 8601 timestamp
+
+---
+
+## 4. OCR Bug Investigation & Root Cause Elimination
+
+### Root Cause Analysis:
+Previously, different uploaded food label photographs produced identical or nearly identical outputs. Through step-by-step code inspection and trace analysis, four root causes were identified:
+1. **Silent Fallback Mock in `backend/core/ocr_service.py:38-43`:** When OCR binary execution failed, timed out, or threw an exception, the exception handler caught the error and silently returned a hardcoded mock nutrition dictionary (`Energy: 450 kcal, Carbs: 62.0g, Sugars: 14.5g, Protein: 7.8g, Fat: 18.2g, Sat Fat: 8.5g, Sodium: 420mg`).
+2. **Subprocess Timeout on Camera Images:** High-resolution smartphone photos (e.g. 6.2MB iPhone photos) exceeded a 10-second timeout on un-preprocessed images, repeatedly triggering the silent mock fallback.
+3. **Hardcoded `"status": "success"` in `backend/main.py:231`:** The backend unconditionally returned `"status": "success"` even when the OCR engine returned `status: "fallback"`.
+4. **Non-Unique Reused File Paths:** Images were saved to a static path `scan_{filename}` without unique session IDs, causing overwrites and stale state.
+
+### Upgraded Multi-Stage OCR Architecture:
+- **Stage 1: Safe Upload & Session Isolation:** Each upload receives a unique ID (`scn_{uuid}`) and is saved with sanitized filenames. Supported formats: PNG, JPEG, WebP. Corrupt or unreadable files return HTTP 400.
+- **Stage 2: OpenCV Preprocessing Pipeline:**
+  - EXIF rotation correction via `ImageOps.exif_transpose` (handles portrait/landscape phone orientations).
+  - Dimension normalization: Downsamples huge phone photos (>2000px) to prevent timeouts while upscaling small screenshot text (<650px) using cubic interpolation.
+  - Conversion to grayscale and Bilateral Filtering (`cv2.bilateralFilter`) to remove packaging glare while preserving sharp character contours.
+  - Contrast-Limited Adaptive Histogram Equalization (`CLAHE`) to enhance low-contrast packaging print.
+- **Stage 3: Tesseract 5 Multi-Pass Execution:**
+  - Runs Tesseract 5 with `--oem 3 --psm 6` (uniform tabular layout) followed by `--psm 3` if text is sparse.
+  - Computes word-level extraction confidence via `image_to_data`.
+  - **Zero Silent Fallbacks:** If no text is detected, returns `status: "no_text_found"` with empty values and explicit user instructions. NEVER mock data.
+- **Stage 4: Heuristic Nutrition Parser & Scientific Audits:**
+  - Robust regex supporting both inline (`Energy: 602 kcal`) and tabular layouts.
+  - OCR artifact repairs: Auto-repairs missing decimal points (e.g. `3736g` -> `37.36g`) when macros exceed physical boundaries, tagging the field as `needs_review` with an explanatory note. Corrects `Og` to `0g` and `<01` to `0.1`.
+  - Cross-checks: Atwater caloric discrepancy ($4C + 4P + 9F \approx \text{kcal}$), Saturated Fat $\le$ Total Fat, and Sugars $\le$ Total Carbs.
+- **Stage 5: Confirmation Interface:** The frontend displays per-field status tags (Green `✓ Extracted`, Yellow `⚠️ Needs Review`, Gray `Manual`), raw OCR text accordion, and requires user review before generating the 3-layer assessment.
+
+---
+
+## 5. Mobile Responsiveness & Touch Optimization
+
+The frontend has been verified across viewports (320px, 375px, 600px, 768px, 1024px, 1440px):
+1. **Responsive Navigation:** Added a mobile hamburger toggle button (<860px) that expands into a touch-friendly drawer menu with 44px+ touch targets, resolving the issue where links previously disappeared on small screens.
+2. **Camera Integration:** The Label Scanner provides dual inputs: a standard file picker and a direct camera capture trigger (`accept="image/*" capture="environment"`) for smartphones.
+3. **Horizontal Overflow Elimination:** Added `overflow-x: hidden` on root containers and wrapped data tables (calculation ledger, product comparison matrix) in touch-scrolling containers (`-webkit-overflow-scrolling: touch`) with min-widths so columns remain readable without clipping.
+4. **Responsive Cards:** The 2-column assessment grid wraps automatically into stacked cards on narrow mobile viewports (`repeat(auto-fit, minmax(280px, 1fr))`).
+5. **iOS Zoom Prevention:** Set input font sizes to 16px on small screens to prevent unwanted viewport zooming when focusing text inputs on iOS.
+
+---
+
+## 6. Project Architecture & 3-Layer Assessment Engine
 
 ```
                   ┌──────────────────────────────────────────────┐
@@ -54,7 +137,7 @@ EATGOOD implements a modular, explainable hybrid architecture:
                                          ▼
                   ┌──────────────────────────────────────────────┐
                   │    LAYER 2: Personalized Goal Suitability    │
-                  │  0–100 Score Tailored to User Objectives     │
+                  │  1–100 Score Tailored to User Objectives     │
                   │ (Reduce Sugar, Reduce Sodium, Protein, etc.) │
                   └──────────────────────┬───────────────────────┘
                                          ▼
@@ -76,22 +159,23 @@ EATGOOD implements a modular, explainable hybrid architecture:
 - **Uncalibrated Scope:** Categories outside the calibrated benchmarks (e.g. Chocolates, Condiments, Dairy) display raw nutrition facts with an explicit calibration disclaimer rather than an unsupported grade.
 - **Missing Data Rule:** Products missing baseline nutrients (Sugars, Sodium, Saturated Fat) receive *"Insufficient Data for Reliable Assessment"* rather than a fabricated letter grade.
 
-### Layer 2: Personalized Suitability
-- Custom 0–100 score tailored to the active user's stated goals:
+### Layer 2: Personalized Suitability (1 to 100 Scale)
+- Calibrated 1 to 100 score where 1 represents least suitable and 100 represents most suitable for the active profile:
   - **Reduce Sugar:** Rewards total sugars $\le 3\text{g}/100\text{g}$, penalizes $>10\text{g}$ and $>20\text{g}$.
   - **Reduce Sodium:** Rewards sodium $\le 140\text{mg}$, penalizes $>400\text{mg}$ and $>900\text{mg}$.
   - **Increase Fibre:** Rewards verified dietary fibre $\ge 3\text{g}$ and $\ge 6\text{g}/100\text{g}$.
   - **Increase Protein:** Rewards protein $\ge 7\text{g}$ and $\ge 12\text{g}/100\text{g}$.
   - **Balanced Choices:** Multi-nutrient balance incorporating healthy macro ratios.
+- Includes a transparent mathematical calculation ledger detailing each baseline, bonus, and penalty point.
 
 ### Layer 3: Ingredient, Allergen, and Additive Assessment
 - Evaluates 10 major allergens: Milk, Soy, Gluten (Wheat), Peanuts, Tree Nuts, Eggs, Fish, Crustaceans, Sesame, Sulphites.
-- **Critical Conflict Override:** If a product contains an allergen listed in the user's restrictions, the suitability score is **overridden to 0** and the product is excluded from recommendations.
+- **Critical Conflict Override:** If a product contains an allergen listed in the user's restrictions, the suitability score is **overridden to 0** with a prominent safety banner.
 - **Additive Registry:** Cross-references INS codes (e.g. INS 621 MSG, INS 102 Tartrazine, INS 211 Sodium Benzoate) against authoritative Codex/FSSAI regulatory context without unjustified toxicology panic.
 
 ---
 
-## 3. Machine Learning Model Disclosure (Scientific Transparency)
+## 7. Machine Learning Model Disclosure
 
 - **Artifact:** `models/eatgood_model.joblib` & `models/model_metadata.json`
 - **Training Script:** `src/train_model.py`
@@ -101,7 +185,7 @@ EATGOOD implements a modular, explainable hybrid architecture:
 
 ---
 
-## 4. Dataset Governance & Calibrated Anomaly Counts
+## 8. Dataset Governance & Calibrated Anomaly Counts
 
 The dataset comprises **852 authentic Indian packaged food products** across 8 categories:
 
@@ -117,81 +201,61 @@ The dataset comprises **852 authentic Indian packaged food products** across 8 c
 
 ---
 
-## 5. Offline OCR Label Extraction Architecture
+## 9. Automated Test Verification
 
-The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) uses an offline local OCR engine:
-- **100% Offline & Private:** Operates entirely locally without external paid cloud APIs.
-- **Fast:** Executes text recognition in under 150ms.
-- **Editable Confirmation Step:** Extracts metrics into an interactive form where the user confirms serving sizes and macro numbers before generating an assessment.
-
----
-
-## 6. Scientific Literature References
-
-1. **Hammond et al. (2023):** *"Awareness, Use and Understanding of Nutrition Labels Among Children and Youth from Six Countries"* — Highlights that young consumers struggle with quantitative nutritional values, while interpretive front-of-pack labels significantly improve comprehension.
-2. **Regulatory Policy Review (2023):** *"Global Regulatory Trends and Comparative Insights: Nutraceuticals in the USA, India, and Europe"* — Highlights the variance in international food safety standards.
-3. **Shrestha et al. (2023):** *"Impact of Front-of-Pack Nutrition Labelling in Consumer Understanding and Use Across Socio-Economic Status"* — Demonstrates that graded front-of-pack labels reduce cognitive burden across socio-economic demographics.
-4. **AI & Clinical Nutrition Review (2023):** *"Applications of Artificial Intelligence, Machine Learning, and Deep Learning in Nutrition: A Systematic Review"* — Surveys ML methods in dietary assessment while identifying data quality and interpretability as critical barriers.
-
----
-
-## 7. Folder Structure
-
-```
-eatgood/
-├── backend/
-│   ├── core/
-│   │   ├── allergen_engine.py      # Layer 3 allergen & additive evaluation
-│   │   ├── claims_detector.py      # Marketing claim auditor
-│   │   ├── data_loader.py          # Multi-tier data loader
-│   │   ├── ml_model.py             # ML model inference service
-│   │   ├── nutrition_scoring.py    # 3-layer assessment logic
-│   │   ├── ocr_service.py          # Vision OCR extraction parser
-│   │   ├── recommender.py          # Goal-aligned alternatives engine
-│   │   └── standards_registry.py   # WHO & FSSAI benchmarks
-│   ├── database.py                 # SQLite local persistence
-│   ├── main.py                     # FastAPI REST API & static bundle server
-│   ├── tests/
-│   │   └── test_eatgood_core.py    # Automated test suite (6 tests)
-│   └── venv/                       # Python 3 virtual environment
-├── data/
-│   ├── raw/
-│   │   └── packaged_foods_india.csv# 852 Indian products, 25 columns
-│   ├── products_cleaned.csv
-│   ├── products_standardized.csv
-│   ├── data_quality_report.csv
-│   ├── nutrition_review.csv        # 78 Atwater anomalies
-│   ├── serving_size_review.csv     # 13 Macro > Serving anomalies
-│   ├── users.csv                   # 100 simulated users
-│   └── personalization_examples.csv# 1,500 training pairs
-├── frontend/
-│   ├── dist/                       # Production bundle (Vite)
-│   ├── src/
-│   │   ├── components/             # Navbar, Footer, ProfileModal
-│   │   ├── pages/                  # Landing, Catalogue, Scanner, Assessment, Compare, Dashboard, Audit
-│   │   ├── App.jsx
-│   │   ├── index.css               # Editorial Nature-inspired theme
-│   │   └── main.jsx
-│   ├── package.json
-│   └── vite.config.js
-├── models/
-│   ├── eatgood_model.joblib        # Trained experimental model
-│   └── model_metadata.json         # Scientific disclosures & schema
-├── scripts/
-│   ├── generate_initial_data.py    # Dataset generator & calibrator
-│   ├── ocr_helper.swift            # Swift Apple Vision OCR script
-│   └── ocr_helper                  # Compiled native OCR binary
-├── src/
-│   ├── train_model.py              # ML training script
-│   └── recommend.py                # Standalone recommender engine
-├── run.sh                          # One-click startup script
-└── README.md
+Run all test suites:
+```bash
+PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v
 ```
 
+### Verified Test Cases (27/27 Passing):
+1. `test_gs1_check_digit_calculation`: Verifies GS1 Modulo-10 check digit math across EAN-13, EAN-8, UPC-A.
+2. `test_leading_zeros_preserved`: Asserts leading zeros are strictly preserved as strings (`0012345678905`).
+3. `test_barcode_format_detection`: Asserts format classification for EAN-13, EAN-8, UPC-A, and non-numeric validation.
+4. `test_normalize_upc_to_ean13`: Asserts 12-digit UPC-A to 13-digit EAN-13 conversion by prepending 0.
+5. `test_lookup_local_product_by_barcode`: Asserts Layer 1 local catalogue hit returns full product, assessment, and alternatives.
+6. `test_lookup_openfoodfacts_mocked_hit`: Asserts Layer 2 Open Food Facts v3 integration parses external nutrition and ODbL attribution.
+7. `test_lookup_openfoodfacts_not_found`: Asserts unlisted barcode returns structured 404 response.
+8. `test_user_product_contribution_and_retrieval`: Asserts product contribution persists to SQLite and enables layered lookup as "User Submitted (Unverified)".
+9. `test_duplicate_contribution_rejected_if_in_local_db`: Asserts duplicate barcode contributions return HTTP 409 Conflict.
+10. `test_healthier_alternatives_endpoint`: Asserts `/api/alternatives/{product_id}` returns goal-aligned substitutes with comparative advantages.
+11. `test_data_loader_integrity`: Verifies multi-tier CSV loading and fallback handling.
+12. `test_layer1_calibrated_vs_uncalibrated`: Asserts calibrated categories receive grades and uncalibrated receive disclaimers.
+13. `test_missing_data_refusal`: Asserts products missing core metrics receive refusal notices rather than fake grades.
+14. `test_allergen_critical_conflict`: Asserts allergen conflicts override scores to 0.
+15. `test_goal_personalization_delta`: Asserts goal-specific scoring delta between low-sugar and high-sugar profiles.
+16. `test_misleading_claims_evaluation`: Asserts claims like "low fat" are audited against actual nutrition values.
+17. `test_incomplete_data_no_score`: Asserts manual entries with missing metrics suppress scores and request complete input.
+18. `test_score_calculation_breakdown_and_scale`: Asserts 1–100 scale math ledger steps and point tallies.
+19. `test_product_catalogue_nutritional_filters`: Asserts healthy level filters (sugar <= 10g, sodium <= 400mg).
+20. `test_ocr_engine_status`: Asserts local Tesseract 5 is accessible and reports valid version.
+21. `test_image_preprocessing`: Asserts OpenCV preprocessing handles EXIF rotation and dimensions.
+22. `test_distinct_images_produce_distinct_text`: Asserts different uploads produce genuinely distinct text and calorie metrics.
+23. `test_no_silent_fallback_on_blank_image`: Asserts blank images return `no_text_found`, never 450 kcal mock data.
+24. `test_macro_glitch_repair_and_field_status`: Asserts OCR decimal glitches (e.g. 3736g) are repaired and flagged `needs_review`.
+25. `test_atwater_calorie_crosscheck`: Asserts Atwater discrepancy detection.
+26. `test_sub_nutrient_consistency_checks`: Asserts impossible values (Sat Fat > Fat) trigger inconsistency flags.
+27. `test_api_analyze_ocr_integration`: Asserts full HTTP file-upload OCR route and SQLite scan logging.
+
 ---
 
-## 8. Responsible AI & Ethical Disclosure
+## 10. Barcode-First Food Product Discovery & Assessment Engine
 
-- EATGOOD is a research-informed food assessment platform.
-- It does not diagnose medical conditions or prescribe clinical nutritional therapies.
-- The platform collects minimal profile data and operates 100% locally on the host machine without external telemetric transmissions.
+### Architecture & Layered Lookup Workflow:
+1. **Camera Scanner (`BarcodeCameraScanner.jsx`):**
+   - Built with `@zxing/browser` (`BrowserMultiFormatReader`) running 100% locally in the browser.
+   - Defaults to rear camera (`facingMode: { ideal: "environment" }`) with target reticle viewfinder and laser animation.
+   - Hardware torch toggle (`track.applyConstraints({ advanced: [{ torch: true }] })`).
+   - Web Audio API synthesizer generates an instant audio confirmation beep on detection with zero external audio assets.
+   - Cleanly stops all media streams on cancel or unmount to avoid background battery drain.
+   - Fallback manual barcode input field with instant input validation.
+2. **Layered Lookup Architecture (`GET /api/products/barcode/{barcode}`):**
+   - **Layer 1 (Local EATGOOD Catalogue):** Instant lookup in 852-item Indian packaged foods dataset. Leading zeros preserved via string indexing.
+   - **Layer 2 (User Contributed Products):** Checks local SQLite `user_contributions` table for community-submitted foods (tagged as `User Submitted (Unverified)`).
+   - **Layer 3 (SQLite Cache):** Checks `external_products_cache` with a 7-day TTL to prevent redundant network traffic.
+   - **Layer 4 (Open Food Facts API v3):** Query `https://world.openfoodfacts.org/api/v3/product/{barcode}.json` with compliant User-Agent (`EATGOOD-NutritionScanner/1.0`), strict field projection, salt-to-sodium conversion, and ODbL attribution.
+   - **Layer 5 (Product Not Found Screen):** Returns structured 404 response providing three immediate paths: "Contribute Product to EATGOOD", "Scan Package via OCR", or "Search Catalogue".
+3. **Product Contribution Flow (`ProductContributionModal.jsx`):**
+   - Allows users to submit unlisted foods with front photos, label photos, ingredients, declared allergens, and nutrition facts.
+   - Saves record locally in SQLite under `user_submitted` status.
+   - Immediately assessed via the 3-layer engine without cloud egress of personal health profiles.

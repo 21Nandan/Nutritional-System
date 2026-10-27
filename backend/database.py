@@ -8,6 +8,7 @@ import os
 import sqlite3
 import json
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DB_PATH = os.path.join(BASE_DIR, "data", "eatgood_app.db")
@@ -55,7 +56,67 @@ def init_db():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS saved_products (
         product_id TEXT PRIMARY KEY,
+        product_name TEXT,
+        brand TEXT,
+        category TEXT,
+        product_data TEXT,
         saved_at TIMESTAMP
+    )
+    """)
+    for col in ['product_name', 'brand', 'category', 'product_data']:
+        try:
+            cursor.execute(f"ALTER TABLE saved_products ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
+
+    # Scan Sessions table (local OCR scan provenance)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS scan_sessions (
+        scan_id TEXT PRIMARY KEY,
+        filename TEXT,
+        image_path TEXT,
+        ocr_engine TEXT,
+        raw_text TEXT,
+        status TEXT,
+        extracted_data TEXT,
+        confidence REAL,
+        created_at TIMESTAMP
+    )
+    """)
+
+    # External Products Cache table (Open Food Facts caching with TTL)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS external_products_cache (
+        barcode TEXT PRIMARY KEY,
+        product_data TEXT,
+        source TEXT,
+        status TEXT,
+        cached_at TIMESTAMP,
+        expires_at TIMESTAMP
+    )
+    """)
+
+    # User Contributions table (Products submitted by users when not found)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_contributions (
+        submission_id TEXT PRIMARY KEY,
+        barcode TEXT,
+        product_name TEXT,
+        brand TEXT,
+        category TEXT,
+        sub_category TEXT,
+        serving_size REAL,
+        serving_size_unit TEXT,
+        measurement_basis TEXT,
+        nutrition_data TEXT,
+        ingredients TEXT,
+        allergens_declared TEXT,
+        front_image_path TEXT,
+        label_image_path TEXT,
+        ingredients_image_path TEXT,
+        review_status TEXT,
+        submission_notes TEXT,
+        created_at TIMESTAMP
     )
     """)
 
@@ -67,7 +128,7 @@ def init_db():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             "USR_DEFAULT",
-            "Demo User",
+            "Guest User",
             "Reduce Sugar",
             "Vegetarian",
             "None",
@@ -113,7 +174,7 @@ def save_active_profile(profile_data: dict):
         updated_at=excluded.updated_at
     """, (
         profile_data.get("user_id", "USR_DEFAULT"),
-        profile_data.get("name", "Demo User"),
+        profile_data.get("name", "Guest User"),
         profile_data.get("goal", "Balanced Choices"),
         profile_data.get("dietary_preference", "No preference"),
         profile_data.get("allergens_to_avoid", ""),
@@ -143,7 +204,7 @@ def get_recent_history(limit: int = 10):
     conn.close()
     return [dict(r) for r in rows]
 
-def toggle_save_product(product_id: str):
+def toggle_save_product(product_id: str, product_info: dict = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT product_id FROM saved_products WHERE product_id = ?", (product_id,))
@@ -152,11 +213,45 @@ def toggle_save_product(product_id: str):
         cursor.execute("DELETE FROM saved_products WHERE product_id = ?", (product_id,))
         saved = False
     else:
-        cursor.execute("INSERT INTO saved_products (product_id, saved_at) VALUES (?, ?)", (product_id, datetime.now().isoformat()))
+        name = (product_info.get("product_name") or product_info.get("name")) if product_info else None
+        brand = product_info.get("brand") if product_info else None
+        category = product_info.get("category") if product_info else None
+        data_json = json.dumps(product_info) if product_info else None
+
+        cursor.execute("""
+        INSERT INTO saved_products (product_id, product_name, brand, category, product_data, saved_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (product_id, name, brand, category, data_json, datetime.now().isoformat()))
         saved = True
     conn.commit()
     conn.close()
     return saved
+
+def is_product_saved(product_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM saved_products WHERE product_id = ?", (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row)
+
+def get_saved_products_records():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT product_id, product_name, brand, category, product_data, saved_at FROM saved_products ORDER BY saved_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_saved_product(product_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM saved_products WHERE product_id = ?", (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return None
 
 def get_saved_product_ids():
     conn = get_connection()
@@ -165,6 +260,181 @@ def get_saved_product_ids():
     rows = cursor.fetchall()
     conn.close()
     return [r[0] for r in rows]
+
+def record_scan_session(scan_id: str, filename: str, image_path: str, ocr_engine: str, raw_text: str, status: str, extracted_data: dict, confidence: float):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO scan_sessions (scan_id, filename, image_path, ocr_engine, raw_text, status, extracted_data, confidence, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(scan_id) DO UPDATE SET
+        ocr_engine=excluded.ocr_engine,
+        raw_text=excluded.raw_text,
+        status=excluded.status,
+        extracted_data=excluded.extracted_data,
+        confidence=excluded.confidence
+    """, (
+        scan_id,
+        filename,
+        image_path,
+        ocr_engine,
+        raw_text,
+        status,
+        json.dumps(extracted_data),
+        confidence,
+        datetime.now().isoformat()
+    ))
+    conn.commit()
+    conn.close()
+
+def get_recent_scan_sessions(limit: int = 10):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scan_sessions ORDER BY created_at DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        d = dict(r)
+        if d.get("extracted_data"):
+            try:
+                d["extracted_data"] = json.loads(d["extracted_data"])
+            except Exception:
+                pass
+        results.append(d)
+    return results
+
+# --- External Products Cache (Open Food Facts) ---
+
+def get_cached_barcode_product(barcode: str):
+    """Retrieves cached product data for a barcode if not expired."""
+    clean_code = str(barcode).strip()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM external_products_cache WHERE barcode = ?", (clean_code,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    now_iso = datetime.now().isoformat()
+    if d.get("expires_at") and d["expires_at"] < now_iso:
+        return None  # Expired
+    if d.get("product_data"):
+        try:
+            return json.loads(d["product_data"])
+        except Exception:
+            return None
+    return None
+
+def cache_barcode_product(barcode: str, product_data: Optional[dict], source: str = "openfoodfacts", status: str = "success", ttl_hours: int = 168):
+    """Caches product lookup results (defaults to 7 days for success, 1 hour for negative results)."""
+    clean_code = str(barcode).strip()
+    from datetime import timedelta
+    now = datetime.now()
+    expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO external_products_cache (barcode, product_data, source, status, cached_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(barcode) DO UPDATE SET
+        product_data=excluded.product_data,
+        source=excluded.source,
+        status=excluded.status,
+        cached_at=excluded.cached_at,
+        expires_at=excluded.expires_at
+    """, (
+        clean_code,
+        json.dumps(product_data) if product_data else None,
+        source,
+        status,
+        now.isoformat(),
+        expires_at
+    ))
+    conn.commit()
+    conn.close()
+
+# --- User Product Contributions ---
+
+def record_user_contribution(contribution: dict):
+    """Stores user-submitted product record locally with 'user_submitted' review status."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    sub_id = contribution.get("submission_id") or f"sub_{datetime.now().strftime('%Y%m%d%H%M%S')}_{str(contribution.get('barcode', ''))[:6]}"
+    
+    nutrition_json = json.dumps(contribution.get("nutrition_data", {}))
+    cursor.execute("""
+    INSERT INTO user_contributions (
+        submission_id, barcode, product_name, brand, category, sub_category,
+        serving_size, serving_size_unit, measurement_basis, nutrition_data,
+        ingredients, allergens_declared, front_image_path, label_image_path,
+        ingredients_image_path, review_status, submission_notes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(submission_id) DO UPDATE SET
+        product_name=excluded.product_name,
+        brand=excluded.brand,
+        nutrition_data=excluded.nutrition_data,
+        review_status=excluded.review_status
+    """, (
+        sub_id,
+        str(contribution.get("barcode", "")).strip(),
+        contribution.get("product_name"),
+        contribution.get("brand"),
+        contribution.get("category", "Snacks"),
+        contribution.get("sub_category", "User Contributed"),
+        contribution.get("serving_size", 100.0),
+        contribution.get("serving_size_unit", "g"),
+        contribution.get("measurement_basis", "per 100g"),
+        nutrition_json,
+        contribution.get("ingredients"),
+        contribution.get("allergens_declared"),
+        contribution.get("front_image_path"),
+        contribution.get("label_image_path"),
+        contribution.get("ingredients_image_path"),
+        contribution.get("review_status", "user_submitted"),
+        contribution.get("submission_notes", "Local User Contribution — Pending Audit"),
+        datetime.now().isoformat()
+    ))
+    conn.commit()
+    conn.close()
+    return sub_id
+
+def get_user_contributions(limit: int = 50):
+    """Retrieves recent user submitted products."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_contributions ORDER BY created_at DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        d = dict(r)
+        if d.get("nutrition_data"):
+            try:
+                d["nutrition_data"] = json.loads(d["nutrition_data"])
+            except Exception:
+                pass
+        results.append(d)
+    return results
+
+def get_user_contribution_by_barcode(barcode: str):
+    """Checks if a user contribution exists for this barcode."""
+    clean_code = str(barcode).strip()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_contributions WHERE barcode = ? ORDER BY created_at DESC LIMIT 1", (clean_code,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("nutrition_data"):
+        try:
+            d["nutrition_data"] = json.loads(d["nutrition_data"])
+        except Exception:
+            pass
+    return d
 
 # Initialize DB on load
 init_db()

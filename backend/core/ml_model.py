@@ -104,10 +104,10 @@ class EatGoodMLService:
                 "predicted_probability": round(pred_proba, 3),
                 "model_type": self.metadata.get("model_type", "RandomForestClassifier"),
                 "status": "Experimental Prototype",
-                "training_context": "Trained on 1,500 simulated user-product examples across 100 simulated user profiles.",
+                "training_context": "Trained on simulated user-product examples across simulated user profiles.",
                 "scientific_limitation": (
-                    "Note: This model was trained on simulated data. The reported 100% test accuracy on synthetic examples "
-                    "reflects the internal consistency of the simulated rules rather than empirical real-world validation. "
+                    "Note: This model was trained on simulated data. Synthetic training results "
+                    "reflect the internal consistency of the simulated rules rather than empirical real-world validation. "
                     "Use deterministic nutrition rules as the primary ground truth."
                 )
             }

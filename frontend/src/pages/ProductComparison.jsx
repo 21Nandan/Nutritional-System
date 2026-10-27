@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeftRight, X, Plus, AlertTriangle, CheckCircle2, ChevronRight, Scale } from 'lucide-react';
+import { useLockBodyScroll } from '../components/useLockBodyScroll';
 
 export default function ProductComparison({ initialProductIds = [], onSelectProduct, activeProfile }) {
   const [selectedIds, setSelectedIds] = useState(
@@ -10,6 +11,8 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
+
+  useLockBodyScroll(showSearchModal);
 
   useEffect(() => {
     if (selectedIds.length >= 2) {
@@ -33,7 +36,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
       setSearchResults([]);
       return;
     }
-    fetch(`/api/products?query=${encodeURIComponent(q)}&limit=6`)
+    fetch(`/api/products?query=${encodeURIComponent(q)}&limit=12`)
       .then(res => res.json())
       .then(data => setSearchResults(data.products || []))
       .catch(err => console.error(err));
@@ -65,7 +68,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
           Product Comparison Matrix
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Side-by-side nutritional trade-off evaluation normalized per 100g / 100ml. Tailored to your active goal: <strong>{activeProfile?.goal || 'Balanced Choices'}</strong>.
+          Side-by-side nutritional trade-off evaluation normalized per 100g / 100ml. Tailored to your goal: <strong>{activeProfile?.goal || 'Balanced Choices'}</strong>.
         </p>
       </div>
 
@@ -95,8 +98,8 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
           Select at least 2 products to compare.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+        <div className="responsive-table-wrapper" style={{ background: '#fff', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+          <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-alt)', borderBottom: '2px solid var(--color-border)' }}>
                 <th style={{ padding: '16px 20px', width: '220px', fontWeight: 800, color: 'var(--color-primary)' }}>
@@ -149,8 +152,13 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                 {products.map(p => (
                   <td key={p.product_id} style={tdValStyle}>
                     <div style={{ fontSize: '1.3rem', fontWeight: 800, color: p.has_allergen_conflict ? '#c62828' : 'var(--color-primary)' }}>
-                      {p.personalized_score}/100
+                      {p.personalized_score != null ? `${p.personalized_score}/100` : 'N/A'}
                     </div>
+                    {p.personalized_score == null && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', fontWeight: 600 }}>
+                        Incomplete Data
+                      </span>
+                    )}
                     {p.has_allergen_conflict && (
                       <span style={{ fontSize: '0.7rem', color: '#c62828', fontWeight: 700 }}>
                         Allergen Warning Overrides Score
@@ -241,7 +249,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                       </span>
                     ) : (
                       <span style={{ color: '#2e7d32', fontSize: '0.78rem' }}>
-                        ✓ Safe for active profile
+                        ✓ No allergen alerts
                       </span>
                     )}
                   </td>
