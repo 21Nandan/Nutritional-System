@@ -8,7 +8,6 @@ import LabelScanner from './pages/LabelScanner';
 import ProductAssessment from './pages/ProductAssessment';
 import ProductComparison from './pages/ProductComparison';
 import Dashboard from './pages/Dashboard';
-import MethodologyPage from './pages/MethodologyPage';
 import DataAuditPage from './pages/DataAuditPage';
 
 export default function App() {
@@ -128,10 +127,6 @@ export default function App() {
             activeProfile={activeProfile}
             onOpenProfile={() => setIsProfileModalOpen(true)}
           />
-        )}
-
-        {activePage === 'methodology' && (
-          <MethodologyPage />
         )}
 
         {activePage === 'audit' && (

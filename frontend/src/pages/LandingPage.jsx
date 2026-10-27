@@ -318,17 +318,6 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             </div>
           ))}
         </div>
-
-        <div style={{ textAlign: 'center', marginTop: 28 }}>
-          <button 
-            className="btn-accent"
-            onClick={() => setActivePage('methodology')}
-            style={{ fontSize: '0.9rem' }}
-          >
-            <FileText size={16} />
-            <span>Read Complete Research Methodology & Citations</span>
-          </button>
-        </div>
       </section>
 
       {/* 5. Scientific Limitations & Data Transparency Callout */}

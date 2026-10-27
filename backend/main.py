@@ -278,68 +278,6 @@ def get_saved():
     products = [data_loader.get_product_by_id(pid) for pid in saved_ids if data_loader.get_product_by_id(pid)]
     return {"total": len(products), "saved_products": products}
 
-@app.get("/api/methodology")
-def get_methodology():
-    """
-    Returns authentic research and methodology details from the Phase-I presentation,
-    including the 4 primary research citations, research flowchart, and problem definition.
-    """
-    return {
-        "title": "EATGOOD: AI-Based Nutritional Analysis and Food Recommendation",
-        "theme": "AI for Social Good",
-        "problem_definition": (
-            "Modern packaged foods carry complex, dense nutritional information and ingredient declarations. "
-            "Consumers struggle to determine whether packaged food products are nutritionally appropriate and suitable "
-            "for their individual requirements because of obscure additives, varying serving sizes, and ambiguous health claims."
-        ),
-        "research_references": [
-            {
-                "citation_num": 1,
-                "title": "Awareness, Use and Understanding of Nutrition Labels Among Children and Youth from Six Countries",
-                "authors": "Hammond et al.",
-                "year": 2023,
-                "finding": "Cross-national study showing young consumers struggle with quantitative nutritional values, while interpretive front-of-pack labels significantly improve comprehension."
-            },
-            {
-                "citation_num": 2,
-                "title": "Global Regulatory Trends and Comparative Insights: Nutraceuticals in the USA, India, and Europe",
-                "authors": "Regulatory Policy Review",
-                "year": 2023,
-                "finding": "Disparities between national regulatory frameworks create inconsistent consumer protection, reinforcing the need for internationally grounded reference standards."
-            },
-            {
-                "citation_num": 3,
-                "title": "Impact of Front-of-Pack Nutrition Labelling in Consumer Understanding and Use Across Socio-Economic Status",
-                "authors": "Shrestha et al.",
-                "year": 2023,
-                "finding": "Simplified, colour-coded and graded interpretive nutritional labels reduce the cognitive burden across diverse educational and socio-economic demographics."
-            },
-            {
-                "citation_num": 4,
-                "title": "Applications of Artificial Intelligence, Machine Learning, and Deep Learning in Nutrition: A Systematic Review",
-                "authors": "AI & Clinical Nutrition Review",
-                "year": 2023,
-                "finding": "Machine learning offers strong potential for personalized dietary assessment, yet interpretability, missing data management, and data quality remain critical bottlenecks."
-            }
-        ],
-        "research_flowchart": [
-            {"step": 1, "name": "Data Collection", "desc": "Audit 852 Indian packaged products across retail categories."},
-            {"step": 2, "name": "Data Cleaning & Quality Checks", "desc": "Identify Atwater discrepancies (78 items) and macro-serving anomalies (13 items)."},
-            {"step": 3, "name": "Nutrition & Ingredient Verification", "desc": "Standardize per-100g/ml bases while preserving unverified fields as blank (never 0)."},
-            {"step": 4, "name": "OCR & Extraction", "desc": "Extract label facts using OCR with user editable confirmation."},
-            {"step": 5, "name": "Standards-Based Assessment", "desc": "Evaluate calibrated categories against WHO SEARO and FSSAI INR criteria."},
-            {"step": 6, "name": "Personalized Scoring", "desc": "Calculate 0-100 goal suitability and enforce hard allergen safety exclusions."},
-            {"step": 7, "name": "Alternative Recommendation", "desc": "Rank healthier same-category substitutes and explain nutritional deltas."},
-            {"step": 8, "name": "User Evaluation & Validation", "desc": "Collect user feedback and analyze transparent model performance."}
-        ],
-        "future_work": [
-            "Expansion of verified Indian packaged food database to 10,000+ barcode-indexed records.",
-            "Independent expert clinical validation with registered dietitians.",
-            "Direct FSSAI Food Safety Compliance API integration for live regulatory recall alerts.",
-            "Integration of continuous glucose monitoring (CGM) telemetry under strict local privacy safeguards."
-        ]
-    }
-
 FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 if os.path.exists(FRONTEND_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")

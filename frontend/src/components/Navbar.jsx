@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Sparkles, Search, ScanLine, ArrowLeftRight, 
-  BarChart3, BookOpen, ShieldCheck, UserCheck 
+  BarChart3, ShieldCheck, UserCheck 
 } from 'lucide-react';
 
 export default function Navbar({ activePage, setActivePage, activeProfile, onOpenProfile }) {
@@ -11,7 +11,6 @@ export default function Navbar({ activePage, setActivePage, activeProfile, onOpe
     { id: 'catalogue', label: 'Catalogue (852)', labelSub: 'Products', icon: Search },
     { id: 'compare', label: 'Compare', icon: ArrowLeftRight },
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'methodology', label: 'Methodology', icon: BookOpen },
     { id: 'audit', label: 'Data Quality Audit', icon: ShieldCheck }
   ];
 

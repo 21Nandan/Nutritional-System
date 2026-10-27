@@ -43,9 +43,8 @@ export default function Footer({ setActivePage }) {
         </div>
 
         <div>
-          <h4>Research & Ethics</h4>
+          <h4>Standards & Data</h4>
           <ul>
-            <li><a href="#methodology" onClick={(e) => { e.preventDefault(); setActivePage('methodology'); }}>Methodology & Citations</a></li>
             <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>Data Quality Audit</a></li>
             <li><a href="#standards" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>WHO & FSSAI Standards</a></li>
             <li><span style={{ color: '#7e9e8c' }}>Simulated ML Training Ethics</span></li>
