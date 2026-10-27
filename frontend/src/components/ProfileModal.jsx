@@ -33,7 +33,7 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
   if (!isOpen) return null;
 
   const [formData, setFormData] = useState({
-    name: activeProfile?.name || 'Evaluator',
+    name: activeProfile?.name || 'Health Conscious User',
     goal: activeProfile?.goal || 'Balanced Choices',
     dietary_preference: activeProfile?.dietary_preference || 'No preference',
     allergens: activeProfile?.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : [],

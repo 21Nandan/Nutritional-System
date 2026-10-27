@@ -67,7 +67,7 @@ def init_db():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             "USR_DEFAULT",
-            "Demo Student / Evaluator",
+            "Demo User",
             "Reduce Sugar",
             "Vegetarian",
             "None",
@@ -113,7 +113,7 @@ def save_active_profile(profile_data: dict):
         updated_at=excluded.updated_at
     """, (
         profile_data.get("user_id", "USR_DEFAULT"),
-        profile_data.get("name", "Student Evaluator"),
+        profile_data.get("name", "Demo User"),
         profile_data.get("goal", "Balanced Choices"),
         profile_data.get("dietary_preference", "No preference"),
         profile_data.get("allergens_to_avoid", ""),

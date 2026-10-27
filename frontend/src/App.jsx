@@ -27,7 +27,7 @@ export default function App() {
         console.error('Error fetching profile:', err);
         setActiveProfile({
           user_id: 'USR_DEFAULT',
-          name: 'Evaluator',
+          name: 'Health Conscious User',
           goal: 'Balanced Choices',
           dietary_preference: 'No preference',
           allergens_to_avoid: ''

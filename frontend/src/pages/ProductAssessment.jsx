@@ -559,7 +559,7 @@ export default function ProductAssessment({
             Prediction: <strong>{ml_exp.is_suitable_prediction ? 'Suitable' : 'Not Suitable'}</strong> (Estimated Probability: {ml_exp.predicted_probability})
           </p>
           <div style={{ fontSize: '0.75rem', color: '#666', background: '#fff', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)' }}>
-            ⚠️ <strong>Academic Transparency Note:</strong> {ml_exp.scientific_limitation}
+            ⚠️ <strong>Model Transparency Note:</strong> {ml_exp.scientific_limitation}
           </div>
         </div>
       )}

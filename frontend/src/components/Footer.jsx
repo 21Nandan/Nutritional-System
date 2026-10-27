@@ -28,7 +28,7 @@ export default function Footer({ setActivePage }) {
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#82c733', fontSize: '0.78rem', fontWeight: 600 }}>
             <HeartHandshake size={15} />
-            <span>Academic Experiential Learning (EL Phase-I) Project — AI for Social Good</span>
+            <span>AI Platform for Public Health & Nutrition Intelligence</span>
           </div>
         </div>
 
@@ -61,7 +61,7 @@ export default function Footer({ setActivePage }) {
       </div>
 
       <div className="footer-bottom">
-        <div>&copy; 2026 EATGOOD Academic Research Team. All rights reserved. Locally executed research prototype.</div>
+        <div>&copy; 2026 EATGOOD Team. All rights reserved. Locally executed food intelligence platform.</div>
         <div style={{ display: 'flex', gap: 16 }}>
           <span>FastAPI Microservice</span>
           <span>•</span>

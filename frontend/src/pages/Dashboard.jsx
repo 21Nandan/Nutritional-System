@@ -59,7 +59,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: 0 }}>
-                  {activeProfile?.name || 'Evaluator'}
+                  {activeProfile?.name || 'Health Conscious User'}
                 </h3>
                 <span className="badge badge-verified" style={{ fontSize: '0.72rem' }}>
                   {activeProfile?.dietary_preference || 'No preference'}

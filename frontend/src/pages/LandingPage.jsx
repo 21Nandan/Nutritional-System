@@ -31,7 +31,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           marginBottom: 20
         }}>
           <Sparkles size={16} color="var(--color-accent)" />
-          <span>Academic Experiential Learning Project — AI for Social Good</span>
+          <span>AI-Powered Food Safety & Nutrition Intelligence Platform</span>
         </div>
 
         <h1 style={{
@@ -294,7 +294,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           </span>
           <h2 style={{ fontSize: '1.9rem', color: '#fff', marginTop: 6 }}>How EATGOOD Evaluates Foods</h2>
           <p style={{ fontSize: '0.9rem', color: '#b0c9bb', marginTop: 6 }}>
-            Our 8-phase experiential learning pipeline integrates OCR, standard calibration, and explainable AI.
+            Our multi-stage intelligence pipeline integrates OCR, standard calibration, and explainable AI.
           </p>
         </div>
 

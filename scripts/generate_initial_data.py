@@ -621,7 +621,7 @@ for uid in range(1, 101):
         "allergens_to_avoid": ", ".join(allgs) if allgs else "None",
         "age_group": age_group,
         "activity_level": activity,
-        "notes": "Simulated profile for experiential learning model evaluation"
+        "notes": "Simulated profile for personalization engine evaluation"
     })
 
 df_users = pd.DataFrame(users_list)

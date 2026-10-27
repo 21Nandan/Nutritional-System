@@ -1,6 +1,6 @@
 # EATGOOD: AI-Powered Personalized Food Safety and Nutrition Assessment
 
-> **Academic Experiential Learning (EL Phase-I) Project**  
+> **Evidence-Based Food Safety & Nutrition Intelligence Platform**  
 > **Theme:** AI for Social Good  
 > **Primary Objective:** Convert complex packaged-food labels into simple, transparent, evidence-based, and personalized assessments using international standards (WHO, FSSAI, Codex) and machine learning.
 
@@ -96,7 +96,7 @@ EATGOOD implements a modular, explainable hybrid architecture:
 - **Artifact:** `models/eatgood_model.joblib` & `models/model_metadata.json`
 - **Training Script:** `src/train_model.py`
 - **Training Set:** 1,500 simulated user-product recommendation pairs across 100 simulated user profiles (`data/personalization_examples.csv`).
-- **Academic Disclaimer:** The reported 100% test accuracy is an artifact of evaluation on synthetically generated rule-based labels. It is **NOT** evidence of real-world clinical validity.
+- **Model Transparency Note:** The reported 100% test accuracy is an artifact of evaluation on synthetically generated rule-based labels. It is **NOT** evidence of real-world clinical validity.
 - **Integration Policy:** The ML model serves as an experimental architectural component demonstrating ML service integration alongside deterministic nutrition rules. Deterministic nutrition rules serve as the primary ground truth.
 
 ---
@@ -126,7 +126,7 @@ The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) us
 
 ---
 
-## 6. Literature Review References (EL Phase-I Presentation)
+## 6. Scientific Literature References
 
 1. **Hammond et al. (2023):** *"Awareness, Use and Understanding of Nutrition Labels Among Children and Youth from Six Countries"* — Highlights that young consumers struggle with quantitative nutritional values, while interpretive front-of-pack labels significantly improve comprehension.
 2. **Regulatory Policy Review (2023):** *"Global Regulatory Trends and Comparative Insights: Nutraceuticals in the USA, India, and Europe"* — Highlights the variance in international food safety standards.
@@ -138,7 +138,7 @@ The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) us
 ## 7. Folder Structure
 
 ```
-3rd sem EL/
+eatgood/
 ├── backend/
 │   ├── core/
 │   │   ├── allergen_engine.py      # Layer 3 allergen & additive evaluation
@@ -168,7 +168,7 @@ The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) us
 │   ├── dist/                       # Production bundle (Vite)
 │   ├── src/
 │   │   ├── components/             # Navbar, Footer, ProfileModal
-│   │   ├── pages/                  # Landing, Catalogue, Scanner, Assessment, Compare, Dashboard, Methodology, Audit
+│   │   ├── pages/                  # Landing, Catalogue, Scanner, Assessment, Compare, Dashboard, Audit
 │   │   ├── App.jsx
 │   │   ├── index.css               # Editorial Nature-inspired theme
 │   │   └── main.jsx
@@ -192,6 +192,6 @@ The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) us
 
 ## 8. Responsible AI & Ethical Disclosure
 
-- EATGOOD is strictly an educational and experiential learning prototype.
+- EATGOOD is a research-informed food assessment platform.
 - It does not diagnose medical conditions or prescribe clinical nutritional therapies.
 - The platform collects minimal profile data and operates 100% locally on the host machine without external telemetric transmissions.
