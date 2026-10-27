@@ -158,7 +158,7 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
           Food Label Scanner & Analysis
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Upload a food label photo for Apple Vision OCR extraction, look up a barcode, or manually enter nutrition facts.
+          Upload a food label photo for automated OCR extraction, look up a barcode, or manually enter nutrition facts.
         </p>
       </div>
 
@@ -257,14 +257,14 @@ export default function LabelScanner({ onAssessmentGenerated, onSelectProduct })
               Supports PNG, JPEG images of nutrition facts tables or ingredient lists.
             </p>
             <div style={{ display: 'inline-block', fontSize: '0.75rem', color: 'var(--color-text-subtle)', background: '#fff', padding: '4px 10px', borderRadius: 4, border: '1px solid var(--color-border)' }}>
-              Engine: Apple Vision Text Recognition Framework (100% Offline Local Inference)
+              Engine: Optical Character Recognition (100% Offline Local Inference)
             </div>
           </div>
 
           {ocrLoading && (
             <div style={{ marginTop: 20, textAlign: 'center', padding: 20, background: '#eaf6e5', borderRadius: 8, color: 'var(--color-primary)' }}>
               <RefreshCw size={24} className="spin" style={{ margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontWeight: 700 }}>Extracting label text using Apple Vision OCR...</div>
+              <div style={{ fontWeight: 700 }}>Extracting label text using OCR...</div>
               <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Parsing serving sizes, macro values, and ingredients</div>
             </div>
           )}

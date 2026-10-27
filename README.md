@@ -117,10 +117,10 @@ The dataset comprises **852 authentic Indian packaged food products** across 8 c
 
 ---
 
-## 5. Offline macOS Vision OCR Architecture
+## 5. Offline OCR Label Extraction Architecture
 
-The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) uses Apple's native **Vision Framework** (`VNRecognizeTextRequest`) compiled via Swift:
-- **100% Offline & Private:** Operates entirely locally on macOS without external paid cloud APIs.
+The food label scanner (`backend/core/ocr_service.py` & `scripts/ocr_helper`) uses an offline local OCR engine:
+- **100% Offline & Private:** Operates entirely locally without external paid cloud APIs.
 - **Fast:** Executes text recognition in under 150ms.
 - **Editable Confirmation Step:** Extracts metrics into an interactive form where the user confirms serving sizes and macro numbers before generating an assessment.
 

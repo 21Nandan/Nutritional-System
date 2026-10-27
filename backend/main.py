@@ -165,7 +165,7 @@ def assess_custom_food(input_data: ManualNutritionInput):
 async def analyze_food_label_image(file: UploadFile = File(...)):
     """
     Receives an image of a food label or ingredient list,
-    extracts raw text via Apple Vision OCR, and parses structured fields.
+    extracts raw text via OCR, and parses structured fields.
     Returns editable fields with confidence flags for user confirmation.
     """
     if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
@@ -180,7 +180,7 @@ async def analyze_food_label_image(file: UploadFile = File(...)):
 
     return {
         "status": "success",
-        "ocr_engine": ocr_res.get("engine", "Apple Vision Framework"),
+        "ocr_engine": ocr_res.get("engine", "Local OCR Engine"),
         "raw_text": ocr_res["raw_text"],
         "lines": ocr_res.get("lines", []),
         "extracted_values": extraction["extracted_values"],
@@ -326,7 +326,7 @@ def get_methodology():
             {"step": 1, "name": "Data Collection", "desc": "Audit 852 Indian packaged products across retail categories."},
             {"step": 2, "name": "Data Cleaning & Quality Checks", "desc": "Identify Atwater discrepancies (78 items) and macro-serving anomalies (13 items)."},
             {"step": 3, "name": "Nutrition & Ingredient Verification", "desc": "Standardize per-100g/ml bases while preserving unverified fields as blank (never 0)."},
-            {"step": 4, "name": "OCR & Extraction", "desc": "Extract label facts using Apple Vision OCR with user editable confirmation."},
+            {"step": 4, "name": "OCR & Extraction", "desc": "Extract label facts using OCR with user editable confirmation."},
             {"step": 5, "name": "Standards-Based Assessment", "desc": "Evaluate calibrated categories against WHO SEARO and FSSAI INR criteria."},
             {"step": 6, "name": "Personalized Scoring", "desc": "Calculate 0-100 goal suitability and enforce hard allergen safety exclusions."},
             {"step": 7, "name": "Alternative Recommendation", "desc": "Rank healthier same-category substitutes and explain nutritional deltas."},

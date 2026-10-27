@@ -305,7 +305,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
         }}>
           {[
             { step: '01', title: 'Data Audit', desc: '852 Indian packaged products audited for Atwater consistency and serving size anomalies.' },
-            { step: '02', title: 'OCR Extraction', desc: 'Native Apple Vision OCR captures labels with mandatory user-editable confirmation.' },
+            { step: '02', title: 'OCR Extraction', desc: 'AI-assisted OCR captures labels with mandatory user-editable confirmation.' },
             { step: '03', title: 'Standard Calibration', desc: 'WHO SEARO & FSSAI INR criteria applied strictly to calibrated categories.' },
             { step: '04', title: 'Personalized Scoring', desc: '0-100 score reflects user goals while hard allergen conflicts trigger red exclusions.' }
           ].map(s => (

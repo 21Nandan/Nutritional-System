@@ -64,8 +64,6 @@ export default function Footer({ setActivePage }) {
       <div className="footer-bottom">
         <div>&copy; 2026 EATGOOD Academic Research Team. All rights reserved. Locally executed research prototype.</div>
         <div style={{ display: 'flex', gap: 16 }}>
-          <span>Offline macOS Vision OCR</span>
-          <span>•</span>
           <span>FastAPI Microservice</span>
           <span>•</span>
           <span>Scikit-Learn Architecture</span>

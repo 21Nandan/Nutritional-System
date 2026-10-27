@@ -14,7 +14,7 @@ OCR_BINARY = os.path.join(SCRIPT_DIR, "ocr_helper")
 
 def run_image_ocr(image_path: str):
     """
-    Runs text extraction on an image file using native Apple Vision OCR.
+    Runs text extraction on an image file using local OCR.
     Falls back gracefully if binary or image unavailable.
     """
     if not os.path.exists(image_path):
@@ -29,7 +29,7 @@ def run_image_ocr(image_path: str):
                     "status": "success",
                     "raw_text": data.get("full_text", ""),
                     "lines": data.get("lines", []),
-                    "engine": "Apple Vision Framework (Native macOS)"
+                    "engine": "Local OCR Engine"
                 }
         except Exception as e:
             print(f"Warning: Vision OCR execution failed: {e}")
