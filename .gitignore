@@ -26,3 +26,11 @@ scripts/ocr_helper
 data/uploads/*
 !data/uploads/.gitkeep
 frontend/data/uploads/*
+*.db-wal
+*.db-shm
+
+# Environment variables & local secrets
+.env
+.env.local
+.env.*.local
+*.env

@@ -229,3 +229,160 @@ def test_healthier_alternatives_endpoint():
     assert "product_name" in top_alt
     assert "general_grade" in top_alt
     assert "comparative_advantages" in top_alt
+
+# ----------------- 6. Detailed Validation & Error Boundary Tests -----------------
+
+def test_invalid_check_digit_flagged_in_strict_mode():
+    """Verify check digit mismatch is explicitly flagged when strict check is required."""
+    # 5449000000996 is valid (check digit 6); 5449000000997 is invalid
+    val = validate_barcode("5449000000997", strict=True)
+    assert val["is_valid"] is False
+    assert val["check_digit_valid"] is False
+    assert "check digit" in val["error"].lower()
+
+def test_empty_and_whitespace_barcode_handling():
+    """Verify empty or space-only input is rejected cleanly."""
+    val = validate_barcode("   ")
+    assert val["is_valid"] is False
+    assert "empty" in val["error"].lower()
+
+def test_openfoodfacts_barcode_mismatch_rejected():
+    """Verify rejection when Open Food Facts returns a mismatched barcode payload."""
+    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+    import httpx
+
+    class MockResponse:
+        status_code = 200
+        def json(self):
+            return {
+                "status": "success",
+                "code": "1111111111111",  # Mismatched code!
+                "product": {
+                    "code": "1111111111111",
+                    "product_name": "Mismatched Product",
+                    "nutriments": {}
+                }
+            }
+
+    class MockClient:
+        def get(self, url, headers=None, params=None):
+            return MockResponse()
+
+    res = fetch_product_from_openfoodfacts("2222222222222", client=MockClient())
+    assert res["status"] == "error"
+    assert "does not match" in res["message"].lower()
+
+def test_openfoodfacts_rate_limit_handling():
+    """Verify 429 response produces clear rate limit message."""
+    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+
+    class RateLimitResponse:
+        status_code = 429
+        def json(self):
+            return {}
+
+    class MockClient:
+        def get(self, url, headers=None, params=None):
+            return RateLimitResponse()
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=MockClient())
+    assert res["status"] == "error"
+    assert "rate limit" in res["message"].lower()
+
+def test_openfoodfacts_timeout_handling():
+    """Verify network timeout is captured without crashing and returns error status."""
+    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+    import httpx
+
+    class TimeoutClient:
+        def get(self, url, headers=None, params=None):
+            raise httpx.TimeoutException("Request connection timed out after 8.0s")
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=TimeoutClient())
+    assert res["status"] == "error"
+    assert "timed out" in res["message"].lower()
+
+def test_off_normalization_extracts_proteins_and_additives():
+    """Verify map_off_product_to_eatgood maps proteins_100g, additives_tags, allergens_tags properly."""
+    from backend.core.openfoodfacts import map_off_product_to_eatgood
+
+    raw_off_payload = {
+        "code": "3017620422003",
+        "product_name": "Hazelnut Spread",
+        "brands": "Ferrero",
+        "categories": "Confectionary based spreads, Sweet spreads",
+        "serving_size": "15 g",
+        "serving_quantity": 15.0,
+        "nutrition_data_per": "100g",
+        "nutriments": {
+            "energy-kcal_100g": 539.0,
+            "carbohydrates_100g": 57.5,
+            "sugars_100g": 56.3,
+            "proteins_100g": 6.3,
+            "fat_100g": 30.9,
+            "saturated-fat_100g": 10.6,
+            "sodium_100g": 0.0428,
+            "sodium_unit": "g"
+        },
+        "allergens_tags": ["en:milk", "en:nuts", "en:soybeans"],
+        "additives_tags": ["en:e322", "en:e150d"],
+        "nutriscore_grade": "e",
+        "nova_group": 4,
+        "completeness": 0.95
+    }
+
+    normalized = map_off_product_to_eatgood("3017620422003", raw_off_payload)
+    assert normalized["product_id"] == "OFF_3017620422003"
+    assert normalized["protein_g"] == 6.3
+    assert normalized["energy_kcal"] == 539.0
+    assert normalized["sodium_mg"] == 42.8  # 0.0428 * 1000
+    assert "Milk" in normalized["allergens_declared"]
+    assert "Soybeans" in normalized["allergens_declared"]
+    assert "INS 322" in normalized["additives"]
+    assert "INS 150d" in normalized["additives"]
+    assert normalized["source_indicators"]["nutriscore_grade"] == "E"
+    assert normalized["source_indicators"]["nova_group"] == 4
+
+def test_products_search_endpoint_with_query_and_q():
+    """Verify GET /api/products/search?q={query} returns matched results."""
+    # Search by q
+    res_q = client.get("/api/products/search?q=lays")
+    assert res_q.status_code == 200
+    data_q = res_q.json()
+    assert "products" in data_q
+    assert data_q["total"] > 0
+    assert any("lay" in p["brand"].lower() or "lay" in p["product_name"].lower() for p in data_q["products"])
+
+    # Search by query
+    res_query = client.get("/api/products/search?query=maggi")
+    assert res_query.status_code == 200
+    data_query = res_query.json()
+    assert data_query["total"] > 0
+
+def test_post_products_alias_endpoint():
+    """Verify POST /api/products creates user contribution like /api/products/contribute."""
+    test_code = "8901112223334"
+    payload = {
+        "barcode": test_code,
+        "product_name": "Organic Millet Cookies",
+        "brand": "NatureBest",
+        "category": "Biscuits & Bakery",
+        "serving_size": 25.0,
+        "energy_kcal": 420.0,
+        "sugars_g": 12.0,
+        "sodium_mg": 120.0,
+        "protein_g": 6.5
+    }
+    res = client.post("/api/products", json=payload)
+    assert res.status_code == 200
+    assert res.json()["status"] == "success"
+    assert res.json()["barcode"] == test_code
+
+def test_direct_barcode_lookup_on_product_endpoint():
+    """Verify GET /api/products/{barcode} can resolve by numeric barcode."""
+    res = client.get("/api/products/8903585650756")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["product_id"] == "IND_PKG_001"
+    assert data["barcode"] == "8903585650756"
+

@@ -93,6 +93,8 @@ def get_healthier_alternatives(current_product_or_id, user_profile: dict, limit:
                 "brand": cand["brand"],
                 "category": cand["category"],
                 "sub_category": cand["sub_category"],
+                "image_url": cand.get("image_url"),
+                "image_small_url": cand.get("image_small_url"),
                 "personalized_score": cand_score,
                 "suitability_status": suitability["suitability_status"],
                 "general_grade": general.get("grade", "N/A"),

@@ -104,13 +104,34 @@ export default function App() {
     }
   });
 
+  const getClientId = () => {
+    try {
+      let cid = localStorage.getItem('eatgood_client_id');
+      if (!cid) {
+        cid = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+        localStorage.setItem('eatgood_client_id', cid);
+      }
+      return cid;
+    } catch (e) {
+      return 'USR_DEFAULT';
+    }
+  };
+
   const [activeProfile, setActiveProfile] = useState(() => {
     try {
       const saved = localStorage.getItem('eatgood_user_profile');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.name && parsed.name !== 'Nandan') {
-          return parsed;
+        if (parsed && typeof parsed === 'object') {
+          return {
+            user_id: parsed.user_id || 'USR_DEFAULT',
+            name: parsed.name || 'Guest User',
+            goal: parsed.goal || 'Balanced Choices',
+            dietary_preference: parsed.dietary_preference || 'No preference',
+            allergens_to_avoid: parsed.allergens_to_avoid || '',
+            age_group: parsed.age_group || '18-24',
+            activity_level: parsed.activity_level || 'Moderately active'
+          };
         }
       }
     } catch (e) {}
@@ -126,15 +147,9 @@ export default function App() {
   });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // Initialize or retrieve persistent device client ID
+  // Initialize persistent device client ID eagerly
   useEffect(() => {
-    try {
-      let cid = localStorage.getItem('eatgood_client_id');
-      if (!cid) {
-        cid = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
-        localStorage.setItem('eatgood_client_id', cid);
-      }
-    } catch (e) {}
+    getClientId();
   }, []);
 
   // First-time visit onboarding & terms acceptance state
@@ -243,29 +258,31 @@ export default function App() {
 
   // Fetch active profile on load with client identity
   useEffect(() => {
-    const cid = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
+    const cid = getClientId();
     fetch(`/api/profile?user_id=${encodeURIComponent(cid)}`, {
       headers: { 'X-User-Id': cid }
     })
       .then(res => res.json())
       .then(data => {
-        if (data) {
-          const sanitized = {
-            ...data,
-            name: (data.name && data.name !== 'Nandan') ? data.name : 'Guest User'
-          };
-          setActiveProfile(prev => {
-            const localSaved = localStorage.getItem('eatgood_user_profile');
-            if (localSaved) {
-              try {
-                const parsed = JSON.parse(localSaved);
-                if (parsed && parsed.name && parsed.name !== 'Nandan') {
-                  return parsed;
+        if (data && data.user_id) {
+          const localSaved = localStorage.getItem('eatgood_user_profile');
+          if (localSaved) {
+            try {
+              const parsed = JSON.parse(localSaved);
+              if (parsed && (parsed.goal || parsed.dietary_preference || parsed.allergens_to_avoid)) {
+                // If local storage has user preferences, keep them as primary and sync to backend
+                setActiveProfile(parsed);
+                if (data.user_id === 'USR_DEFAULT' && parsed.user_id !== 'USR_DEFAULT') {
+                  handleSaveProfile(parsed);
                 }
-              } catch (e) {}
-            }
-            return sanitized;
-          });
+                return;
+              }
+            } catch (e) {}
+          }
+          setActiveProfile(data);
+          try {
+            localStorage.setItem('eatgood_user_profile', JSON.stringify(data));
+          } catch (e) {}
         }
       })
       .catch(err => {
@@ -331,7 +348,7 @@ export default function App() {
   };
 
   const handleSaveProfile = (newProfile) => {
-    const cid = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
+    const cid = getClientId();
     const profileToSave = { ...newProfile, user_id: cid };
 
     try {
@@ -349,7 +366,7 @@ export default function App() {
     })
       .then(res => res.json())
       .then(saved => {
-        if (saved && saved.name && saved.name !== 'Nandan') {
+        if (saved && saved.user_id) {
           setActiveProfile(saved);
           try {
             localStorage.setItem('eatgood_user_profile', JSON.stringify(saved));

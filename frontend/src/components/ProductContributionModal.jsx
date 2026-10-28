@@ -345,9 +345,9 @@ export default function ProductContributionModal({
                     onChange={e => setFormData({ ...formData, category: e.target.value })}
                     style={inputStyle}
                   >
-                    <option value="Snacks">Snacks (Calibrated)</option>
-                    <option value="Breakfast Cereals">Breakfast Cereals (Calibrated)</option>
-                    <option value="Packaged Beverages">Packaged Beverages (Calibrated)</option>
+                    <option value="Snacks">Snacks</option>
+                    <option value="Breakfast Cereals">Breakfast Cereals</option>
+                    <option value="Packaged Beverages">Packaged Beverages</option>
                     <option value="Biscuits & Bakery">Biscuits & Bakery</option>
                     <option value="Chocolates & Sweets">Chocolates & Sweets</option>
                     <option value="Instant Foods">Instant Foods</option>

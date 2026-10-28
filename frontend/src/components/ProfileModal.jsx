@@ -47,7 +47,7 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
   };
 
   const [formData, setFormData] = useState({
-    name: (activeProfile?.name && activeProfile.name !== 'Nandan') ? activeProfile.name : 'Guest User',
+    name: activeProfile?.name || 'Guest User',
     goals: parseGoals(activeProfile?.goal),
     dietary_preference: activeProfile?.dietary_preference || 'No preference',
     allergens: activeProfile?.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : [],
@@ -59,7 +59,7 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
   useEffect(() => {
     if (activeProfile && isOpen) {
       setFormData({
-        name: (activeProfile.name && activeProfile.name !== 'Nandan') ? activeProfile.name : 'Guest User',
+        name: activeProfile.name || 'Guest User',
         goals: parseGoals(activeProfile.goal),
         dietary_preference: activeProfile.dietary_preference || 'No preference',
         allergens: activeProfile.allergens_to_avoid ? activeProfile.allergens_to_avoid.split(',').map(s => s.trim()).filter(Boolean) : [],

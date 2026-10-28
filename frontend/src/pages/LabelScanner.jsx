@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Camera, FileText, CheckCircle2, AlertTriangle, 
   HelpCircle, Sparkles, ArrowRight, RefreshCw, Barcode, Search,
   ChevronDown, ChevronUp, Info, Smartphone, ExternalLink,
-  PlusCircle, Globe, ShieldCheck, Zap
+  PlusCircle, Globe, ShieldCheck, Zap, Package, AlertCircle
 } from 'lucide-react';
 import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
 import ProductContributionModal from '../components/ProductContributionModal';
@@ -35,6 +35,18 @@ export default function LabelScanner({
   const [barcodeNotFoundInfo, setBarcodeNotFoundInfo] = useState(null);
   const [isContributionModalOpen, setIsContributionModalOpen] = useState(false);
   const [contributionBarcode, setContributionBarcode] = useState('');
+
+  // Product Search by Name / Brand Fallback & Live Autocomplete State
+  const [nameSearchQuery, setNameSearchQuery] = useState('');
+  const [nameSearchResults, setNameSearchResults] = useState([]);
+  const [nameSearchLoading, setNameSearchLoading] = useState(false);
+  const [nameSearchError, setNameSearchError] = useState(null);
+  const [showNameSearch, setShowNameSearch] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
+  const searchContainerRef = useRef(null);
+  const notFoundSearchContainerRef = useRef(null);
+  const searchAbortControllerRef = useRef(null);
 
   // Editable confirmation form state (preserves inputs across views)
   const [internalFormData, setInternalFormData] = useState({
@@ -168,6 +180,331 @@ export default function LabelScanner({
     handleBarcodeLookup(barcodeInput);
   };
 
+  // Live autocomplete search effect with debouncing (280ms)
+  useEffect(() => {
+    const query = nameSearchQuery.trim();
+    if (query.length < 2) {
+      setNameSearchResults([]);
+      setShowSuggestions(false);
+      setNameSearchLoading(false);
+      setNameSearchError(null);
+      return;
+    }
+
+    setNameSearchLoading(true);
+    setNameSearchError(null);
+
+    const timer = setTimeout(async () => {
+      if (searchAbortControllerRef.current) {
+        searchAbortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      searchAbortControllerRef.current = controller;
+
+      try {
+        const res = await fetch(
+          `/api/products/search?q=${encodeURIComponent(query)}&limit=8&include_external=true`,
+          { signal: controller.signal }
+        );
+        if (!res.ok) throw new Error('Search failed');
+        const data = await res.json();
+        setNameSearchResults(data.products || []);
+        setShowSuggestions(true);
+        setActiveSuggestionIdx(-1);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Live search error:', err);
+          setNameSearchError('Could not fetch suggestions. Please check connection.');
+        }
+      } finally {
+        setNameSearchLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [nameSearchQuery]);
+
+  // Click outside to close suggestions dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      const inMain = searchContainerRef.current && searchContainerRef.current.contains(e.target);
+      const inNotFound = notFoundSearchContainerRef.current && notFoundSearchContainerRef.current.contains(e.target);
+      if (!inMain && !inNotFound) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleNameSearch = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const query = nameSearchQuery.trim();
+    if (!query) return;
+
+    setNameSearchLoading(true);
+    setNameSearchError(null);
+    try {
+      const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=12&include_external=true`);
+      const data = await res.json();
+      setNameSearchResults(data.products || []);
+      setShowSuggestions(true);
+      setActiveSuggestionIdx(-1);
+    } catch (err) {
+      console.error('Name search failed:', err);
+      setNameSearchError('Search failed. Please try again.');
+    } finally {
+      setNameSearchLoading(false);
+    }
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (!showSuggestions || nameSearchResults.length === 0) {
+      if (e.key === 'Enter') {
+        handleNameSearch(e);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIdx(prev => (prev < nameSearchResults.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIdx(prev => (prev > 0 ? prev - 1 : nameSearchResults.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeSuggestionIdx >= 0 && activeSuggestionIdx < nameSearchResults.length) {
+        handleSelectSearchResult(nameSearchResults[activeSuggestionIdx]);
+      } else {
+        handleNameSearch(e);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowSuggestions(false);
+      setActiveSuggestionIdx(-1);
+    }
+  };
+
+  const handleSelectSearchResult = (prod) => {
+    if (!prod) return;
+    setShowSuggestions(false);
+    setActiveSuggestionIdx(-1);
+
+    // Prepopulate confirmation form data with verified fields
+    setFormData(prev => ({
+      ...prev,
+      product_name: prod.product_name || prev.product_name || '',
+      brand: prod.brand || prev.brand || '',
+      category: prod.category || prev.category || 'Other',
+      serving_size: prod.serving_size != null ? String(prod.serving_size) : (prev.serving_size || '100'),
+      serving_size_unit: prod.serving_size_unit || prev.serving_size_unit || 'g',
+      measurement_basis: 'per 100g',
+      energy_kcal: prod.energy_kcal != null ? String(prod.energy_kcal) : (prev.energy_kcal || ''),
+      carbohydrates_g: prod.carbohydrates_g != null ? String(prod.carbohydrates_g) : (prev.carbohydrates_g || ''),
+      sugars_g: prod.sugars_g != null ? String(prod.sugars_g) : (prev.sugars_g || ''),
+      added_sugars_g: prod.added_sugars_g != null ? String(prod.added_sugars_g) : (prev.added_sugars_g || ''),
+      protein_g: prod.protein_g != null ? String(prod.protein_g) : (prev.protein_g || ''),
+      total_fat_g: prod.total_fat_g != null ? String(prod.total_fat_g) : (prev.total_fat_g || ''),
+      saturated_fat_g: prod.saturated_fat_g != null ? String(prod.saturated_fat_g) : (prev.saturated_fat_g || ''),
+      trans_fat_g: prod.trans_fat_g != null ? String(prod.trans_fat_g) : (prev.trans_fat_g || ''),
+      sodium_mg: prod.sodium_mg != null ? String(prod.sodium_mg) : (prev.sodium_mg || ''),
+      dietary_fibre_g: prod.dietary_fibre_g != null ? String(prod.dietary_fibre_g) : (prev.dietary_fibre_g || ''),
+      ingredients: prod.ingredients || prev.ingredients || ''
+    }));
+
+    if (prod.is_local && prod.product_id) {
+      // Local catalogue item: view full assessment directly
+      onSelectProduct(prod.product_id);
+    } else if (prod.barcode) {
+      // Open Food Facts product with barcode: trigger barcode lookup to fetch assessment & display result
+      setBarcodeInput(prod.barcode);
+      handleBarcodeLookup(prod.barcode);
+    } else {
+      // No barcode: open confirmation form in manual mode for user review
+      setMode('manual');
+    }
+  };
+
+  const renderNameSearchBox = (containerRef) => (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', maxWidth: 500, margin: '12px auto 0' }}>
+      <form onSubmit={handleNameSearch} style={{ display: 'flex', gap: 8 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            type="text"
+            placeholder="Search by product name or brand (e.g. Lay's, Maggi, Amul)..."
+            value={nameSearchQuery}
+            onChange={(e) => {
+              setNameSearchQuery(e.target.value);
+              if (!showSuggestions && e.target.value.trim().length >= 2) {
+                setShowSuggestions(true);
+              }
+            }}
+            onFocus={() => {
+              if (nameSearchResults.length > 0 || nameSearchQuery.trim().length >= 2) {
+                setShowSuggestions(true);
+              }
+            }}
+            onKeyDown={handleSearchKeyDown}
+            style={{
+              width: '100%',
+              padding: '10px 36px 10px 34px',
+              borderRadius: 8,
+              border: '1px solid var(--color-border)',
+              fontSize: '0.88rem',
+              boxSizing: 'border-box'
+            }}
+          />
+          <Search
+            size={15}
+            color="var(--color-text-muted)"
+            style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+          />
+          {nameSearchLoading && (
+            <div style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+              <RefreshCw size={14} className="spin" color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
+          )}
+        </div>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={nameSearchLoading}
+          style={{ padding: '9px 18px', fontSize: '0.85rem', flexShrink: 0 }}
+        >
+          {nameSearchLoading ? 'Searching...' : 'Search'}
+        </button>
+      </form>
+
+      {/* Live Suggestions Dropdown */}
+      {showSuggestions && nameSearchQuery.trim().length >= 2 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            background: '#ffffff',
+            borderRadius: 8,
+            border: '1px solid var(--color-border)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            maxHeight: 320,
+            overflowY: 'auto',
+            zIndex: 1000,
+            textAlign: 'left'
+          }}
+        >
+          {nameSearchLoading && nameSearchResults.length === 0 && (
+            <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.82rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <RefreshCw size={14} className="spin" color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
+              <span>Searching local catalogue & Open Food Facts...</span>
+            </div>
+          )}
+
+          {nameSearchError && (
+            <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#c62828', background: '#ffebee', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertCircle size={14} />
+              <span>{nameSearchError}</span>
+            </div>
+          )}
+
+          {nameSearchResults.length > 0 && (
+            <>
+              <div style={{ padding: '6px 12px', background: '#f8f9fa', borderBottom: '1px solid #eee', fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+                <span>SUGGESTIONS</span>
+                <span>↑ ↓ to navigate • Enter to select</span>
+              </div>
+              {nameSearchResults.map((prod, idx) => {
+                const isSelected = idx === activeSuggestionIdx;
+                const hasImg = prod.image_url && typeof prod.image_url === 'string' && prod.image_url.trim() !== '' && prod.image_url !== 'None';
+                return (
+                  <div
+                    key={prod.product_id || prod.barcode || idx}
+                    onClick={() => handleSelectSearchResult(prod)}
+                    onMouseEnter={() => setActiveSuggestionIdx(idx)}
+                    style={{
+                      padding: '8px 12px',
+                      borderBottom: idx === nameSearchResults.length - 1 ? 'none' : '1px solid #f2f2f2',
+                      cursor: 'pointer',
+                      background: isSelected ? '#f4f6fd' : '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      transition: 'background 0.1s ease'
+                    }}
+                  >
+                    <div style={{ width: 38, height: 38, borderRadius: 6, background: '#fafafa', border: '1px solid var(--color-border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {hasImg ? (
+                        <img
+                          src={prod.image_url}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                          onError={e => { e.target.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <Package size={18} color="var(--color-text-muted)" />
+                      )}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: '0.85rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main, #222)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '75%' }}>
+                          {prod.product_name}
+                        </strong>
+                        {prod.is_local ? (
+                          <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 4, background: '#e8f5e9', color: '#2e7d32', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <CheckCircle2 size={10} /> Local
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 4, background: '#e3f2fd', color: '#1565c0', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <Globe size={10} /> Open Food Facts
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--color-text-subtle, #666)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span>{prod.brand || 'Brand'}</span>
+                        <span>•</span>
+                        <span>{prod.category || 'Food'}</span>
+                        {prod.barcode && <span>• Barcode: {prod.barcode}</span>}
+                      </div>
+
+                      {prod.nutrition_summary && (prod.nutrition_summary.energy_kcal != null || prod.nutrition_summary.sugars_g != null) && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+                          {prod.nutrition_summary.energy_kcal != null && (
+                            <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 3, background: '#f5f5f5', color: '#555' }}>
+                              {Math.round(Number(prod.nutrition_summary.energy_kcal))} kcal
+                            </span>
+                          )}
+                          {prod.nutrition_summary.sugars_g != null && (
+                            <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 3, background: '#f5f5f5', color: '#555' }}>
+                              Sugar: {Number(prod.nutrition_summary.sugars_g).toFixed(1)}g
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <ArrowRight size={14} color={isSelected ? 'var(--color-primary)' : 'var(--color-text-muted)'} style={{ flexShrink: 0 }} />
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {!nameSearchLoading && nameSearchResults.length === 0 && (
+            <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+              No matching products found in local catalogue or Open Food Facts for "{nameSearchQuery}".
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const handleViewBarcodeAssessment = (foundResult) => {
     if (!foundResult) return;
     if (foundResult.source === 'local_database' && foundResult.product?.product_id) {
@@ -220,9 +557,13 @@ export default function LabelScanner({
     };
 
     try {
-      const res = await fetch('/api/products/assess', {
+      const cid = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
+      const res = await fetch(`/api/products/assess?user_id=${encodeURIComponent(cid)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Id': cid
+        },
         body: JSON.stringify(payload)
       });
       const assessmentData = await res.json();
@@ -252,9 +593,9 @@ export default function LabelScanner({
             borderRadius: 4,
             marginLeft: 6
           }}
-          title={conf ? `OCR Confidence: ${Math.round(conf * 100)}%` : 'Extracted from OCR'}
+          title="Extracted from OCR packaging scan"
         >
-          ✓ {conf ? `${Math.round(conf * 100)}%` : 'Extracted'}
+          ✓ Extracted
         </span>
       );
     }
@@ -357,6 +698,16 @@ export default function LabelScanner({
                 isScanningActive={isCameraActive}
                 onScan={(detectedCode) => handleBarcodeLookup(detectedCode)}
                 onClose={() => setIsCameraActive(false)}
+                onManualEntry={() => {
+                  setIsCameraActive(false);
+                  setTimeout(() => {
+                    const el = document.getElementById('manual-barcode-input');
+                    if (el) {
+                      el.focus();
+                      el.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }, 100);
+                }}
               />
             </div>
           )}
@@ -589,7 +940,36 @@ export default function LabelScanner({
                   <RefreshCw size={15} />
                   <span>Rescan / Try Another</span>
                 </button>
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setShowNameSearch(prev => !prev);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Search size={15} />
+                  <span>Search by Name</span>
+                </button>
               </div>
+
+              {/* Product Name Search Section in Not Found Card */}
+              {showNameSearch && (
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid #ffe0b2' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b73800', display: 'block', marginBottom: 4 }}>
+                    Search Local Indian Food Catalogue & Open Food Facts by Name:
+                  </span>
+                  {renderNameSearchBox(notFoundSearchContainerRef)}
+                </div>
+              )}
             </div>
           )}
 
@@ -628,9 +1008,6 @@ export default function LabelScanner({
                     <Camera size={18} />
                     <span>Open Camera Barcode Scanner</span>
                   </button>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: 8 }}>
-                    Prefers back camera • Flashlight support on mobile • 100% offline detection
-                  </div>
                 </div>
               )}
 
@@ -646,6 +1023,7 @@ export default function LabelScanner({
               {/* Manual Input Form */}
               <form onSubmit={handleBarcodeSearch} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxWidth: 440, margin: '0 auto 16px' }}>
                 <input
+                  id="manual-barcode-input"
                   type="text"
                   placeholder="Enter 8-13 digit barcode..."
                   value={barcodeInput}
@@ -665,30 +1043,33 @@ export default function LabelScanner({
                 </button>
               </form>
 
-              {/* Sample Test Barcodes */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                <span>Try quick sample:</span>
+              {/* Search by Product Name Fallback Toggle */}
+              <div style={{ marginTop: 16 }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setBarcodeInput('8903585650756');
-                    handleBarcodeLookup('8903585650756');
+                  onClick={() => setShowNameSearch(prev => !prev)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-primary)',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontWeight: 600
                   }}
-                  style={{ background: '#f0f4ef', border: '1px solid #d5dfd3', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.72rem' }}
                 >
-                  Local Catalogue (8903585650756)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBarcodeInput('5449000000996');
-                    handleBarcodeLookup('5449000000996');
-                  }}
-                  style={{ background: '#f0f4ef', border: '1px solid #d5dfd3', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: '0.72rem' }}
-                >
-                  Open Food Facts (5449000000996)
+                  <Search size={14} />
+                  <span>{showNameSearch ? 'Hide Name Search' : "Can't find barcode? Search by Product Name or Brand"}</span>
                 </button>
               </div>
+
+              {showNameSearch && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--color-border)', maxWidth: 520, margin: '14px auto 0' }}>
+                  {renderNameSearchBox(searchContainerRef)}
+                </div>
+              )}
 
               {barcodeError && (
                 <div style={{ color: '#c62828', fontSize: '0.85rem', marginTop: 14, background: '#ffebee', padding: 10, borderRadius: 8 }}>
@@ -781,8 +1162,8 @@ export default function LabelScanner({
           {ocrLoading && (
             <div style={{ marginTop: 20, textAlign: 'center', padding: 20, background: '#eaf6e5', borderRadius: 8, color: 'var(--color-primary)' }}>
               <RefreshCw size={24} className="spin" style={{ margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontWeight: 700 }}>Extracting label text using local OCR...</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Running Tesseract 5 with OpenCV preprocessing & cross-field verification</div>
+              <div style={{ fontWeight: 700 }}>Extracting nutrition facts...</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Analyzing packaging image and validating nutritional figures</div>
             </div>
           )}
 
@@ -804,12 +1185,12 @@ export default function LabelScanner({
                   </span>
                   {ocrResult.ocr_confidence > 0 && (
                     <span style={{ fontSize: '0.72rem', background: '#eaf6e5', color: 'var(--color-accent)', padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>
-                      {Math.round(ocrResult.ocr_confidence * 100)}% Confidence
+                      Text Extracted
                     </span>
                   )}
                 </div>
                 <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-                  {ocrResult.ocr_engine}
+                  Local Text Extraction
                 </span>
               </div>
 
@@ -927,9 +1308,9 @@ export default function LabelScanner({
               onChange={e => setFormData({ ...formData, category: e.target.value })}
               style={inputStyle}
             >
-              <option value="Snacks">Snacks (Calibrated)</option>
-              <option value="Breakfast Cereals">Breakfast Cereals (Calibrated)</option>
-              <option value="Packaged Beverages">Packaged Beverages (Calibrated)</option>
+              <option value="Snacks">Snacks</option>
+              <option value="Breakfast Cereals">Breakfast Cereals</option>
+              <option value="Packaged Beverages">Packaged Beverages</option>
               <option value="Biscuits & Bakery">Biscuits & Bakery</option>
               <option value="Chocolates & Sweets">Chocolates & Sweets</option>
               <option value="Instant Foods">Instant Foods</option>

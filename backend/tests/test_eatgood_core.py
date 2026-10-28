@@ -122,15 +122,15 @@ def test_misleading_claims_evaluation():
     assert len(evals) == 3
     # High protein check
     prot_eval = next(e for e in evals if e["claim"] == "High Protein")
-    assert prot_eval["status"] == "Potential inconsistency"
+    assert prot_eval["status"] in ["Potential inconsistency", "Potentially inconsistent with the checked criteria"]
 
     # Zero sugar check
     sugar_eval = next(e for e in evals if e["claim"] == "Zero Sugar")
-    assert sugar_eval["status"] == "Potential inconsistency"
+    assert sugar_eval["status"] in ["Potential inconsistency", "Potentially inconsistent with the checked criteria"]
 
     # No added sugar check (has liquid glucose in ingredients)
     no_added_eval = next(e for e in evals if e["claim"] == "No Added Sugar")
-    assert no_added_eval["status"] == "Potential inconsistency"
+    assert no_added_eval["status"] in ["Potential inconsistency", "Potentially inconsistent with the checked criteria"]
 
 def test_incomplete_data_no_score():
     """Verifies that products with incomplete nutrition declarations do NOT receive a personalized score."""

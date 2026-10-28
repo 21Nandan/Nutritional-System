@@ -6,16 +6,21 @@ import LegalModal from './LegalModal';
 export default function Footer({ setActivePage }) {
   const [legalModalOpen, setLegalModalOpen] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState('privacy');
+  const [heartGlow, setHeartGlow] = useState(false);
 
   const openLegal = (tab) => {
     setLegalModalTab(tab);
     setLegalModalOpen(true);
   };
 
+  const handleHeartClick = () => {
+    setHeartGlow(prev => !prev);
+  };
+
   return (
     <footer className="footer">
       <div className="footer-inner">
-        <div>
+        <div className="footer-brand">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <img 
               src={logoImg} 
@@ -41,40 +46,45 @@ export default function Footer({ setActivePage }) {
           </div>
         </div>
 
-        <div>
-          <h4>Explore</h4>
-          <ul>
-            <li><a href="#scanner" onClick={(e) => { e.preventDefault(); setActivePage('scanner'); }}>Label Scanner</a></li>
-            <li><a href="#catalogue" onClick={(e) => { e.preventDefault(); setActivePage('catalogue'); }}>Product Catalogue</a></li>
-            <li><a href="#compare" onClick={(e) => { e.preventDefault(); setActivePage('compare'); }}>Product Comparison</a></li>
-            <li><a href="#profile" onClick={(e) => { e.preventDefault(); setActivePage('profile'); }}>User Profile</a></li>
-          </ul>
+        {/* Explore & Standards & Data: displayed side-by-side on mobile */}
+        <div className="footer-nav-group">
+          <div className="footer-col">
+            <h4>Explore</h4>
+            <ul>
+              <li><a href="#scanner" onClick={(e) => { e.preventDefault(); setActivePage('scanner'); }}>Label Scanner</a></li>
+              <li><a href="#catalogue" onClick={(e) => { e.preventDefault(); setActivePage('catalogue'); }}>Product Catalogue</a></li>
+              <li><a href="#compare" onClick={(e) => { e.preventDefault(); setActivePage('compare'); }}>Product Comparison</a></li>
+              <li><a href="#profile" onClick={(e) => { e.preventDefault(); setActivePage('profile'); }}>User Profile</a></li>
+            </ul>
+          </div>
+
+          <div className="footer-col">
+            <h4>Standards & Data</h4>
+            <ul>
+              <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>Data Quality Audit</a></li>
+              <li>
+                <a 
+                  href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  WHO Food Guidelines ↗
+                </a>
+              </li>
+              <li>
+                <a 
+                  href="https://www.fssai.gov.in/" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  FSSAI Food Standards ↗
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
 
-        <div>
-          <h4>Standards & Data</h4>
-          <ul>
-            <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>Data Quality Audit</a></li>
-            <li>
-              <a 
-                href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet" 
-                rel="noopener noreferrer"
-              >
-                WHO Food Guidelines ↗
-              </a>
-            </li>
-            <li>
-              <a 
-                href="https://www.fssai.gov.in/" 
-                rel="noopener noreferrer"
-              >
-                FSSAI Food Standards ↗
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        <div>
+        <div className="footer-disclaimer">
           <h4>Important Disclaimer</h4>
           <p style={{ color: '#8da698', fontSize: '0.8rem', lineHeight: 1.5, background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
             EATGOOD is an educational, research-oriented food assessment platform. It does not provide clinical diagnoses, 
@@ -84,7 +94,7 @@ export default function Footer({ setActivePage }) {
       </div>
 
       <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: 20, maxWidth: 1240, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, paddingBottom: 14 }}>
+        <div className="footer-subbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, paddingBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <img 
               src={logoImg} 
@@ -122,7 +132,21 @@ export default function Footer({ setActivePage }) {
 
         <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 14, display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
           <div style={{ color: '#8da698', fontSize: '0.78rem', lineHeight: 1.6 }}>
-            <div>Made with ❤️ in RVCE &nbsp;•&nbsp; v1.0.0</div>
+            <div>
+              Made with{' '}
+              <span
+                className={`rvce-heart ${heartGlow ? 'is-glowing' : ''}`}
+                onClick={handleHeartClick}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleHeartClick(); } }}
+                role="button"
+                tabIndex={0}
+                aria-label="Made with love in Bengaluru — click to toggle glow"
+                title="Made with ❤️ in Bengaluru — Click or hover to glow!"
+              >
+                ❤️
+              </span>{' '}
+              in Bengaluru &nbsp;•&nbsp; v1.0.0
+            </div>
             <div>&copy; 2026 EATGOOD &nbsp;•&nbsp; All rights reserved</div>
           </div>
         </div>

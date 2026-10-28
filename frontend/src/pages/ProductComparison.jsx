@@ -17,7 +17,10 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
   useEffect(() => {
     if (selectedIds.length >= 2) {
       setLoading(true);
-      fetch(`/api/compare?ids=${selectedIds.join(',')}`)
+      const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
+      fetch(`/api/compare?ids=${selectedIds.join(',')}&user_id=${encodeURIComponent(cid)}`, {
+        headers: { 'X-User-Id': cid }
+      })
         .then(res => res.json())
         .then(data => {
           setComparedData(data);
@@ -55,7 +58,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
     if (selectedIds.length > 2) {
       setSelectedIds(selectedIds.filter(id => id !== pid));
     } else {
-      alert('Comparison requires at least 2 products.');
+      alert('Please select at least 2 items to compare.');
     }
   };
 
@@ -75,7 +78,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
       {/* Control bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-          Comparing {products.length} products (Max 4)
+          Active Comparison Matrix ({products.length} items selected)
         </div>
         {selectedIds.length < 4 && (
           <button 
@@ -95,7 +98,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
         </div>
       ) : products.length < 2 ? (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          Select at least 2 products to compare.
+          Select at least 2 items to compare.
         </div>
       ) : (
         <div className="responsive-table-wrapper" style={{ background: '#fff', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
@@ -107,17 +110,36 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                 </th>
                 {products.map(p => (
                   <th key={p.product_id} style={{ padding: '16px 20px', minWidth: '220px', verticalAlign: 'top' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
-                          {p.brand}
-                        </span>
-                        <h4 style={{ fontSize: '1rem', color: 'var(--color-primary)', margin: '2px 0 6px' }}>
-                          {p.product_name}
-                        </h4>
-                        <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
-                          {p.category}
-                        </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        {(p.image_small_url || p.image_url) && (
+                          <img
+                            src={p.image_small_url || p.image_url}
+                            alt={p.product_name}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            style={{
+                              width: 44,
+                              height: 44,
+                              objectFit: 'contain',
+                              borderRadius: 6,
+                              background: '#f8f9fa',
+                              border: '1px solid var(--color-border)',
+                              padding: 2,
+                              flexShrink: 0
+                            }}
+                          />
+                        )}
+                        <div>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
+                            {p.brand}
+                          </span>
+                          <h4 style={{ fontSize: '1rem', color: 'var(--color-primary)', margin: '2px 0 6px' }}>
+                            {p.product_name}
+                          </h4>
+                          <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
+                            {p.category}
+                          </span>
+                        </div>
                       </div>
                       <button 
                         onClick={() => removeProduct(p.product_id)} 

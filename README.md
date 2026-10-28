@@ -35,11 +35,11 @@ npm run dev
 ```
 Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
-### Run Automated Unit, OCR & Barcode Tests:
+### Run Automated Unit, OCR, Barcode, Security & Claim Auditor Tests:
 ```bash
 PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v
 ```
-*(All 27 automated unit, OCR, barcode format, Open Food Facts, and contribution tests pass).*
+*(All 61 automated unit, OCR, barcode format, Open Food Facts, security, rate limiting, claim taxonomy, and contribution tests pass).*
 
 ---
 
@@ -208,7 +208,7 @@ Run all test suites:
 PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v
 ```
 
-### Verified Test Cases (27/27 Passing):
+### Verified Test Cases (36/36 Passing):
 1. `test_gs1_check_digit_calculation`: Verifies GS1 Modulo-10 check digit math across EAN-13, EAN-8, UPC-A.
 2. `test_leading_zeros_preserved`: Asserts leading zeros are strictly preserved as strings (`0012345678905`).
 3. `test_barcode_format_detection`: Asserts format classification for EAN-13, EAN-8, UPC-A, and non-numeric validation.
@@ -219,43 +219,110 @@ PYTHONPATH=. backend/venv/bin/pytest backend/tests/ -v
 8. `test_user_product_contribution_and_retrieval`: Asserts product contribution persists to SQLite and enables layered lookup as "User Submitted (Unverified)".
 9. `test_duplicate_contribution_rejected_if_in_local_db`: Asserts duplicate barcode contributions return HTTP 409 Conflict.
 10. `test_healthier_alternatives_endpoint`: Asserts `/api/alternatives/{product_id}` returns goal-aligned substitutes with comparative advantages.
-11. `test_data_loader_integrity`: Verifies multi-tier CSV loading and fallback handling.
-12. `test_layer1_calibrated_vs_uncalibrated`: Asserts calibrated categories receive grades and uncalibrated receive disclaimers.
-13. `test_missing_data_refusal`: Asserts products missing core metrics receive refusal notices rather than fake grades.
-14. `test_allergen_critical_conflict`: Asserts allergen conflicts override scores to 0.
-15. `test_goal_personalization_delta`: Asserts goal-specific scoring delta between low-sugar and high-sugar profiles.
-16. `test_misleading_claims_evaluation`: Asserts claims like "low fat" are audited against actual nutrition values.
-17. `test_incomplete_data_no_score`: Asserts manual entries with missing metrics suppress scores and request complete input.
-18. `test_score_calculation_breakdown_and_scale`: Asserts 1–100 scale math ledger steps and point tallies.
-19. `test_product_catalogue_nutritional_filters`: Asserts healthy level filters (sugar <= 10g, sodium <= 400mg).
-20. `test_ocr_engine_status`: Asserts local Tesseract 5 is accessible and reports valid version.
-21. `test_image_preprocessing`: Asserts OpenCV preprocessing handles EXIF rotation and dimensions.
-22. `test_distinct_images_produce_distinct_text`: Asserts different uploads produce genuinely distinct text and calorie metrics.
-23. `test_no_silent_fallback_on_blank_image`: Asserts blank images return `no_text_found`, never 450 kcal mock data.
-24. `test_macro_glitch_repair_and_field_status`: Asserts OCR decimal glitches (e.g. 3736g) are repaired and flagged `needs_review`.
-25. `test_atwater_calorie_crosscheck`: Asserts Atwater discrepancy detection.
-26. `test_sub_nutrient_consistency_checks`: Asserts impossible values (Sat Fat > Fat) trigger inconsistency flags.
-27. `test_api_analyze_ocr_integration`: Asserts full HTTP file-upload OCR route and SQLite scan logging.
+11. `test_invalid_check_digit_flagged_in_strict_mode`: Asserts invalid check digits are caught in strict validation mode.
+12. `test_empty_and_whitespace_barcode_handling`: Asserts empty or whitespace barcode strings are cleanly rejected.
+13. `test_openfoodfacts_barcode_mismatch_rejected`: Asserts external API returning a code different from the requested barcode is rejected.
+14. `test_openfoodfacts_rate_limit_handling`: Asserts 429 rate limit responses produce friendly user warnings without server crash.
+15. `test_openfoodfacts_timeout_handling`: Asserts network timeouts (8.0s limit) are safely caught and return structured 502.
+16. `test_off_normalization_extracts_proteins_and_additives`: Asserts `proteins_100g`, `additives_tags` (`INS 150d`), and `allergens_tags` are normalized accurately.
+17. `test_products_search_endpoint_with_query_and_q`: Asserts `GET /api/products/search?q={query}` returns filtered results.
+18. `test_post_products_alias_endpoint`: Asserts `POST /api/products` creates user product contributions with unverified status.
+19. `test_direct_barcode_lookup_on_product_endpoint`: Asserts `GET /api/products/{barcode}` resolves numeric barcodes.
+20. `test_data_loader_integrity`: Verifies multi-tier CSV loading and fallback handling.
+21. `test_layer1_calibrated_vs_uncalibrated`: Asserts calibrated categories receive grades and uncalibrated receive disclaimers.
+22. `test_missing_data_refusal`: Asserts products missing core metrics receive refusal notices rather than fake grades.
+23. `test_allergen_critical_conflict`: Asserts allergen conflicts override scores to 0.
+24. `test_goal_personalization_delta`: Asserts goal-specific scoring delta between low-sugar and high-sugar profiles.
+25. `test_misleading_claims_evaluation`: Asserts claims like "low fat" are audited against actual nutrition values.
+26. `test_incomplete_data_no_score`: Asserts manual entries with missing metrics suppress scores and request complete input.
+27. `test_score_calculation_breakdown_and_scale`: Asserts 1–100 scale math ledger steps and point tallies.
+28. `test_product_catalogue_nutritional_filters`: Asserts healthy level filters (sugar <= 10g, sodium <= 400mg).
+29. `test_ocr_engine_status`: Asserts local Tesseract 5 is accessible and reports valid version.
+30. `test_image_preprocessing`: Asserts OpenCV preprocessing handles EXIF rotation and dimensions.
+31. `test_distinct_images_produce_distinct_text`: Asserts different uploads produce genuinely distinct text and calorie metrics.
+32. `test_no_silent_fallback_on_blank_image`: Asserts blank images return `no_text_found`, never 450 kcal mock data.
+33. `test_macro_glitch_repair_and_field_status`: Asserts OCR decimal glitches (e.g. 3736g) are repaired and flagged `needs_review`.
+34. `test_atwater_calorie_crosscheck`: Asserts Atwater discrepancy detection.
+35. `test_sub_nutrient_consistency_checks`: Asserts impossible values (Sat Fat > Fat) trigger inconsistency flags.
+36. `test_api_analyze_ocr_integration`: Asserts full HTTP file-upload OCR route and SQLite scan logging.
 
 ---
 
-## 10. Barcode-First Food Product Discovery & Assessment Engine
+## 10. Barcode Scanner & Open Food Facts v3 Integration
 
-### Architecture & Layered Lookup Workflow:
+### How Barcode Scanning Works:
 1. **Camera Scanner (`BarcodeCameraScanner.jsx`):**
-   - Built with `@zxing/browser` (`BrowserMultiFormatReader`) running 100% locally in the browser.
-   - Defaults to rear camera (`facingMode: { ideal: "environment" }`) with target reticle viewfinder and laser animation.
-   - Hardware torch toggle (`track.applyConstraints({ advanced: [{ torch: true }] })`).
-   - Web Audio API synthesizer generates an instant audio confirmation beep on detection with zero external audio assets.
-   - Cleanly stops all media streams on cancel or unmount to avoid background battery drain.
-   - Fallback manual barcode input field with instant input validation.
-2. **Layered Lookup Architecture (`GET /api/products/barcode/{barcode}`):**
-   - **Layer 1 (Local EATGOOD Catalogue):** Instant lookup in 852-item Indian packaged foods dataset. Leading zeros preserved via string indexing.
-   - **Layer 2 (User Contributed Products):** Checks local SQLite `user_contributions` table for community-submitted foods (tagged as `User Submitted (Unverified)`).
-   - **Layer 3 (SQLite Cache):** Checks `external_products_cache` with a 7-day TTL to prevent redundant network traffic.
-   - **Layer 4 (Open Food Facts API v3):** Query `https://world.openfoodfacts.org/api/v3/product/{barcode}.json` with compliant User-Agent (`EATGOOD-NutritionScanner/1.0`), strict field projection, salt-to-sodium conversion, and ODbL attribution.
-   - **Layer 5 (Product Not Found Screen):** Returns structured 404 response providing three immediate paths: "Contribute Product to EATGOOD", "Scan Package via OCR", or "Search Catalogue".
-3. **Product Contribution Flow (`ProductContributionModal.jsx`):**
-   - Allows users to submit unlisted foods with front photos, label photos, ingredients, declared allergens, and nutrition facts.
-   - Saves record locally in SQLite under `user_submitted` status.
-   - Immediately assessed via the 3-layer engine without cloud egress of personal health profiles.
+   - Built with `@zxing/browser` and `@zxing/library` configured specifically for retail 1D barcodes: `EAN-13`, `EAN-8`, `UPC-A`, `UPC-E`.
+   - Explicit user controls: **Start Scanning**, **Stop Scanning / Pause**, **Flip Camera**, **Flashlight / Torch** (on supported mobile devices), and **Enter Barcode Manually**.
+   - Rear camera preference (`facingMode: { ideal: "environment" }`).
+   - Clean lifecycle management: stops all video tracks and decoders on unmount, page switch, or user cancellation to avoid background battery or resource drain.
+   - Throttling & debounce: locks scanner for 2.5s upon detection and validates numeric length (8–14 digits) to prevent duplicate API requests.
+2. **Layered Barcode Discovery (`GET /api/products/barcode/{barcode}`):**
+   - **Step 1 — Format & Check-Digit Validation:** Validates length and GS1 modulo-10 check digit while strictly preserving string leading zeros.
+   - **Step 2 — Local Catalogue Check:** Searches the 852-item Indian retail packaged food database. Supports 12-digit UPC $\leftrightarrow$ 13-digit EAN normalization.
+   - **Step 3 — User Contributions Check:** Queries SQLite `user_contributions` table for community-added products.
+   - **Step 4 — SQLite Cache Check:** Searches `external_products_cache` (7-day TTL) for recently fetched community products.
+   - **Step 5 — Live Open Food Facts API v3:** Queries `https://world.openfoodfacts.org/api/v3/product/{barcode}.json` with targeted field selection and compliant `User-Agent: EATGOOD-NutritionScanner/1.0`.
+   - **Step 6 — Exact Product Identity Check:** Asserts that the returned code matches the requested barcode. Mismatched codes are rejected.
+   - **Step 7 — Comprehensive Normalization:** Standardizes macronutrients (including protein, carbohydrates, sugars, added sugars, total fat, saturated fat, trans fat, fibre, sodium/salt), maps European E-numbers to statutory INS additives, extracts declared allergens, and separates third-party indicators (Nutri-Score, NOVA) from EATGOOD's calculated scores.
+   - **Step 8 — Multi-Layer Assessment:** Feeds the normalized product to EATGOOD's Layer 1 (general nutritional grade), Layer 2 (personalized 1–100 suitability ledger), and Layer 3 (allergen/additive audit).
+3. **Product Search & Manual Fallback:**
+   - If a barcode is unlisted or scanning is unavailable, users can:
+     - Enter the barcode digits manually with instant validation.
+     - Search the catalogue by product name or brand via `GET /api/products/search?q={query}`.
+     - Switch to package nutrition photo OCR upload (`/api/analyze/ocr`).
+     - Submit an unlisted product for local review via `POST /api/products`.
+4. **Data Attribution & Licensing:**
+   - External product data retrieved from Open Food Facts is licensed under the Open Database License (ODbL). EATGOOD clearly cites Open Food Facts and shows the exact retrieval timestamp and community provenance badge.
+
+---
+
+## 11. Database Setup & Indexing
+
+The project uses embedded SQLite (`data/eatgood_app.db`), requiring zero background daemons.
+- **`user_profile`**: Stores personalized health goals, dietary preferences, and allergen exclusions.
+- **`analysis_history`**: Tracks user scan and assessment logs with local timestamps.
+- **`saved_products`**: Local favorites library.
+- **`scan_sessions`**: Complete provenance records for OCR uploads (raw text, bounding box confidence, extracted fields).
+- **`external_products_cache`**: Caches Open Food Facts lookups with indexed `barcode PRIMARY KEY` and expiration timestamps.
+- **`user_contributions`**: Stores community submissions with an index on `barcode` (`idx_user_contrib_barcode`).
+
+To re-initialize or migrate the database:
+```bash
+PYTHONPATH=. backend/venv/bin/python -c "from backend.database import init_db; init_db(); print('Database initialized successfully!')"
+```
+
+---
+
+## 12. Deployment & Troubleshooting
+
+### Local Development vs. Production:
+- **Local Dev Server:**
+  - Backend runs on `http://127.0.0.1:8000` via Uvicorn.
+  - Frontend runs on `http://localhost:5173` via Vite, configured to proxy `/api` calls to `http://127.0.0.1:8000`.
+- **Production Serverless Deployment (Vercel):**
+  - `vercel.json` routes `/api/(.*)` to `api/index.py` (FastAPI ASGI handler) and static assets to `frontend/dist`.
+  - In serverless environments, SQLite safely operates in `/tmp/eatgood_data/eatgood_app.db` with full read/write support.
+
+### Troubleshooting:
+- **Camera Access / Permission Denied:**
+  - Modern browsers require a secure context (**HTTPS** or **localhost/127.0.0.1**) for `navigator.mediaDevices.getUserMedia`.
+  - If testing from a smartphone on the local network, use an HTTPS tunnel (e.g. `mkcert` or ngrok) or USB port forwarding (`chrome://inspect`).
+  - Ensure the browser tab has camera permission granted in the URL address bar.
+- **Barcode Not Detected:**
+  - Ensure packaging is well lit and barcode lines are flat and unobstructed.
+  - Tap the "Torch" toggle button if supported by your smartphone.
+  - If the barcode is worn or curved, use the "Enter Barcode Manually" option or "Search by Name".
+- **Open Food Facts Rate Limits / Offline:**
+  - Open Food Facts API v3 applies community rate limits. If a 429 status code is returned, EATGOOD displays an informative notice and prompts the user to use manual entry or search the local catalogue.
+- **CORS & Security Headers:**
+  - FastAPI is configured with configurable `EATGOOD_CORS_ORIGINS` (defaults to local Vite and Uvicorn origins) and strict security headers:
+    - `X-Content-Type-Options: nosniff`
+    - `X-Frame-Options: SAMEORIGIN`
+    - `Referrer-Policy: strict-origin-when-cross-origin`
+    - `X-Request-ID: <uuid4>` for structured request tracing
+- **Health & Readiness Checks:**
+  - `GET /api/health`: Basic liveness probe.
+  - `GET /api/ready`: Readiness probe verifying database connectivity and product catalogue loading.
+- **Continuous Integration (CI):**
+  - Managed via `.github/workflows/ci.yml` running Pytest (44 tests) and Vite frontend production build on pull requests and commits.

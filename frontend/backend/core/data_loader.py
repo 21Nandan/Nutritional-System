@@ -5,8 +5,48 @@ Preserves original values, tracks data quality statuses, and prevents silent zer
 """
 
 import os
+import re
 import pandas as pd
 import numpy as np
+
+# Common stem and synonym expansions for Indian packaged foods search
+COMMON_STEMS = {
+    "choco": ["choco", "choc", "chocolate", "chocolates"],
+    "chocolate": ["choco", "choc", "chocolate", "chocolates"],
+    "biscuit": ["biscuit", "biscuits", "cookie", "cookies"],
+    "biscuits": ["biscuit", "biscuits", "cookie", "cookies"],
+    "cookie": ["cookie", "cookies", "biscuit", "biscuits"],
+    "cookies": ["cookie", "cookies", "biscuit", "biscuits"],
+    "coke": ["coke", "coca-cola", "coca cola"],
+    "cola": ["coca-cola", "coca cola", "cola", "coke"],
+    "maggi": ["maggi", "maggie", "nestle"],
+    "maggie": ["maggi", "maggie", "nestle"],
+    "lays": ["lay's", "lays", "lay"],
+    "lay": ["lay's", "lays", "lay"],
+    "chip": ["chip", "chips", "crisp", "crisps", "wafers"],
+    "chips": ["chip", "chips", "crisp", "crisps", "wafers"],
+    "noodle": ["noodle", "noodles"],
+    "noodles": ["noodle", "noodles"],
+    "butter": ["butter", "makkhan"],
+    "tea": ["tea", "chai"],
+    "chai": ["tea", "chai"],
+    "coffee": ["coffee", "cafe"],
+    "atta": ["atta", "flour", "wheat"],
+    "flour": ["atta", "flour", "maida"],
+    "dahi": ["dahi", "curd", "yogurt", "yoghurt"],
+    "curd": ["dahi", "curd", "yogurt", "yoghurt"],
+    "yogurt": ["dahi", "curd", "yogurt", "yoghurt"],
+    "paneer": ["paneer", "cottage cheese"],
+    "milk": ["milk", "dairy"],
+    "namkeen": ["namkeen", "bhujia", "sev", "mixture"],
+    "bhujia": ["bhujia", "namkeen", "sev"],
+    "sev": ["sev", "bhujia", "namkeen"],
+    "haldiram": ["haldiram", "haldirams", "haldiram's"],
+    "haldirams": ["haldiram", "haldirams", "haldiram's"],
+    "parle": ["parle", "parle-g", "parleg"],
+    "cadbury": ["cadbury", "cadburys"],
+    "britannia": ["britannia", "good day"],
+}
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -74,6 +114,33 @@ class DataLoaderService:
         if os.path.exists(users_path):
             self.users_df = pd.read_csv(users_path)
 
+        # Seed curated authentic Open Food Facts images if table is fresh
+        try:
+            from backend.core.image_enrichment import seed_initial_curated_images
+            seed_initial_curated_images()
+        except Exception:
+            pass
+
+        # Merge enriched product images from SQLite registry
+        try:
+            from backend.database import get_all_product_images
+            image_records = get_all_product_images()
+            if image_records and self.products_df is not None and not self.products_df.empty:
+                img_df = pd.DataFrame(list(image_records.values()))
+                cols_to_merge = [
+                    "product_id", "image_url", "image_small_url",
+                    "image_ingredients_url", "image_nutrition_url",
+                    "image_source", "matching_method", "review_status"
+                ]
+                cols_present = [c for c in cols_to_merge if c in img_df.columns]
+                # Drop existing image cols if any to avoid duplication
+                for c in ["image_url", "image_small_url", "image_ingredients_url", "image_nutrition_url", "image_source", "matching_method", "review_status"]:
+                    if c in self.products_df.columns:
+                        self.products_df.drop(columns=[c], inplace=True)
+                self.products_df = self.products_df.merge(img_df[cols_present], on="product_id", how="left")
+        except Exception as e:
+            print(f"Notice: Image merge failed in DataLoader: {e}")
+
     def search_products(
         self,
         query: str = "",
@@ -84,6 +151,7 @@ class DataLoaderService:
         max_sat_fat: float = None,
         min_fibre: float = None,
         min_protein: float = None,
+        has_image: bool = None,
         limit: int = 50,
         offset: int = 0,
         deduplicate_variants: bool = False
@@ -101,6 +169,13 @@ class DataLoaderService:
 
         if brand and brand != "All":
             df = df[df["brand"] == brand]
+
+        if has_image is True:
+            if "image_url" in df.columns:
+                df = df[df["image_url"].notna() & (df["image_url"].astype(str).str.strip() != "") & (df["image_url"].astype(str) != "None")]
+        elif has_image is False:
+            if "image_url" in df.columns:
+                df = df[df["image_url"].isna() | (df["image_url"].astype(str).str.strip() == "") | (df["image_url"].astype(str) == "None")]
 
         if max_sugars is not None:
             df = df[pd.notna(df["sugars_g"]) & (df["sugars_g"].astype(float) <= float(max_sugars))]
@@ -136,26 +211,89 @@ class DataLoaderService:
                     )
                     df = df[mask]
             else:
-                search_terms = [q]
-                if q in ["cok", "coke"]:
-                    search_terms.extend(["coca-cola", "coca cola", "coke"])
-                elif q in ["maggie", "maggi"]:
-                    search_terms.extend(["maggi", "maggie"])
-                elif q in ["lays", "lay"]:
-                    search_terms.extend(["lay's", "lays", "lay"])
+                # Multi-token conjunctive search with stem expansion and fallback
+                raw_tokens = [t for t in re.split(r"[\s,\-_/]+", q) if len(t) >= 2]
+                if not raw_tokens and q:
+                    raw_tokens = [q]
 
-                mask = pd.Series(False, index=df.index)
-                for term in search_terms:
-                    mask = mask | (
-                        df["product_name"].str.lower().str.contains(term, na=False) |
-                        df["brand"].str.lower().str.contains(term, na=False) |
-                        df["ingredients"].str.lower().str.contains(term, na=False) |
-                        df["barcode"].astype(str).str.contains(term, na=False)
-                    )
-                df = df[mask]
+                cols_to_check = ["product_name", "brand", "category", "sub_category", "ingredients"]
+                existing_cols = [c for c in cols_to_check if c in df.columns]
+
+                token_masks = []
+                for token in raw_tokens:
+                    variants = COMMON_STEMS.get(token, [token])
+                    t_mask = pd.Series(False, index=df.index)
+                    for var in variants:
+                        for col in existing_cols:
+                            t_mask = t_mask | df[col].astype(str).str.lower().str.contains(re.escape(var), na=False)
+                    token_masks.append(t_mask)
+
+                # First attempt: Conjunction (all query tokens matched across fields)
+                conjunction = pd.Series(True, index=df.index)
+                for t_mask in token_masks:
+                    conjunction = conjunction & t_mask
+
+                matched = df[conjunction].copy()
+
+                # Fallback: if conjunction returned 0 and we have multiple tokens, try disjunction (any token matched)
+                if matched.empty and len(token_masks) > 1:
+                    disjunction = pd.Series(False, index=df.index)
+                    for t_mask in token_masks:
+                        disjunction = disjunction | t_mask
+                    matched = df[disjunction].copy()
+
+                if not matched.empty:
+                    # Relevance scoring: reward exact matches, prefix matches, and name matches
+                    scores = pd.Series(0, index=matched.index)
+                    for idx, row in matched.iterrows():
+                        score = 0
+                        p_name = str(row.get("product_name", "")).lower()
+                        p_brand = str(row.get("brand", "")).lower()
+                        p_cat = str(row.get("category", "")).lower()
+
+                        if q in p_name:
+                            score += 100
+                        if q in p_brand:
+                            score += 80
+                        if p_name.startswith(q) or q.startswith(p_name):
+                            score += 40
+
+                        for token in raw_tokens:
+                            variants = COMMON_STEMS.get(token, [token])
+                            if any(v in p_name for v in variants):
+                                score += 30
+                            if any(v in p_brand for v in variants):
+                                score += 25
+                            if any(v in p_cat for v in variants):
+                                score += 15
+
+                        if pd.notna(row.get("image_url")) and str(row.get("image_url")).strip() not in ["", "None"]:
+                            score += 10
+
+                        scores[idx] = score
+
+                    matched["_relevance_score"] = scores
+                    df = matched.sort_values(by="_relevance_score", ascending=False)
+                else:
+                    df = matched
 
         total = len(df)
         records = df.iloc[offset:offset+limit].replace({np.nan: None}).to_dict(orient="records")
+
+        # Enrich local records with consistent local metadata and nutrition summaries
+        for rec in records:
+            rec["is_local"] = True
+            rec["source"] = "Local Indian Catalogue"
+            rec["nutrition_summary"] = {
+                "energy_kcal": rec.get("energy_kcal"),
+                "sugars_g": rec.get("sugars_g"),
+                "protein_g": rec.get("protein_g"),
+                "sodium_mg": rec.get("sodium_mg"),
+                "saturated_fat_g": rec.get("saturated_fat_g"),
+                "serving_size": rec.get("serving_size"),
+                "serving_size_unit": rec.get("serving_size_unit", "g")
+            }
+
         return {"total": total, "products": records}
 
     def get_product_by_id(self, product_id: str):
@@ -171,6 +309,11 @@ class DataLoaderService:
             return None
         code_str = str(barcode).strip()
         matches = self.products_df[self.products_df["barcode"].astype(str).str.strip() == code_str]
+        if matches.empty:
+            if len(code_str) == 12:
+                matches = self.products_df[self.products_df["barcode"].astype(str).str.strip() == f"0{code_str}"]
+            elif len(code_str) == 13 and code_str.startswith("0"):
+                matches = self.products_df[self.products_df["barcode"].astype(str).str.strip() == code_str[1:]]
         if matches.empty:
             return None
         return matches.iloc[0].replace({np.nan: None}).to_dict()

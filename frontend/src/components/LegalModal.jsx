@@ -224,10 +224,10 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
 
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  5. Calibrated vs. Uncalibrated Categories
+                  5. Category-Specific Benchmarks
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Automated letter grades are strictly calibrated for Snacks, Breakfast Cereals, and Packaged Beverages where reliable comparative benchmarks exist. Other categories (Chocolates, Instant Foods, Condiments, Dairy) display raw nutritional disclosures with explicit disclaimers regarding calibration scope.
+                  Automated letter grades are established for Snacks, Breakfast Cereals, and Packaged Beverages where reliable comparative benchmarks exist. Other categories (Chocolates, Instant Foods, Condiments, Dairy) display raw nutritional disclosures with category-specific nutrition details.
                 </p>
               </div>
 

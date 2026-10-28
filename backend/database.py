@@ -48,12 +48,18 @@ else:
 
 def get_connection():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA busy_timeout = 5000;")
+            conn.execute("PRAGMA foreign_keys = ON;")
+        except Exception:
+            pass
         return conn
     except Exception as e:
         # Graceful fallback to memory database if filesystem is completely locked
-        conn = sqlite3.connect(":memory:")
+        conn = sqlite3.connect(":memory:", timeout=10.0)
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -140,6 +146,24 @@ def init_db():
     )
     """)
 
+    # Product Images table (Enriched Open Food Facts imagery with match audit)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS product_images (
+        product_id TEXT PRIMARY KEY,
+        barcode TEXT,
+        image_url TEXT,
+        image_small_url TEXT,
+        image_ingredients_url TEXT,
+        image_nutrition_url TEXT,
+        image_source TEXT,
+        matching_method TEXT,
+        review_status TEXT,
+        enriched_at TIMESTAMP
+    )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prod_images_barcode ON product_images(barcode)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prod_images_status ON product_images(review_status)")
+
     # User Contributions table (Products submitted by users when not found)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_contributions (
@@ -163,14 +187,10 @@ def init_db():
         created_at TIMESTAMP
     )
     """)
-
-    # Clean up any legacy development traces or dev name
-    try:
-        cursor.execute("UPDATE user_profile SET name = 'Guest User', goal = 'Balanced Choices', dietary_preference = 'No preference', allergens_to_avoid = '' WHERE name = 'Nandan'")
-        cursor.execute("DELETE FROM analysis_history WHERE timestamp < '2026-10-28T02:00:00'")
-        cursor.execute("DELETE FROM scan_sessions WHERE created_at < '2026-10-28T02:00:00'")
-    except Exception:
-        pass
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_contrib_barcode ON user_contributions(barcode)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_history_user_id ON analysis_history(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_history_timestamp ON analysis_history(timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ext_cache_expires ON external_products_cache(expires_at)")
 
     # Insert default active profile if empty
     cursor.execute("SELECT COUNT(*) FROM user_profile")
@@ -192,27 +212,36 @@ def init_db():
     conn.commit()
     conn.close()
 
-def get_active_profile():
+def get_active_profile(user_id: Optional[str] = None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM user_profile ORDER BY id DESC LIMIT 1")
-    row = cursor.fetchone()
+    row = None
+    if user_id:
+        cursor.execute("SELECT * FROM user_profile WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,))
+        row = cursor.fetchone()
+    if not row:
+        cursor.execute("SELECT * FROM user_profile WHERE user_id = 'USR_DEFAULT' ORDER BY id DESC LIMIT 1")
+        row = cursor.fetchone()
+    if not row:
+        cursor.execute("SELECT * FROM user_profile ORDER BY id DESC LIMIT 1")
+        row = cursor.fetchone()
     conn.close()
     if row:
         return dict(row)
     return {
-        "user_id": "USR_DEFAULT",
+        "user_id": user_id or "USR_DEFAULT",
         "name": "Guest User",
         "goal": "Balanced Choices",
         "dietary_preference": "No preference",
         "allergens_to_avoid": "",
-        "age_group": "25-34",
+        "age_group": "18-24",
         "activity_level": "Moderately active"
     }
 
 def save_active_profile(profile_data: dict):
     conn = get_connection()
     cursor = conn.cursor()
+    target_uid = profile_data.get("user_id") or "USR_DEFAULT"
     cursor.execute("""
     INSERT INTO user_profile (user_id, name, goal, dietary_preference, allergens_to_avoid, age_group, activity_level, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -225,10 +254,10 @@ def save_active_profile(profile_data: dict):
         activity_level=excluded.activity_level,
         updated_at=excluded.updated_at
     """, (
-        profile_data.get("user_id", "USR_DEFAULT"),
-        profile_data.get("name", "Guest User"),
-        profile_data.get("goal", "Balanced Choices"),
-        profile_data.get("dietary_preference", "No preference"),
+        target_uid,
+        profile_data.get("name") or "Guest User",
+        profile_data.get("goal") or "Balanced Choices",
+        profile_data.get("dietary_preference") or "No preference",
         profile_data.get("allergens_to_avoid", ""),
         profile_data.get("age_group", "18-24"),
         profile_data.get("activity_level", "Moderately active"),
@@ -236,7 +265,7 @@ def save_active_profile(profile_data: dict):
     ))
     conn.commit()
     conn.close()
-    return get_active_profile()
+    return get_active_profile(target_uid)
 
 def record_analysis_history(product_id: str, product_name: str, brand: str, category: str, score: int, grade: str, source: str = "Catalogue Search", user_id: str = "USR_DEFAULT"):
     conn = get_connection()
@@ -501,6 +530,125 @@ def get_user_contribution_by_barcode(barcode: str):
         except Exception:
             pass
     return d
+
+# --- Product Images (Open Food Facts Imagery Store) ---
+
+def get_product_image(product_id: str) -> Optional[dict]:
+    """Retrieves image metadata for a given product_id."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM product_images WHERE product_id = ?", (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return None
+
+def get_all_product_images() -> Dict[str, dict]:
+    """Retrieves all enriched product images keyed by product_id."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM product_images")
+    rows = cursor.fetchall()
+    conn.close()
+    return {r["product_id"]: dict(r) for r in rows}
+
+def delete_product_image(product_id: str) -> bool:
+    """Deletes an image record from product_images registry."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+def upsert_product_image(
+    product_id: str,
+    barcode: Optional[str] = None,
+    image_url: Optional[str] = None,
+    image_small_url: Optional[str] = None,
+    image_ingredients_url: Optional[str] = None,
+    image_nutrition_url: Optional[str] = None,
+    image_source: str = "openfoodfacts",
+    matching_method: str = "exact_barcode",
+    review_status: str = "verified"
+):
+    """Upserts single product image record into local SQLite registry."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO product_images (
+        product_id, barcode, image_url, image_small_url,
+        image_ingredients_url, image_nutrition_url,
+        image_source, matching_method, review_status, enriched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id) DO UPDATE SET
+        barcode=COALESCE(excluded.barcode, product_images.barcode),
+        image_url=excluded.image_url,
+        image_small_url=excluded.image_small_url,
+        image_ingredients_url=excluded.image_ingredients_url,
+        image_nutrition_url=excluded.image_nutrition_url,
+        image_source=excluded.image_source,
+        matching_method=excluded.matching_method,
+        review_status=excluded.review_status,
+        enriched_at=excluded.enriched_at
+    """, (
+        product_id,
+        str(barcode).strip() if barcode else None,
+        image_url,
+        image_small_url,
+        image_ingredients_url,
+        image_nutrition_url,
+        image_source,
+        matching_method,
+        review_status,
+        datetime.now().isoformat()
+    ))
+    conn.commit()
+    conn.close()
+
+def upsert_product_images_batch(records: List[dict]):
+    """Batch upsert multiple product images inside a single transaction."""
+    if not records:
+        return
+    conn = get_connection()
+    cursor = conn.cursor()
+    now_iso = datetime.now().isoformat()
+    params = [
+        (
+            r["product_id"],
+            str(r.get("barcode", "")).strip() or None,
+            r.get("image_url"),
+            r.get("image_small_url"),
+            r.get("image_ingredients_url"),
+            r.get("image_nutrition_url"),
+            r.get("image_source", "openfoodfacts"),
+            r.get("matching_method", "exact_barcode"),
+            r.get("review_status", "verified"),
+            now_iso
+        )
+        for r in records
+    ]
+    cursor.executemany("""
+    INSERT INTO product_images (
+        product_id, barcode, image_url, image_small_url,
+        image_ingredients_url, image_nutrition_url,
+        image_source, matching_method, review_status, enriched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id) DO UPDATE SET
+        barcode=COALESCE(excluded.barcode, product_images.barcode),
+        image_url=excluded.image_url,
+        image_small_url=excluded.image_small_url,
+        image_ingredients_url=excluded.image_ingredients_url,
+        image_nutrition_url=excluded.image_nutrition_url,
+        image_source=excluded.image_source,
+        matching_method=excluded.matching_method,
+        review_status=excluded.review_status,
+        enriched_at=excluded.enriched_at
+    """, params)
+    conn.commit()
+    conn.close()
 
 # Initialize DB on load
 init_db()

@@ -63,8 +63,14 @@ ADDITIVE_KNOWLEDGE_BASE = {
     "INS 260": {"name": "Acetic Acid", "class": "Acidity Regulator", "note": "Standard vinegar component; food-grade preservative."},
     "INS 322": {"name": "Lecithin (Soy / Sunflower)", "class": "Emulsifier", "note": "Natural lipid emulsifier; flag as Soy allergen when soy-derived."},
     "INS 330": {"name": "Citric Acid", "class": "Acidity Regulator & Antioxidant", "note": "Standard organic acid found in citrus fruits."},
+    "INS 338": {"name": "Phosphoric Acid", "class": "Acidity Regulator", "note": "Permitted acidulant commonly used in colas and beverages under FSSAI statutory limits."},
+    "INS 407": {"name": "Carrageenan", "class": "Thickener & Stabilizer", "note": "Seaweed-derived polysaccharide gelling agent."},
+    "INS 415": {"name": "Xanthan Gum", "class": "Thickener & Stabilizer", "note": "Fermentation-derived plant gum providing emulsion stability."},
+    "INS 440": {"name": "Pectin", "class": "Gelling Agent", "note": "Naturally occurring fruit polysaccharide used in jams and confectionery."},
     "INS 412": {"name": "Guar Gum", "class": "Thickener & Stabilizer", "note": "Plant-derived hydrocolloid from guar beans."},
     "INS 471": {"name": "Mono- and Di-glycerides of Fatty Acids", "class": "Emulsifier", "note": "Standard food-grade lipid emulsifier."},
+    "INS 500": {"name": "Sodium Carbonates", "class": "Acidity Regulator & Raising Agent", "note": "Mineral leavening agent permitted under FSSAI."},
+    "INS 500(i)": {"name": "Sodium Carbonate", "class": "Raising Agent", "note": "Washing soda; mineral acidity regulator."},
     "INS 500(ii)": {"name": "Sodium Bicarbonate", "class": "Raising Agent", "note": "Baking soda; safe mineral leavening agent."},
     "INS 503(ii)": {"name": "Ammonium Bicarbonate", "class": "Raising Agent", "note": "Baker's ammonia; standard biscuit leavener."}
 }

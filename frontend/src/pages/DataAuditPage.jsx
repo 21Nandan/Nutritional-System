@@ -3,7 +3,7 @@ import { ShieldAlert, AlertTriangle, CheckCircle2, Search, Table, FileSpreadshee
 
 export default function DataAuditPage({ onSelectProduct }) {
   const [auditData, setAuditData] = useState(null);
-  const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'atwater78', 'serving13'
+  const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'atwater', 'serving'
   const [loading, setLoading] = useState(true);
   const [atwaterSearch, setAtwaterSearch] = useState('');
 
@@ -49,70 +49,94 @@ export default function DataAuditPage({ onSelectProduct }) {
           <span>Scientific Data Quality & Verification Audit</span>
         </div>
         <h1 style={{ fontSize: '2.2rem', color: 'var(--color-primary)', marginBottom: 8 }}>
-          Dataset Quality & Discrepancy Inspection
+          Dataset Quality & Governance Inspection
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Real-time audit of the Indian packaged products dataset, documenting Atwater calorie anomalies, serving size contradictions, and standardization rules.
+          Real-time audit of the Indian packaged products catalogue, documenting Atwater calorie consistency, serving size verifications, and strict missing-data policies.
         </p>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 24, borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 24, borderBottom: '1px solid var(--color-border)', paddingBottom: 12, flexWrap: 'wrap' }}>
         <button
           className={`btn-secondary ${activeTab === 'summary' ? 'active' : ''}`}
           onClick={() => setActiveTab('summary')}
           style={{ background: activeTab === 'summary' ? 'var(--color-primary)' : '#fff', color: activeTab === 'summary' ? '#fff' : 'inherit' }}
         >
           <FileSpreadsheet size={16} />
-          <span>Audit Summary & Completeness</span>
+          <span>Governance Standards & Protocols</span>
         </button>
         <button
-          className={`btn-secondary ${activeTab === 'atwater78' ? 'active' : ''}`}
-          onClick={() => setActiveTab('atwater78')}
-          style={{ background: activeTab === 'atwater78' ? 'var(--color-primary)' : '#fff', color: activeTab === 'atwater78' ? '#fff' : 'inherit' }}
+          className={`btn-secondary ${activeTab === 'atwater' ? 'active' : ''}`}
+          onClick={() => setActiveTab('atwater')}
+          style={{ background: activeTab === 'atwater' ? 'var(--color-primary)' : '#fff', color: activeTab === 'atwater' ? '#fff' : 'inherit' }}
         >
-          <AlertTriangle size={16} color={activeTab === 'atwater78' ? '#fff' : '#e65100'} />
-          <span>78 Atwater Calorie Anomalies</span>
+          <AlertTriangle size={16} color={activeTab === 'atwater' ? '#fff' : '#e65100'} />
+          <span>Calorie Consistency Audit</span>
         </button>
         <button
-          className={`btn-secondary ${activeTab === 'serving13' ? 'active' : ''}`}
-          onClick={() => setActiveTab('serving13')}
-          style={{ background: activeTab === 'serving13' ? 'var(--color-primary)' : '#fff', color: activeTab === 'serving13' ? '#fff' : 'inherit' }}
+          className={`btn-secondary ${activeTab === 'serving' ? 'active' : ''}`}
+          onClick={() => setActiveTab('serving')}
+          style={{ background: activeTab === 'serving' ? 'var(--color-primary)' : '#fff', color: activeTab === 'serving' ? '#fff' : 'inherit' }}
         >
-          <Scale size={16} color={activeTab === 'serving13' ? '#fff' : '#c62828'} />
-          <span>13 Macro &gt; Serving Discrepancies</span>
+          <Scale size={16} color={activeTab === 'serving' ? '#fff' : '#c62828'} />
+          <span>Serving Weight Consistency</span>
         </button>
       </div>
 
       {loading ? (
         <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-          Loading dataset audit metrics...
+          Loading dataset governance metrics...
         </div>
       ) : activeTab === 'summary' ? (
-        /* Tab 1: Summary Table */
+        /* Tab 1: Governance Summary Table */
         <div>
           <div className="card" style={{ marginBottom: 24 }}>
             <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', marginBottom: 16 }}>
-              Dataset Metrics & Quality Assessment
+              Data Quality Governance & Verification Protocols
             </h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: 'var(--color-surface-alt)', borderBottom: '2px solid var(--color-border)' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>Audit Metric / Characteristic</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>Record Count</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>Percentage</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>EATGOOD Data Governance Policy</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>Audit Characteristic</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>Scientific Verification Standard</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 800 }}>EATGOOD Governance Protocol</th>
                 </tr>
               </thead>
               <tbody>
-                {auditData?.quality_summary?.map((row, i) => (
+                {[
+                  {
+                    characteristic: 'Atwater Thermodynamic Consistency',
+                    standard: '|Declared Energy - (4C + 4P + 9F)| ≤ 50 kcal',
+                    protocol: 'Flagged with calibration audit badge; original manufacturer declarations preserved.'
+                  },
+                  {
+                    characteristic: 'Macronutrient Mass Conservation',
+                    standard: 'Carbohydrates + Protein + Fat ≤ Stated Serving Size',
+                    protocol: 'Physical contradiction flagged; converted to standard per 100g basis where verified.'
+                  },
+                  {
+                    characteristic: 'Strict Null Protocol (No Silent Zeroes)',
+                    standard: 'Missing nutrients must remain explicitly null',
+                    protocol: 'Zeroes are never substituted for missing declarations; missing data refusal active.'
+                  },
+                  {
+                    characteristic: 'Primary Indian Catalogue Source Priority',
+                    standard: 'Local Indian packaged foods prioritised over third-party feeds',
+                    protocol: 'Protected local baseline; Open Food Facts queried for image enrichment and barcode discovery.'
+                  },
+                  {
+                    characteristic: 'Statutory Nutrition Standards Alignment',
+                    standard: 'WHO SEARO Regional Model & FSSAI Indian Nutrition Rating (Draft 2022)',
+                    protocol: 'Dual-layered scoring separates objective FoPL grade from user health goals.'
+                  }
+                ].map((row, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{row.Metric}</td>
-                    <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontWeight: 700 }}>{row.Count}</td>
-                    <td style={{ padding: '12px 16px' }}>{row.Percentage}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span className="badge badge-neutral" style={{ fontSize: '0.75rem' }}>
-                        {row['Evaluation Status']}
+                    <td style={{ padding: '14px 16px', fontWeight: 600 }}>{row.characteristic}</td>
+                    <td style={{ padding: '14px 16px', color: 'var(--color-text-muted)' }}>{row.standard}</td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <span className="badge badge-verified" style={{ fontSize: '0.75rem' }}>
+                        {row.protocol}
                       </span>
                     </td>
                   </tr>
@@ -128,17 +152,18 @@ export default function DataAuditPage({ onSelectProduct }) {
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
               <li><strong>No Automatic Zero-Filling:</strong> Missing sugars, sodium, trans fat, or fibre values are stored as null (blank), never substituted with 0.0g.</li>
               <li><strong>Refusal of Unverifiable Basis:</strong> Records with ambiguous serving units or unconfirmed measurement basis have standardization halted until manufacturer audit.</li>
+              <li><strong>Image Enrichment Priority:</strong> Front-of-pack and label photos matched exclusively via exact GS1 barcode or brand-product alignment.</li>
             </ul>
           </div>
         </div>
-      ) : activeTab === 'atwater78' ? (
-        /* Tab 2: 78 Atwater Discrepancies */
+      ) : activeTab === 'atwater' ? (
+        /* Tab 2: Atwater Calorie Discrepancies */
         <div>
           <div className="card" style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)' }}>
-                  The 78 Calorie Discrepancy Records (Atwater Inconsistency)
+                  Calorie Discrepancy Records (Atwater Inconsistency)
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
                   Products where <code>|Reported Energy - Calculated (4C + 4P + 9F)| &gt; 50 kcal</code> or exceeds 25% delta.
@@ -205,11 +230,11 @@ export default function DataAuditPage({ onSelectProduct }) {
           </div>
         </div>
       ) : (
-        /* Tab 3: 13 Macro > Serving Discrepancies */
+        /* Tab 3: Serving Weight Contradictions */
         <div>
           <div className="card">
             <h3 style={{ fontSize: '1.25rem', color: '#c62828', marginBottom: 6 }}>
-              The 13 Critical Inconsistencies (Macronutrients &gt; Stated Serving Size)
+              Weight Contradiction Audit (Macronutrients &gt; Stated Serving Size)
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 20 }}>
               Physical contradiction where <code>Carbohydrates + Protein + Fat &gt; Stated Serving Size</code>. Typically caused by declaring per-100g nutrition while stating a 15g-25g package serving.

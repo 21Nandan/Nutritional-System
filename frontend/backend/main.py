@@ -9,22 +9,41 @@ import shutil
 import json
 import uuid
 import re
+import io
+import logging
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from PIL import Image
 
+from backend.config import (
+    CORS_ORIGINS,
+    MAX_UPLOAD_SIZE_BYTES,
+    MAX_UPLOAD_SIZE_MB,
+    ALLOWED_IMAGE_EXTENSIONS,
+    ALLOWED_IMAGE_MIME_TYPES
+)
+from backend.core.rate_limiter import enforce_rate_limit
 from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import run_full_product_assessment, assess_general_nutrition, assess_personalized_suitability
-from backend.core.standards_registry import STANDARDS_REGISTRY, CALIBRATED_CATEGORIES
+from backend.core.standards_registry import (
+    STANDARDS_REGISTRY,
+    CALIBRATED_CATEGORIES,
+    STANDARDS_REGISTRY_VERSION,
+    CATEGORY_CALIBRATION_SPECS
+)
 from backend.core.recommender import get_healthier_alternatives
 from backend.core.ml_model import ml_service
 from backend.core.ocr_service import run_image_ocr, extract_nutrition_from_text, get_ocr_engine_info
-from backend.core.barcode_utils import validate_barcode
-from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+from backend.core.barcode_utils import validate_barcode, clean_barcode
+from backend.core.openfoodfacts import fetch_product_from_openfoodfacts, search_openfoodfacts_text
+from backend.core.semantic_search import execute_semantic_search, parse_semantic_intent
+from backend.core.assistant import answer_product_question
 from backend.database import (
+    get_connection,
     get_active_profile, save_active_profile,
     record_analysis_history, get_recent_history, clear_analysis_history,
     toggle_save_product, get_saved_product_ids,
@@ -34,27 +53,54 @@ from backend.database import (
     record_user_contribution, get_user_contributions, get_user_contribution_by_barcode
 )
 
+logger = logging.getLogger("eatgood")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
+
 app = FastAPI(
     title="EATGOOD API",
     description="AI-Powered Personalized Food Safety and Nutrition Assessment Engine",
     version="1.0.0"
 )
 
+cors_origins = CORS_ORIGINS if CORS_ORIGINS else ["*"]
+allow_creds = "*" not in cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.middleware("http")
+async def add_security_headers_and_request_id(request: Request, call_next):
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+@app.middleware("http")
 async def ensure_api_prefix(request: Request, call_next):
-    # If incoming path does not start with /api and is not docs/openapi/health/root,
-    # normalize path to start with /api so all routes match reliably across serverless environments
+    # Never tamper with static assets, favicons, or client-side routes
     path = request.scope.get("path", "")
-    if path and not path.startswith("/api") and not path.startswith("/docs") and not path.startswith("/openapi.json") and path != "/health" and path != "/":
+    is_static_or_doc = (
+        path.startswith("/assets") or 
+        path.startswith("/favicon") or 
+        path.startswith("/apple-touch-icon") or
+        path.startswith("/docs") or 
+        path.startswith("/openapi.json") or
+        path == "/" or path == "/health" or
+        any(path.endswith(ext) for ext in [".js", ".css", ".png", ".svg", ".ico", ".jpg", ".jpeg", ".webp", ".woff", ".woff2"])
+    )
+    
+    # In serverless environments, if an API call arrives without /api prefix, add it safely
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if is_serverless and not is_static_or_doc and path and not path.startswith("/api"):
         request.scope["path"] = f"/api{path}"
+
     response = await call_next(request)
     return response
 
@@ -81,6 +127,36 @@ def health_check():
         "environment": "serverless" if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) else "local"
     }
 
+@app.get("/api/ready")
+@app.get("/ready")
+def readiness_check():
+    db_status = "healthy"
+    try:
+        conn = get_connection()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+
+    data_loaded = (data_loader.products_df is not None and len(data_loader.products_df) > 0)
+    
+    if db_status != "healthy" or not data_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "not_ready",
+                "database": db_status,
+                "dataset_ready": data_loaded
+            }
+        )
+
+    return {
+        "status": "ready",
+        "database": db_status,
+        "dataset_ready": data_loaded,
+        "products_count": len(data_loader.products_df)
+    }
+
 # ----------------- Models -----------------
 class UserProfileModel(BaseModel):
     user_id: Optional[str] = "USR_DEFAULT"
@@ -90,6 +166,11 @@ class UserProfileModel(BaseModel):
     allergens_to_avoid: Optional[str] = ""
     age_group: Optional[str] = "18-24"
     activity_level: Optional[str] = "Moderately active"
+
+class AssistantQueryModel(BaseModel):
+    product_id: str
+    question: str
+    user_id: Optional[str] = None
 
 class ManualNutritionInput(BaseModel):
     product_name: str
@@ -137,6 +218,12 @@ class ProductContributionRequest(BaseModel):
 
 # ----------------- Routes -----------------
 
+def get_profile_for_request(request: Optional[Request] = None, user_id: Optional[str] = None) -> dict:
+    uid = user_id
+    if not uid and request is not None:
+        uid = request.query_params.get("user_id") or request.headers.get("x-user-id")
+    return get_active_profile(uid)
+
 @app.get("/api/health")
 def health_check():
     return {
@@ -156,14 +243,30 @@ def list_products(
     max_sat_fat: Optional[float] = None,
     min_fibre: Optional[float] = None,
     min_protein: Optional[float] = None,
+    has_image: Optional[bool] = None,
     limit: int = 50,
     offset: int = 0,
-    deduplicate_variants: Optional[bool] = None
+    deduplicate_variants: Optional[bool] = None,
+    request: Request = None,
+    user_id: Optional[str] = None
 ):
-    """Retrieves paginated products with search query, category, and nutritional filters."""
+    """Retrieves paginated products with search query, category, image, and nutritional filters."""
+    # Check for natural language semantic intent
+    if query and not query.strip().isdigit() and not query.lower().startswith("ind_pkg_") and category in ["All", ""]:
+        intent = parse_semantic_intent(query)
+        if intent["nutrient_descriptions"] or intent["excluded_allergens"] or (intent["category"] and len(query.strip().split()) >= 2):
+            profile = get_profile_for_request(request, user_id)
+            return execute_semantic_search(
+                query=query,
+                products_df=data_loader.products_df,
+                user_profile=profile,
+                limit=limit,
+                offset=offset
+            )
+
     # When query is provided (e.g. searching 'cok' in compare modal or catalogue search),
     # deduplicate synthetic (Variant X) products so users see distinct products.
-    # When browsing catalogue with no search query, preserve all 852 products.
+    # When browsing catalogue with no search query, preserve all catalogue products.
     if deduplicate_variants is not None:
         dedup = deduplicate_variants
     else:
@@ -178,10 +281,107 @@ def list_products(
         max_sat_fat=max_sat_fat,
         min_fibre=min_fibre,
         min_protein=min_protein,
+        has_image=has_image,
         limit=limit,
         offset=offset,
         deduplicate_variants=dedup
     )
+
+@app.get("/api/products/search")
+def search_products_endpoint(
+    q: Optional[str] = Query(None, description="Search keyword or product name"),
+    query: Optional[str] = Query(None, description="Alternative query param"),
+    category: Optional[str] = "All",
+    brand: Optional[str] = "All",
+    max_sugars: Optional[float] = None,
+    max_sodium: Optional[float] = None,
+    max_sat_fat: Optional[float] = None,
+    min_fibre: Optional[float] = None,
+    min_protein: Optional[float] = None,
+    has_image: Optional[bool] = None,
+    include_external: bool = Query(True, description="Query Open Food Facts if needed"),
+    limit: int = 50,
+    offset: int = 0,
+    request: Request = None,
+    user_id: Optional[str] = None
+):
+    """
+    Multi-source product search endpoint accepting 'q' or 'query' parameters.
+    Prioritizes the local Indian packaged food catalogue first, then falls back to or enriches
+    with Open Food Facts results, intelligently deduplicating against local catalogue records.
+    """
+    term = (q if q is not None else (query or "")).strip()
+
+    # Route pure nutrient/allergen constraint expressions to semantic search
+    if term and not term.isdigit() and not term.lower().startswith("ind_pkg_") and category in ["All", ""]:
+        intent = parse_semantic_intent(term)
+        if intent["nutrient_descriptions"] or intent["excluded_allergens"]:
+            profile = get_profile_for_request(request, user_id)
+            return execute_semantic_search(
+                query=term,
+                products_df=data_loader.products_df,
+                user_profile=profile,
+                limit=limit,
+                offset=offset
+            )
+
+    # 1. Search local Indian catalogue first
+    local_res = data_loader.search_products(
+        query=term,
+        category=category,
+        brand=brand,
+        max_sugars=max_sugars,
+        max_sodium=max_sodium,
+        max_sat_fat=max_sat_fat,
+        min_fibre=min_fibre,
+        min_protein=min_protein,
+        has_image=has_image,
+        limit=limit,
+        offset=offset,
+        deduplicate_variants=bool(term)
+    )
+
+    local_prods = local_res.get("products", [])
+
+    # 2. If external discovery is enabled and search query has at least 2 characters, query Open Food Facts
+    filtered_external = []
+    if include_external and term and len(term) >= 2 and not term.isdigit() and not term.lower().startswith("ind_pkg_"):
+        try:
+            # Query official Open Food Facts text search API
+            off_prods = search_openfoodfacts_text(term, limit=min(limit, 8))
+            
+            # Deduplicate against local catalogue: check both returned local items and all local barcodes
+            local_barcodes = set()
+            if data_loader.products_df is not None and "barcode" in data_loader.products_df.columns:
+                local_barcodes = {str(b).strip() for b in data_loader.products_df["barcode"].dropna().tolist()}
+
+            local_names = {
+                (str(r.get("brand", "")).strip().lower(), str(r.get("product_name", "")).strip().lower())
+                for r in local_prods
+            }
+
+            for op in off_prods:
+                op_code = str(op.get("barcode") or "").strip()
+                if op_code and op_code in local_barcodes:
+                    continue
+                op_key = (
+                    str(op.get("brand") or "").strip().lower(),
+                    str(op.get("product_name") or "").strip().lower()
+                )
+                if op_key in local_names:
+                    continue
+                filtered_external.append(op)
+        except Exception as e:
+            logger.warning("Open Food Facts search discovery skipped due to error: %s", e)
+
+    merged = local_prods + filtered_external
+    return {
+        "query": term,
+        "total": len(merged),
+        "local_count": len(local_prods),
+        "external_count": len(filtered_external),
+        "products": merged[:limit]
+    }
 
 @app.get("/api/products/categories")
 def get_categories():
@@ -193,6 +393,53 @@ def get_categories():
         "calibrated_categories": CALIBRATED_CATEGORIES
     }
 
+@app.get("/api/search/semantic")
+def search_semantic_endpoint(
+    q: str = Query(..., description="Natural language search query e.g. 'Less salty snacks for evening'"),
+    limit: int = 50,
+    offset: int = 0,
+    request: Request = None,
+    user_id: Optional[str] = None
+):
+    """
+    Translates natural language food queries into structured nutritional constraints,
+    allergen exclusions, and hybrid relevance-ranked products.
+    """
+    profile = get_profile_for_request(request, user_id)
+    return execute_semantic_search(
+        query=q,
+        products_df=data_loader.products_df,
+        user_profile=profile,
+        limit=limit,
+        offset=offset
+    )
+
+@app.post("/api/assistant/ask")
+def ask_assistant_endpoint(
+    query_data: AssistantQueryModel,
+    request: Request = None
+):
+    """
+    Evaluates consumer inquiries grounded in product facts, statutory guidelines,
+    and deterministic Layer 1 / Layer 2 / Layer 3 assessments.
+    """
+    uid = query_data.user_id or (request.headers.get("x-user-id") if request else None)
+    profile = get_profile_for_request(request, uid)
+    product = data_loader.get_product_by_id(query_data.product_id)
+    if not product:
+        if query_data.product_id.strip().isdigit():
+            product = data_loader.get_product_by_barcode(query_data.product_id.strip())
+        if not product:
+            product = get_cached_barcode_product(query_data.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found for assistant evaluation.")
+
+    return answer_product_question(
+        product=product,
+        question=query_data.question,
+        user_profile=profile
+    )
+
 # ----------------- Barcode Discovery & Contributions (Preceding {product_id}) -----------------
 
 @app.get("/api/products/contributions")
@@ -200,12 +447,16 @@ def list_user_contributions(limit: int = 50):
     """Returns recently submitted user contributions from SQLite."""
     return {"contributions": get_user_contributions(limit=limit)}
 
+@app.post("/api/products")
 @app.post("/api/products/contribute")
-def contribute_new_product(payload: ProductContributionRequest):
+def contribute_new_product(payload: ProductContributionRequest, request: Request = None):
     """
     Allows user to submit an unlisted product with packaging nutrition details.
     Saves record locally in SQLite under 'user_submitted' status (never falsely verified).
     """
+    if request:
+        enforce_rate_limit(request, "contribution")
+
     clean_code = str(payload.barcode).strip()
     val = validate_barcode(clean_code, strict=False)
     if not val["is_valid"]:
@@ -262,6 +513,9 @@ def lookup_product_by_barcode(barcode: str, request: Request = None):
     4. Layer 3: Open Food Facts API v3 (external community database).
     5. Returns 404 structured response with contribution options if not found anywhere.
     """
+    if request:
+        enforce_rate_limit(request, "off_barcode")
+
     val = validate_barcode(barcode, strict=False)
     if not val["is_valid"]:
         raise HTTPException(
@@ -444,7 +698,7 @@ def lookup_product_by_barcode(barcode: str, request: Request = None):
         )
 
 @app.get("/api/products/{product_id}")
-def get_product_assessment(product_id: str, request: Request = None):
+def get_product_assessment(product_id: str, request: Request = None, user_id: Optional[str] = None):
     """
     Returns full product details along with comprehensive Layer 1, Layer 2, Layer 3 assessment
     tailored to the active user profile.
@@ -491,6 +745,45 @@ def get_product_assessment(product_id: str, request: Request = None):
                     "data_source": "Local User Contribution (Pending Review)",
                     "data_confidence_status": "User Submitted (Unverified)"
                 }
+        elif product_id.strip().isdigit():
+            clean_code = product_id.strip()
+            product = data_loader.get_product_by_barcode(clean_code)
+            if not product:
+                product = get_cached_barcode_product(clean_code)
+            if not product:
+                contrib = get_user_contribution_by_barcode(clean_code)
+                if contrib:
+                    nutr = contrib.get("nutrition_data") or {}
+                    product = {
+                        "product_id": f"USER_SUB_{clean_code}",
+                        "barcode": clean_code,
+                        "product_name": contrib.get("product_name"),
+                        "brand": contrib.get("brand") or "User Contributed",
+                        "category": contrib.get("category", "Snacks"),
+                        "sub_category": contrib.get("sub_category", "User Contributed"),
+                        "serving_size": contrib.get("serving_size", 100),
+                        "serving_size_unit": contrib.get("serving_size_unit", "g"),
+                        "measurement_basis": contrib.get("measurement_basis", "per 100g"),
+                        "energy_kcal": nutr.get("energy_kcal"),
+                        "carbohydrates_g": nutr.get("carbohydrates_g"),
+                        "sugars_g": nutr.get("sugars_g"),
+                        "added_sugars_g": nutr.get("added_sugars_g"),
+                        "protein_g": nutr.get("protein_g"),
+                        "total_fat_g": nutr.get("total_fat_g"),
+                        "saturated_fat_g": nutr.get("saturated_fat_g"),
+                        "trans_fat_g": nutr.get("trans_fat_g"),
+                        "sodium_mg": nutr.get("sodium_mg"),
+                        "dietary_fibre_g": nutr.get("dietary_fibre_g"),
+                        "ingredients": contrib.get("ingredients"),
+                        "allergens_declared": contrib.get("allergens_declared"),
+                        "data_source": "Local User Contribution (Pending Review)",
+                        "data_confidence_status": "User Submitted (Unverified)"
+                    }
+            if not product:
+                off_res = fetch_product_from_openfoodfacts(clean_code)
+                if off_res.get("status") == "success" and off_res.get("product"):
+                    product = off_res["product"]
+                    cache_barcode_product(clean_code, product, source="openfoodfacts", status="success", ttl_hours=168)
     if not product:
         saved_rec = get_saved_product(product_id)
         if saved_rec and saved_rec.get("product_data"):
@@ -513,7 +806,7 @@ def get_product_assessment(product_id: str, request: Request = None):
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    profile = get_active_profile()
+    profile = get_profile_for_request(request, user_id)
     assessment = run_full_product_assessment(product, profile)
 
     # Attach ML prediction as an experimental secondary perspective
@@ -537,12 +830,12 @@ def get_product_assessment(product_id: str, request: Request = None):
     return assessment
 
 @app.post("/api/products/assess")
-def assess_custom_food(input_data: ManualNutritionInput, request: Request = None):
+def assess_custom_food(input_data: ManualNutritionInput, request: Request = None, user_id: Optional[str] = None):
     """
     Assesses manually entered nutrition facts or user-confirmed OCR values.
     """
-    profile = get_active_profile()
-    prod_dict = input_data.dict()
+    profile = get_profile_for_request(request, user_id)
+    prod_dict = input_data.model_dump() if hasattr(input_data, "model_dump") else input_data.dict()
     prod_dict["product_id"] = "CUSTOM_SCAN"
     prod_dict["data_source"] = "User / OCR Input"
     prod_dict["data_confidence_status"] = "User-Verified Custom Data"
@@ -605,17 +898,43 @@ def get_ocr_status():
     return get_ocr_engine_info()
 
 @app.post("/api/analyze/ocr")
-async def analyze_food_label_image(file: UploadFile = File(...)):
+async def analyze_food_label_image(file: UploadFile = File(...), request: Request = None):
     """
     Receives an image of a food label or ingredient list,
+    verifies magic bytes and size constraints (<= 10MB),
     extracts raw text via local Tesseract 5 OCR after OpenCV preprocessing,
     and parses structured nutrition fields with explicit status badges.
     Persists scan session locally in SQLite for full provenance.
     NEVER returns silent fallback mock data.
     """
+    if request:
+        enforce_rate_limit(request, "ocr")
+
     ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in ['.png', '.jpg', '.jpeg', '.webp']:
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported image format. Please upload PNG, JPEG, or WebP.")
+
+    # Read and validate image content size
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded file exceeds maximum limit of {MAX_UPLOAD_SIZE_MB}MB."
+        )
+    if len(file_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
+
+    # Deep magic byte / header verification using Pillow
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        img.verify()
+        fmt = (img.format or "").upper()
+        if fmt not in ["PNG", "JPEG", "WEBP"]:
+            raise HTTPException(status_code=400, detail=f"Image format '{fmt}' is not permitted. Please upload PNG, JPEG, or WebP.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Corrupt or invalid image file. Magic bytes could not be decoded.")
 
     # Unique scan session identifier
     scan_id = f"scn_{uuid.uuid4().hex[:10]}"
@@ -624,7 +943,7 @@ async def analyze_food_label_image(file: UploadFile = File(...)):
 
     try:
         with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(file_bytes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to store uploaded image: {str(e)}")
 
@@ -681,7 +1000,11 @@ def list_recent_scans(limit: int = 10):
     return get_recent_scan_sessions(limit=limit)
 
 @app.get("/api/compare")
-def compare_products(ids: str = Query(..., description="Comma-separated product IDs to compare")):
+def compare_products(
+    ids: str = Query(..., description="Comma-separated product IDs to compare"),
+    request: Request = None,
+    user_id: Optional[str] = None
+):
     """
     Compares 2 to 4 products side-by-side.
     Normalizes measurement basis to per-100g or per-100ml.
@@ -691,7 +1014,7 @@ def compare_products(ids: str = Query(..., description="Comma-separated product 
     if len(id_list) < 2:
         raise HTTPException(status_code=400, detail="Provide at least 2 product IDs for comparison.")
 
-    profile = get_active_profile()
+    profile = get_profile_for_request(request, user_id)
     compared_items = []
 
     for pid in id_list[:4]:
@@ -703,6 +1026,8 @@ def compare_products(ids: str = Query(..., description="Comma-separated product 
                 "product_name": prod["product_name"],
                 "brand": prod["brand"],
                 "category": prod["category"],
+                "image_url": prod.get("image_url"),
+                "image_small_url": prod.get("image_small_url"),
                 "measurement_basis": prod.get("measurement_basis", "per 100g"),
                 "data_confidence_status": prod.get("data_confidence_status", "Verified"),
                 "energy_kcal": prod.get("energy_kcal"),
@@ -727,23 +1052,30 @@ def compare_products(ids: str = Query(..., description="Comma-separated product 
     }
 
 @app.get("/api/alternatives/{product_id}")
-def get_alternatives(product_id: str, limit: int = 4):
+def get_alternatives(product_id: str, limit: int = 4, request: Request = None, user_id: Optional[str] = None):
     """Returns healthier alternatives for a given product."""
-    profile = get_active_profile()
+    profile = get_profile_for_request(request, user_id)
     return get_healthier_alternatives(product_id, profile, limit=limit)
 
 @app.get("/api/profile")
-def get_profile():
-    return get_active_profile()
+def get_profile(request: Request = None, user_id: Optional[str] = None):
+    return get_profile_for_request(request, user_id)
 
 @app.post("/api/profile")
-def update_profile(profile: UserProfileModel):
-    return save_active_profile(profile.dict())
+def update_profile(profile: UserProfileModel, request: Request = None):
+    data = profile.model_dump() if hasattr(profile, "model_dump") else profile.dict()
+    if request:
+        header_uid = request.headers.get("x-user-id")
+        if header_uid and (not data.get("user_id") or data.get("user_id") == "USR_DEFAULT"):
+            data["user_id"] = header_uid
+    return save_active_profile(data)
 
 @app.get("/api/standards")
 def get_standards():
     return {
+        "standards_version": STANDARDS_REGISTRY_VERSION,
         "calibrated_categories": CALIBRATED_CATEGORIES,
+        "category_specs": CATEGORY_CALIBRATION_SPECS,
         "total_standards": len(STANDARDS_REGISTRY),
         "standards": STANDARDS_REGISTRY
     }

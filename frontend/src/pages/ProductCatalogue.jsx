@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, ChevronUp, Bookmark, ArrowLeftRight, Shield } from 'lucide-react';
+import { Search, Filter, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, ChevronUp, Bookmark, ArrowLeftRight, Shield, Image as ImageIcon } from 'lucide-react';
+import ProductImageFallback from '../components/ProductImageFallback';
 
 export default function ProductCatalogue({ onSelectProduct, onCompareProduct, activeProfile }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [calibratedCats, setCalibratedCats] = useState([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState('');
   const [selectedCat, setSelectedCat] = useState('All');
@@ -12,6 +12,8 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
   const [page, setPage] = useState(0);
   const [savedIds, setSavedIds] = useState([]);
   const [pageSize, setPageSize] = useState('All');
+  const [hasImageFilter, setHasImageFilter] = useState(false);
+  const [semanticIntent, setSemanticIntent] = useState(null);
 
   // Filter Drawer State & Nutritional Filter States (Default: show everything / all products)
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -48,7 +50,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       .then(res => res.json())
       .then(data => {
         setCategories(data.categories || []);
-        setCalibratedCats(data.calibrated_categories || []);
       })
       .catch(err => console.error(err));
 
@@ -78,7 +79,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
 
   useEffect(() => {
     fetchProducts();
-  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter]);
+  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter]);
 
   const fetchProducts = () => {
     setLoading(true);
@@ -90,6 +91,8 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       limit: limitNum,
       offset: offsetNum
     });
+
+    if (hasImageFilter) params.append('has_image', 'true');
 
     if (sugarFilter === 'healthy') params.append('max_sugars', '10');
     else if (sugarFilter === 'low') params.append('max_sugars', '5');
@@ -106,11 +109,15 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
     if (proteinFilter === 'good') params.append('min_protein', '7');
     else if (proteinFilter === 'high') params.append('min_protein', '12');
 
-    fetch(`/api/products?${params.toString()}`)
+    const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
+    fetch(`/api/products?${params.toString()}&user_id=${encodeURIComponent(cid)}`, {
+      headers: { 'X-User-Id': cid }
+    })
       .then(res => res.json())
       .then(data => {
         setProducts(data.products || []);
         setTotal(data.total || 0);
+        setSemanticIntent(data.interpreted_intent || null);
         setLoading(false);
       })
       .catch(err => {
@@ -118,8 +125,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
         setLoading(false);
       });
   };
-
-  const isCalibrated = (cat) => calibratedCats.includes(cat);
 
   return (
     <div className="product-catalogue">
@@ -161,6 +166,15 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           />
         </div>
 
+        {semanticIntent && (semanticIntent.nutrient_focus?.length > 0 || semanticIntent.excluded_allergens?.length > 0) && (
+          <div style={{ marginTop: -8, marginBottom: 16, padding: '8px 12px', background: 'var(--color-surface-alt)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--color-primary)' }}>
+            <span style={{ fontWeight: 700 }}>🔍 Interpreted Intent:</span>
+            {semanticIntent.category && <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>{semanticIntent.category}</span>}
+            {semanticIntent.nutrient_focus?.map((f, i) => <span key={i} className="badge badge-verified" style={{ fontSize: '0.72rem' }}>{f}</span>)}
+            {semanticIntent.excluded_allergens?.map((a, i) => <span key={i} className="badge badge-warning" style={{ fontSize: '0.72rem' }}>Excluding {a}</span>)}
+          </div>
+        )}
+
         {/* Category Pills */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-subtle)', marginRight: 4 }}>
@@ -168,7 +182,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           </span>
           {categories.map(cat => {
             const isSelected = selectedCat === cat;
-            const calibrated = cat !== 'All' && isCalibrated(cat);
             return (
               <button
                 key={cat}
@@ -187,14 +200,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                 }}
               >
                 <span>{cat}</span>
-                {calibrated && (
-                  <span style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: isSelected ? '#82c733' : '#58a834'
-                  }} title="Calibrated Category" />
-                )}
               </button>
             );
           })}
@@ -263,12 +268,37 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                   background: '#f5f5f5',
                   color: 'var(--color-text-subtle)'
                 }}>
-                  Showing Everything (Default: All Products)
+                  All Packaged Foods
                 </span>
               )}
             </div>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setHasImageFilter(prev => !prev);
+                  setPage(0);
+                }}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '0.76rem',
+                  fontWeight: hasImageFilter ? 800 : 600,
+                  borderRadius: 6,
+                  border: hasImageFilter ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  background: hasImageFilter ? 'var(--color-primary)' : '#fff',
+                  color: hasImageFilter ? '#fff' : 'var(--color-text-main)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+              >
+                <ImageIcon size={13} />
+                <span>Photos Only</span>
+              </button>
+
               <button
                 type="button"
                 onClick={(e) => {
@@ -309,7 +339,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                   cursor: 'pointer'
                 }}
               >
-                Show All Products
+                Reset Filters
               </button>
 
               {/* Arrow toggle button at the side */}
@@ -532,7 +562,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           )}
         </div>
 
-        {/* Calibrated Notice */}
+        {/* Page Size Selector */}
         <div style={{
           marginTop: 14,
           paddingTop: 12,
@@ -540,15 +570,11 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           fontSize: '0.78rem',
           color: 'var(--color-text-muted)',
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-end',
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: 10
         }}>
-          <div>
-            <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Calibrated Scope (Active Benchmarking):</span>
-            <span style={{ marginLeft: 6 }}>Snacks, Breakfast Cereals, Packaged Beverages</span>
-          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}>
               <span style={{ color: 'var(--color-text-subtle)' }}>Show:</span>
@@ -572,9 +598,9 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
               ))}
             </div>
             <div style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-              {pageSize === 'All' || products.length >= total
-                ? `Showing all ${total} ${isHealthyLevel ? 'healthy ' : (isFiltered ? 'filtered ' : '')}${selectedCat === 'All' ? '' : selectedCat + ' '}products`
-                : `Showing ${page * Number(pageSize) + 1}–${Math.min((page + 1) * Number(pageSize), total)} of ${total} ${isHealthyLevel ? 'healthy ' : (isFiltered ? 'filtered ' : '')}products`}
+              {selectedCat === 'All' ? 'Indian Packaged Foods' : `${selectedCat}`}
+              {isFiltered ? ' • Filter Active' : ''}
+              {hasImageFilter ? ' • Packaging Photos' : ''}
             </div>
           </div>
         </div>
@@ -620,41 +646,84 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           gap: 16
         }}>
           {products.map(prod => {
-            const calibrated = isCalibrated(prod.category);
             const isDiscrepancy = prod.data_confidence_status && prod.data_confidence_status.includes('Anomaly');
 
             return (
               <div 
                 key={prod.product_id}
                 className="card"
-                style={{ padding: '18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                style={{ padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
               >
                 <div>
-                  {/* Top Badges */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
+                  {/* Product Packaging Image Container */}
+                  <div style={{
+                    width: '100%',
+                    height: 140,
+                    borderRadius: 8,
+                    background: '#f8f9fa',
+                    marginBottom: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    border: '1px solid rgba(0, 0, 0, 0.05)'
+                  }}>
+                    {prod.image_small_url || prod.image_url ? (
+                      <img
+                        src={prod.image_small_url || prod.image_url}
+                        alt={prod.product_name}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.parentElement.querySelector('.image-fallback-container');
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          padding: 6
+                        }}
+                      />
+                    ) : null}
+                    <div 
+                      className="image-fallback-container"
+                      style={{
+                        display: (prod.image_small_url || prod.image_url) ? 'none' : 'flex',
+                        width: '100%',
+                        height: '100%'
+                      }}
+                    >
+                      <ProductImageFallback
+                        category={prod.category}
+                        brand={prod.brand}
+                        productName={prod.product_name}
+                        height={140}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Brand */}
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {prod.brand}
                     </span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {calibrated ? (
-                        <span className="badge badge-verified" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
-                          Calibrated Scope
-                        </span>
-                      ) : (
-                        <span className="badge badge-neutral" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
-                          Uncalibrated Category
-                        </span>
-                      )}
-                    </div>
                   </div>
 
                   <h3 style={{ fontSize: '1.05rem', color: 'var(--color-primary)', marginBottom: 8, lineHeight: 1.3 }}>
                     {prod.product_name}
                   </h3>
 
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: 12 }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: 10 }}>
                     <span>{prod.category}</span> • <span>{prod.sub_category}</span>
                   </div>
+
+                  {prod.semantic_reason && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', background: 'var(--color-accent-subtle)', padding: '4px 8px', borderRadius: 4, marginBottom: 10, fontWeight: 600 }}>
+                      ✨ {prod.semantic_reason}
+                    </div>
+                  )}
 
                   {/* Nutrition Highlights Grid */}
                   <div style={{
@@ -732,8 +801,8 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       )}
 
       {/* Pagination */}
-      {pageSize !== 'All' && total > Number(pageSize) && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 32 }}>
+      {pageSize !== 'All' && (page > 0 || products.length >= Number(pageSize)) && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, marginTop: 32 }}>
           <button
             className="btn-secondary"
             disabled={page === 0}
@@ -742,14 +811,14 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           >
             Previous
           </button>
-          <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', fontWeight: 600 }}>
-            Page {page + 1} of {Math.ceil(total / Number(pageSize))}
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+            Page {page + 1}
           </span>
           <button
             className="btn-secondary"
-            disabled={(page + 1) * Number(pageSize) >= total}
+            disabled={products.length < Number(pageSize)}
             onClick={() => setPage(p => p + 1)}
-            style={{ opacity: (page + 1) * Number(pageSize) >= total ? 0.5 : 1 }}
+            style={{ opacity: products.length < Number(pageSize) ? 0.5 : 1 }}
           >
             Next
           </button>

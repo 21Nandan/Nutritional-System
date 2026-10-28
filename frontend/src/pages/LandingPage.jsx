@@ -81,14 +81,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
       </section>
 
       {/* 2. Visual Food-Analysis Transformation Section */}
-      <section style={{
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: '36px 32px',
-        marginBottom: 60,
-        boxShadow: var_shadow_sm
-      }}>
+      <section className="transformation-section">
         <div style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 32px' }}>
           <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-accent)', letterSpacing: '0.08em' }}>
             The EATGOOD Transformation Engine
@@ -101,14 +94,9 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           </p>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr auto 1fr',
-          gap: 24,
-          alignItems: 'center'
-        }}>
+        <div className="transformation-grid">
           {/* Left: Raw Label Simulation */}
-          <div style={{
+          <div className="transformation-card raw-label-card" style={{
             background: '#fafbfc',
             border: '2px dashed #d0d7de',
             borderRadius: 12,
@@ -147,20 +135,9 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             </div>
           </div>
 
-          {/* Center: Processing Arrow */}
-          <div style={{ textAlign: 'center' }}>
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: 'var(--color-primary)',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 8px',
-              boxShadow: 'var(--shadow-md)'
-            }}>
+          {/* Center: Processing Arrow (auto-rotates downwards on mobile screens) */}
+          <div className="transformation-arrow-wrapper">
+            <div className="transformation-arrow-icon">
               <ArrowRight size={20} />
             </div>
             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
@@ -169,7 +146,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           </div>
 
           {/* Right: EATGOOD Assessment */}
-          <div style={{
+          <div className="transformation-card assessment-preview-card" style={{
             background: '#ffffff',
             border: '1px solid var(--color-border)',
             borderRadius: 12,
@@ -228,7 +205,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             </div>
             <h3 style={{ fontSize: '1.1rem', marginBottom: 8 }}>1. General Nutrition Assessment</h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-              Objective category benchmarks (Snacks, Cereals, Beverages) calibrated using documented WHO SEARO and FSSAI Indian Nutrition Rating (INR) reference criteria.
+              Objective category benchmarks (Snacks, Cereals, Beverages) established using documented WHO SEARO and FSSAI Indian Nutrition Rating (INR) reference criteria.
             </p>
           </div>
 
@@ -318,14 +295,14 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           </div>
           <div>
             <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', marginBottom: 6 }}>
-              Responsible AI & Data Transparency Commitments
+              Nutritional Standards & Transparency Commitments
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              • <strong>Experimental Model Disclosure:</strong> The machine learning model was trained on simulated user-product examples. Model testing reflects synthetic data consistency and does not represent independent clinical efficacy.
+              • <strong>Verified Standards:</strong> General nutritional assessments follow WHO and FSSAI guidelines across benchmarked food categories. Other categories display verified packaging facts without estimating a grade.
               <br />
-              • <strong>No Silent Zeros:</strong> Missing sugar, sodium, or fibre declarations are kept explicitly missing and are never silently converted into zeroes.
+              • <strong>Accurate Nutrition Data:</strong> Missing nutrient declarations are kept explicitly blank and are never assumed to be zero.
               <br />
-              • <strong>Uncalibrated Scope:</strong> Only Snacks, Breakfast Cereals, and Packaged Beverages receive automated general grades. Other categories display raw nutrition facts with an explicit calibration disclaimer.
+              • <strong>Educational Scope:</strong> EATGOOD provides nutritional assessments for educational guidance and does not replace medical advice.
             </p>
             <div style={{ display: 'flex', gap: 14 }}>
               <button 

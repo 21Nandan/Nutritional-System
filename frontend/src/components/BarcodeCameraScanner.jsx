@@ -1,26 +1,30 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { 
   Camera, X, Zap, ZapOff, RefreshCw, AlertTriangle, 
-  CheckCircle2, FlipHorizontal, HelpCircle, Shield
+  CheckCircle2, FlipHorizontal, Shield, Play, Pause, Keyboard
 } from 'lucide-react';
 
 /**
  * BarcodeCameraScanner component
- * - Uses ZXing BrowserMultiFormatReader for live video stream barcode scanning.
+ * - Uses ZXing BrowserMultiFormatReader configured specifically for retail food barcodes (EAN-13, EAN-8, UPC-A, UPC-E).
  * - Defaults to rear camera (facingMode: { ideal: "environment" }).
  * - Torch / flashlight toggle if supported by hardware & browser.
- * - Throttles callbacks to prevent duplicate triggers.
- * - Cleanly stops all camera tracks on unmount / cancel.
- * - Works 100% locally offline.
+ * - Explicit controls: Start Scanning, Stop Scanning, Retry, Enter Barcode Manually.
+ * - Throttles callbacks and validates length to prevent partial/duplicate triggers.
+ * - Cleanly stops all camera tracks and loops on unmount / cancel.
+ * - 100% client-side offline detection.
  */
-export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive = true }) {
+export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, isScanningActive = true }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
   const controlsRef = useRef(null);
   const scanLockRef = useRef(false);
+  const lastScannedTimeRef = useRef(0);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [errorType, setErrorType] = useState(''); // 'permission', 'not_found', 'general', 'https'
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -78,6 +82,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
       console.warn('Error stopping video stream:', e);
     }
     setTorchEnabled(false);
+    setIsScanning(false);
   }, [torchEnabled]);
 
   // Toggle flashlight / torch
@@ -131,7 +136,17 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
     }
 
     try {
-      const reader = new BrowserMultiFormatReader();
+      // Configure specific 1D retail barcode hints (EAN-13, EAN-8, UPC-A, UPC-E)
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.UPC_EAN_EXTENSION
+      ]);
+
+      const reader = new BrowserMultiFormatReader(hints);
       readerRef.current = reader;
 
       // Enumerate video devices if not already done
@@ -162,26 +177,37 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
           if (result && !scanLockRef.current) {
             const rawText = result.getText();
             if (rawText && rawText.trim()) {
-              const cleaned = rawText.trim();
-              scanLockRef.current = true;
-              setLastScannedCode(cleaned);
-              triggerAudioBeep();
-              
-              // Callback to parent
-              if (onScan) {
-                onScan(cleaned);
+              const cleaned = String(rawText).trim();
+              const now = Date.now();
+              // Prevent duplicate triggers for 2.5 seconds
+              if (now - lastScannedTimeRef.current < 2500) {
+                return;
               }
 
-              // Release lock after 2.5s if not closed
-              setTimeout(() => {
-                scanLockRef.current = false;
-              }, 2500);
+              // Validate that the detected code is a valid numeric string of standard length (8-14 digits)
+              if (/^\d{8,14}$/.test(cleaned)) {
+                scanLockRef.current = true;
+                lastScannedTimeRef.current = now;
+                setLastScannedCode(cleaned);
+                triggerAudioBeep();
+                
+                // Callback to parent
+                if (onScan) {
+                  onScan(cleaned);
+                }
+
+                // Release lock after 2.5s
+                setTimeout(() => {
+                  scanLockRef.current = false;
+                }, 2500);
+              }
             }
           }
         }
       );
 
       controlsRef.current = controls;
+      setIsScanning(true);
 
       // Check torch capabilities on the active video track
       setTimeout(() => {
@@ -203,6 +229,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
     } catch (err) {
       console.error('Failed to start barcode scanner:', err);
       setIsLoading(false);
+      setIsScanning(false);
       const name = err.name || '';
       const msg = err.message || '';
 
@@ -274,17 +301,43 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
             width: 10,
             height: 10,
             borderRadius: '50%',
-            background: isLoading ? '#f59e0b' : (errorMessage ? '#ef4444' : '#10b981'),
-            boxShadow: `0 0 8px ${isLoading ? '#f59e0b' : (errorMessage ? '#ef4444' : '#10b981')}`
+            background: isLoading ? '#f59e0b' : (errorMessage ? '#ef4444' : (isScanning ? '#10b981' : '#6b7280')),
+            boxShadow: `0 0 8px ${isLoading ? '#f59e0b' : (errorMessage ? '#ef4444' : (isScanning ? '#10b981' : '#6b7280'))}`
           }} />
           <span style={{ fontSize: '0.88rem', fontWeight: 700, letterSpacing: '0.02em' }}>
-            {isLoading ? 'Starting Camera...' : (errorMessage ? 'Camera Offline' : 'Live Barcode Scanner')}
+            {isLoading ? 'Starting Camera...' : (errorMessage ? 'Camera Offline' : (isScanning ? 'Live Barcode Scanner' : 'Scanner Paused'))}
           </span>
         </div>
 
         {/* Toolbar Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {torchAvailable && !errorMessage && !isLoading && (
+          {/* Start / Stop Toggle */}
+          {!errorMessage && !isLoading && (
+            <button
+              type="button"
+              onClick={isScanning ? stopStream : () => startScanning(currentDeviceId)}
+              title={isScanning ? 'Stop / pause camera' : 'Start / resume scanning'}
+              style={{
+                background: isScanning ? 'rgba(239, 68, 68, 0.2)' : '#10b981',
+                color: isScanning ? '#fca5a5' : '#fff',
+                border: isScanning ? '1px solid rgba(239, 68, 68, 0.4)' : 'none',
+                borderRadius: 8,
+                padding: '6px 10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              {isScanning ? <Pause size={14} /> : <Play size={14} />}
+              <span>{isScanning ? 'Stop' : 'Start'}</span>
+            </button>
+          )}
+
+          {/* Flashlight / Torch */}
+          {torchAvailable && !errorMessage && !isLoading && isScanning && (
             <button
               type="button"
               onClick={toggleTorch}
@@ -308,6 +361,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
             </button>
           )}
 
+          {/* Flip Camera */}
           {videoDevices.length > 1 && !errorMessage && !isLoading && (
             <button
               type="button"
@@ -332,6 +386,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
             </button>
           )}
 
+          {/* Close Scanner */}
           <button
             type="button"
             onClick={() => {
@@ -377,12 +432,12 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            display: errorMessage ? 'none' : 'block'
+            display: (errorMessage || !isScanning) ? 'none' : 'block'
           }}
         />
 
         {/* Viewfinder Target Reticle */}
-        {!errorMessage && !isLoading && (
+        {!errorMessage && !isLoading && isScanning && (
           <div 
             className="barcode-viewfinder"
             style={{
@@ -406,7 +461,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
               <div style={{ width: 16, height: 16, borderTop: '3px solid #10b981', borderRight: '3px solid #10b981' }} />
             </div>
 
-            {/* Red Laser Scanning Line Animation */}
+            {/* Laser Scanning Line Animation */}
             <div 
               style={{
                 width: '100%',
@@ -421,6 +476,56 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
               <div style={{ width: 16, height: 16, borderBottom: '3px solid #10b981', borderLeft: '3px solid #10b981' }} />
               <div style={{ width: 16, height: 16, borderBottom: '3px solid #10b981', borderRight: '3px solid #10b981' }} />
             </div>
+          </div>
+        )}
+
+        {/* Paused State */}
+        {!isScanning && !isLoading && !errorMessage && (
+          <div 
+            style={{
+              position: 'absolute',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
+              color: '#e5e7eb',
+              padding: 24,
+              textAlign: 'center'
+            }}
+          >
+            <div style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 6px'
+            }}>
+              <Pause size={24} color="#10b981" />
+            </div>
+            <div style={{ fontSize: '1rem', fontWeight: 700 }}>Scanner Paused</div>
+            <p style={{ fontSize: '0.82rem', color: '#9ca3af', maxWidth: 280, margin: 0 }}>
+              Camera stream stopped. Click below to resume scanning food barcodes.
+            </p>
+            <button
+              type="button"
+              onClick={() => startScanning(currentDeviceId)}
+              className="btn-primary"
+              style={{
+                marginTop: 8,
+                padding: '8px 20px',
+                fontSize: '0.85rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: '#10b981'
+              }}
+            >
+              <Play size={14} />
+              <span>Resume Scanning</span>
+            </button>
           </div>
         )}
 
@@ -441,7 +546,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
             <RefreshCw size={32} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#10b981' }} />
             <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Requesting camera permission & sensor...</div>
             <div style={{ fontSize: '0.78rem', color: '#9ca3af', maxWidth: 280 }}>
-              Prefers rear device camera. No images are sent to any cloud server.
+              Prefers rear device camera. All scanning occurs offline in your browser.
             </div>
           </div>
         )}
@@ -502,7 +607,11 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
                 type="button"
                 onClick={() => {
                   stopStream();
-                  if (onClose) onClose();
+                  if (onManualEntry) {
+                    onManualEntry();
+                  } else if (onClose) {
+                    onClose();
+                  }
                 }}
                 className="btn-secondary"
                 style={{
@@ -510,10 +619,14 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
                   fontSize: '0.82rem',
                   background: 'rgba(255,255,255,0.1)',
                   color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.2)'
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6
                 }}
               >
-                <span>Use Manual Barcode Entry</span>
+                <Keyboard size={14} />
+                <span>Enter Barcode Manually</span>
               </button>
             </div>
           </div>
@@ -561,7 +674,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Shield size={14} color="#10b981" />
-          <span>Local client-side detection (EAN-13, EAN-8, UPC-A, UPC-E)</span>
+          <span>Local retail barcode detection (EAN-13, EAN-8, UPC-A, UPC-E)</span>
         </div>
 
         <button
@@ -580,7 +693,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, isScanningActive
             padding: 0
           }}
         >
-          Cancel & Return
+          Cancel & Close
         </button>
       </div>
 
