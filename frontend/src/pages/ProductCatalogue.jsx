@@ -646,8 +646,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           gap: 16
         }}>
           {products.map(prod => {
-            const isDiscrepancy = prod.data_confidence_status && prod.data_confidence_status.includes('Anomaly');
-
             return (
               <div 
                 key={prod.product_id}
@@ -753,13 +751,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                       </strong>
                     </div>
                   </div>
-
-                  {/* Data confidence indicator */}
-                  {isDiscrepancy && (
-                    <div style={{ fontSize: '0.72rem', color: '#c62828', background: '#ffebee', padding: '4px 8px', borderRadius: 4, marginBottom: 10 }}>
-                      ⚠️ Audit: Calorie discrepancy detected
-                    </div>
-                  )}
                 </div>
 
                 {/* Bottom Actions */}
