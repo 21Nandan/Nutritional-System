@@ -1,11 +1,82 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, ShieldCheck, AlertTriangle, CheckCircle2, Bookmark, 
-  ArrowRight, Heart, Sparkles, Scale, AlertCircle, Info, ChevronRight, Award,
+  ArrowRight, Heart, Sparkles, Scale, AlertCircle, Info, ChevronRight, ChevronDown, ChevronUp, Award,
   Edit3, X, Sliders, RefreshCw, Camera, Image as ImageIcon, ZoomIn
 } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
+
+// Layer 1 Presentation Helper Functions
+const getGradeSummary = (l1) => {
+  if (!l1) return '';
+  const grade = l1.grade;
+  if (grade === 'A') return 'A strong overall nutritional profile with low levels of nutrients to limit.';
+  if (grade === 'B') return 'A good nutritional balance with favorable overall values.';
+  if (grade === 'C') return 'A moderate nutritional balance with some nutrients to monitor.';
+  if (grade === 'D') return 'Contains elevated levels in one or more nutrients of concern.';
+  if (grade === 'E') return 'Higher in sugar, sodium, or saturated fat relative to category benchmarks.';
+  if (l1.status === 'Insufficient Data') return 'Incomplete nutritional declarations on the packaging prevent an overall grade.';
+  if (l1.status === 'Data Contradiction') return 'Conflicting nutrition values on packaging prevent an accurate grade.';
+  if (l1.status === 'Uncalibrated Category') return 'Category benchmarks are not yet established for this food type; nutrition panel is displayed without an estimated grade.';
+  return l1.explanation || 'Nutritional assessment based on category benchmarks.';
+};
+
+const formatNutrientStatus = (rawStatus) => {
+  if (!rawStatus) return 'Within benchmark';
+  const s = rawStatus.toLowerCase();
+  if (s.includes('optimal (0g)')) return 'Zero / Optimal';
+  if (s.includes('excessive') || s.includes('>2x')) return 'Well above benchmark';
+  if (s.includes('elevated') || s.includes('>threshold')) return 'Above benchmark';
+  if (s.includes('optimal') || s.includes('favourable') || s.includes('heart healthy') || s.includes('low')) return 'Low';
+  if (s.includes('high') || s.includes('good source')) return 'High';
+  if (s.includes('source')) return 'Good source';
+  if (s.includes('moderate') || s.includes('within')) return 'Within benchmark';
+  return rawStatus.replace(/\([^)]*\)/g, '').trim();
+};
+
+const getNutrientLabel = (nutKey) => {
+  const map = {
+    sugars: 'Sugar',
+    sodium: 'Sodium',
+    saturated_fat: 'Saturated fat',
+    protein: 'Protein',
+    fibre: 'Fibre',
+    dietary_fibre: 'Dietary fibre',
+    total_fat: 'Total fat',
+    energy: 'Energy',
+    trans_fat: 'Trans fat'
+  };
+  return map[nutKey] || nutKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+};
+
+const cleanHighlightText = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/\s*—\s*meets Codex[^\.]*/gi, '')
+    .replace(/\s*relative to regional nutrient guidelines\s*\([^)]*\)/gi, '')
+    .replace(/\s*relative to category guidelines\s*\([^)]*\)/gi, '')
+    .replace(/\s*above WHO SEARO recommended benchmark\s*\([^)]*\)/gi, ' above benchmark')
+    .replace(/\s*—\s*exceeds standard\s*\([^)]*\)\s*by more than double/gi, ' is more than double the benchmark')
+    .replace(/\s*—\s*exceeds category threshold\s*\([^)]*\)\s*significantly/gi, ' significantly exceeds the benchmark')
+    .replace(/\s*—\s*exceeds category threshold\s*\([^)]*\)\s*by over 100%/gi, ' exceeds the benchmark by over 100%')
+    .replace(/\s*supporting cardiovascular health guidelines/gi, '')
+    .trim();
+};
+
+const deduplicateStandards = (standards) => {
+  if (!Array.isArray(standards)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const s of standards) {
+    const trimmed = (typeof s === 'string' ? s : s?.standard_name || '').trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
+};
 
 export default function ProductAssessment({ 
   productId, 
@@ -23,6 +94,7 @@ export default function ProductAssessment({
   const [showEditModal, setShowEditModal] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [showGradeWhy, setShowGradeWhy] = useState(false);
+  const [showDetailedL1, setShowDetailedL1] = useState(false);
   const [expandedClaimIdx, setExpandedClaimIdx] = useState({});
 
   // Grounded AI Food Assistant State
@@ -566,121 +638,101 @@ export default function ProductAssessment({
         {/* Layer 1: General Nutritional Assessment */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                LAYER 1 — GENERAL NUTRITIONAL ASSESSMENT
-              </span>
+            {/* Header: Title, Grade Badge, and Dynamic Grade Explanation */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                  Layer 1 — General Nutrition
+                </span>
+                <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: '4px 0 2px', fontWeight: 800 }}>
+                  {l1.grade_label || (['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? `Grade ${l1.grade}` : 'Overall Grade Unavailable')}
+                </h3>
+                <p style={{ fontSize: '0.84rem', color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.45 }}>
+                  {getGradeSummary(l1)}
+                </p>
+              </div>
+
               {['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? (
-                <span className={`grade-badge grade-${l1.grade}`} style={{ width: 30, height: 30, fontSize: '1.15rem' }}>
+                <span className={`grade-badge grade-${l1.grade}`} style={{ width: 38, height: 38, fontSize: '1.35rem', flexShrink: 0 }}>
                   {l1.grade}
                 </span>
               ) : (
                 <span style={{
                   fontSize: '0.75rem',
                   fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  background: l1.status === 'Insufficient Data' ? '#fff3e0' : '#f5f5f5',
-                  color: l1.status === 'Insufficient Data' ? '#b73800' : '#616161'
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  flexShrink: 0,
+                  background: l1.status === 'Insufficient Data' ? '#fff3e0' : '#f1f5f9',
+                  color: l1.status === 'Insufficient Data' ? '#b73800' : '#475569'
                 }}>
-                  {l1.status === 'Insufficient Data' ? 'Incomplete Data' : 'Not yet rated'}
+                  {l1.status === 'Insufficient Data' ? 'Incomplete' : (l1.status === 'Uncalibrated Category' ? 'Not rated' : 'Unavailable')}
                 </span>
               )}
             </div>
 
-            <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', marginBottom: 6 }}>
-              {l1.grade_label || (['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? `Grade ${l1.grade}` : 'Overall Grade Unavailable')}
-            </h3>
-
-            {/* Standards Metadata Badges */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-              {l1.methodology_name && (
-                <span style={{ fontSize: '0.7rem', background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)', padding: '2px 8px', borderRadius: 4, color: 'var(--color-text-main)', fontWeight: 600 }}>
-                  ⚖️ {l1.methodology_name}
-                </span>
-              )}
-              {l1.standards_version && l1.standards_version !== 'N/A' && !l1.standards_version.includes('PENDING') && !l1.standards_version.includes('EXCLUSION') && (
-                <span style={{ fontSize: '0.7rem', background: '#eef2ff', border: '1px solid #c7d2fe', padding: '2px 8px', borderRadius: 4, color: '#3730a3', fontWeight: 600 }}>
-                  {l1.standards_version}
-                </span>
-              )}
-              {l1.reference_basis && (
-                <span style={{ fontSize: '0.7rem', background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)', padding: '2px 8px', borderRadius: 4, color: 'var(--color-text-subtle)' }}>
-                  {formatBasis(l1.reference_basis)}
-                </span>
-              )}
-            </div>
-
-            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 14, lineHeight: 1.5 }}>
-              {l1.explanation}
-            </p>
-
-            {/* Uncalibrated Category Context Box */}
+            {/* Uncalibrated Category Context Notice */}
             {l1.status === 'Uncalibrated Category' && (
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Info size={15} color="#64748b" />
-                    <span style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 600 }}>
-                      Nutrition information available below.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowGradeWhy(prev => !prev)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      fontSize: '0.76rem',
-                      color: 'var(--color-primary)',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      textDecoration: 'underline'
-                    }}
-                  >
-                    {showGradeWhy ? 'Hide details' : 'Why is there no grade?'}
-                  </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Info size={15} color="#64748b" />
+                  <span style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 600 }}>
+                    Nutrition panel displayed without an estimated letter grade.
+                  </span>
                 </div>
-                {showGradeWhy && (
-                  <p style={{ fontSize: '0.76rem', color: '#64748b', margin: '8px 0 0', lineHeight: 1.45, borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
-                    Statutory front-of-pack systems (such as FSSAI INR or WHO SEARO) require validated category benchmarks before assigning letter grades. When official benchmarks are not established for a food category, EATGOOD displays packaging facts without guessing a grade.
-                  </p>
-                )}
+                <p style={{ fontSize: '0.76rem', color: '#64748b', margin: '6px 0 0', lineHeight: 1.45 }}>
+                  Statutory front-of-pack benchmark criteria have not been calibrated for this specific food category. Nutrition declarations are shown for transparency.
+                </p>
               </div>
             )}
 
-            {/* Key Contributing Nutrients Breakdown Chips */}
+            {/* Missing Critical Fields Warning */}
+            {((l1.missing_fields && l1.missing_fields.length > 0) || (l1.missing_field_labels && l1.missing_field_labels.length > 0)) && (
+              <div style={{ background: '#fff3e0', border: '1px solid #ffe0b2', padding: '8px 12px', borderRadius: 6, fontSize: '0.78rem', color: '#b73800', marginBottom: 12 }}>
+                ℹ️ <strong>Missing Declarations:</strong> {(l1.missing_field_labels || l1.missing_fields).join(', ')}
+              </div>
+            )}
+
+            {/* Key Nutrient Summary Cards */}
             {l1.key_contributing_nutrients && Object.keys(l1.key_contributing_nutrients).length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                  Category Threshold Benchmark Analysis
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 8 }}>
+                  Key Nutrients
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
                   {Object.entries(l1.key_contributing_nutrients).map(([nutKey, data]) => {
+                    const statusText = formatNutrientStatus(data.status);
                     const isConcern = data.status?.includes('Excessive') || data.status?.includes('Elevated') || data.status?.includes('Non-compliant');
                     const isPositive = data.status?.includes('High') || data.status?.includes('Optimal') || data.status?.includes('Source') || data.status?.includes('Low');
-                    const friendlyName = nutKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const label = getNutrientLabel(nutKey);
+
                     return (
-                      <div key={nutKey} style={{
-                        padding: '6px 8px',
-                        borderRadius: 6,
-                        border: isConcern ? '1px solid #ffcc80' : (isPositive ? '1px solid #c8e6c9' : '1px solid var(--color-border)'),
-                        background: isConcern ? '#fff8e1' : (isPositive ? '#f1f8e9' : 'var(--color-surface-alt)'),
-                        fontSize: '0.74rem'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--color-primary)' }}>
-                          <span>{friendlyName}</span>
-                          <span style={{ color: isConcern ? '#e65100' : (isPositive ? '#2e7d32' : 'inherit') }}>
-                            {data.points > 0 ? `+${data.points}` : (data.points < 0 ? `${data.points}` : '0')}
-                          </span>
+                      <div
+                        key={nutKey}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: isConcern ? '1px solid #fed7aa' : (isPositive ? '1px solid #bbf7d0' : '1px solid var(--color-border)'),
+                          background: isConcern ? '#fff7ed' : (isPositive ? '#f0fdf4' : 'var(--color-surface-alt)'),
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: 2
+                        }}
+                      >
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-subtle)' }}>
+                          {label}
+                        </span>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+                          {data.value != null ? `${data.value} ${data.unit || 'g'}` : '—'}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-                          {data.value}{data.unit ? ` ${data.unit}` : ''} (Limit: {data.threshold})
-                        </div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 600, color: isConcern ? '#b73800' : (isPositive ? '#1b5e20' : 'var(--color-text-subtle)'), marginTop: 2 }}>
-                          {data.status}
-                        </div>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          color: isConcern ? '#c2410c' : (isPositive ? '#15803d' : 'var(--color-text-muted)')
+                        }}>
+                          {statusText}
+                        </span>
                       </div>
                     );
                   })}
@@ -688,43 +740,131 @@ export default function ProductAssessment({
               </div>
             )}
 
-            {/* Strengths */}
-            {l1.strengths && l1.strengths.length > 0 && (
+            {/* Nutritional Highlights: Max 3 positive findings + 1 or 2 important concerns */}
+            {((l1.strengths && l1.strengths.length > 0) || (l1.concerns && l1.concerns.length > 0)) && (
               <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#2e7d32', display: 'block', marginBottom: 6 }}>
-                  ✓ NUTRITIONAL STRENGTHS
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 6 }}>
+                  Highlights
                 </span>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#1b5e20' }}>
-                  {l1.strengths.map((str, i) => <li key={i} style={{ marginBottom: 4 }}>{str}</li>)}
-                </ul>
-              </div>
-            )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {/* Top <= 3 Positive Findings */}
+                  {l1.strengths && l1.strengths.slice(0, 3).map((str, i) => (
+                    <div key={`str-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: '#166534', lineHeight: 1.4 }}>
+                      <CheckCircle2 size={15} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span>{cleanHighlightText(str)}</span>
+                    </div>
+                  ))}
 
-            {/* Concerns */}
-            {l1.concerns && l1.concerns.length > 0 && (
-              <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e65100', display: 'block', marginBottom: 6 }}>
-                  ⚠️ NUTRIENTS OF CONCERN
-                </span>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#b73800' }}>
-                  {l1.concerns.map((con, i) => <li key={i} style={{ marginBottom: 4 }}>{con}</li>)}
-                </ul>
-              </div>
-            )}
-
-            {/* Missing Fields */}
-            {((l1.missing_fields && l1.missing_fields.length > 0) || (l1.missing_field_labels && l1.missing_field_labels.length > 0)) && (
-              <div style={{ background: '#fff3e0', border: '1px solid #ffe0b2', padding: '10px 14px', borderRadius: 6, fontSize: '0.78rem', color: '#b73800', marginBottom: 12 }}>
-                ℹ️ <strong>Missing Declarations:</strong> {(l1.missing_field_labels || l1.missing_fields).join(', ')}
+                  {/* Top <= 2 Important Concerns */}
+                  {l1.concerns && l1.concerns.slice(0, 2).map((con, i) => (
+                    <div key={`con-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: '#9a3412', lineHeight: 1.4 }}>
+                      <AlertTriangle size={15} color="#ea580c" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span>{cleanHighlightText(con)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {['A', 'B', 'C', 'D', 'E'].includes(l1.grade) && l1.standards_applied && l1.standards_applied.length > 0 && (
-            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--color-border)', fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-              Benchmark: {l1.standards_applied.join(', ')}
-            </div>
-          )}
+          {/* Section 4: Expandable Detailed Assessment for Transparency */}
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--color-border)' }}>
+            <button
+              type="button"
+              onClick={() => setShowDetailedL1(prev => !prev)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'none',
+                border: 'none',
+                padding: '6px 0',
+                cursor: 'pointer',
+                color: 'var(--color-primary)',
+                fontSize: '0.78rem',
+                fontWeight: 600
+              }}
+            >
+              <span>{showDetailedL1 ? 'Hide detailed assessment' : 'View detailed assessment'}</span>
+              {showDetailedL1 ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {showDetailedL1 && (
+              <div style={{ marginTop: 10, padding: 12, background: 'var(--color-surface-alt)', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.76rem', color: 'var(--color-text-main)' }}>
+                {/* Methodology & Basis */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                  {l1.methodology_name && (
+                    <span style={{ background: '#fff', border: '1px solid var(--color-border)', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                      ⚖️ {l1.methodology_name}
+                    </span>
+                  )}
+                  {l1.standards_version && l1.standards_version !== 'N/A' && !l1.standards_version.includes('PENDING') && !l1.standards_version.includes('EXCLUSION') && (
+                    <span style={{ background: '#eef2ff', border: '1px solid #c7d2fe', padding: '2px 8px', borderRadius: 4, color: '#3730a3', fontWeight: 600 }}>
+                      Version: {l1.standards_version}
+                    </span>
+                  )}
+                  {l1.reference_basis && (
+                    <span style={{ background: '#fff', border: '1px solid var(--color-border)', padding: '2px 8px', borderRadius: 4, color: 'var(--color-text-muted)' }}>
+                      Basis: {formatBasis(l1.reference_basis)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Benchmark Thresholds & Scoring Table */}
+                {l1.key_contributing_nutrients && Object.keys(l1.key_contributing_nutrients).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--color-primary)' }}>
+                      Nutrient Benchmark Limits & Points
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--color-border)', textAlign: 'left', color: 'var(--color-text-subtle)' }}>
+                            <th style={{ padding: '4px 6px' }}>Nutrient</th>
+                            <th style={{ padding: '4px 6px' }}>Value</th>
+                            <th style={{ padding: '4px 6px' }}>Benchmark Limit</th>
+                            <th style={{ padding: '4px 6px' }}>Points</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(l1.key_contributing_nutrients).map(([nutKey, data]) => (
+                            <tr key={nutKey} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                              <td style={{ padding: '4px 6px', fontWeight: 600 }}>{getNutrientLabel(nutKey)}</td>
+                              <td style={{ padding: '4px 6px' }}>{data.value} {data.unit || 'g'}</td>
+                              <td style={{ padding: '4px 6px' }}>{data.threshold != null ? `${data.threshold} ${data.unit || 'g'}` : '—'}</td>
+                              <td style={{ padding: '4px 6px', fontWeight: 600, color: data.points < 0 ? '#b73800' : (data.points > 0 ? '#1b5e20' : 'inherit') }}>
+                                {data.points > 0 ? `+${data.points}` : (data.points < 0 ? `${data.points}` : '0')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Deduplicated Standards Actually Applied */}
+                {deduplicateStandards(l1.standards_applied).length > 0 && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--color-primary)' }}>
+                      Applicable Standards Referenced:
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.45, color: 'var(--color-text-subtle)' }}>
+                      {deduplicateStandards(l1.standards_applied).map((std, idx) => (
+                        <li key={idx} style={{ marginBottom: 2 }}>{std}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Accuracy & Regulatory Disclaimer */}
+                <p style={{ margin: '8px 0 0', fontSize: '0.68rem', color: 'var(--color-text-muted)', lineHeight: 1.4, fontStyle: 'italic' }}>
+                  * Benchmark evaluations reflect public health nutrient profiling criteria (e.g. WHO SEARO / FSSAI INR models) to indicate overall nutritional quality and are distinct from statutory regulatory compliance.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Layer 2: Personalized Suitability */}

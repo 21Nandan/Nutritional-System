@@ -16,9 +16,11 @@ import os
 import re
 import shutil
 import logging
+import base64
 from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 from PIL import Image, ImageOps
+import httpx
 
 try:
     import cv2
@@ -61,31 +63,132 @@ else:
     logger.warning("EATGOOD OCR: Tesseract binary not found in standard paths.")
 
 
+def get_cloud_vision_api_key() -> Optional[str]:
+    """Finds available Google Cloud Vision API key from server environment variables."""
+    candidate_keys = [
+        "VISION_API_KEY",
+        "GOOGLE_CLOUD_VISION_API_KEY",
+        "GOOGLE_VISION_API_KEY",
+        "GOOGLE_API_KEY"
+    ]
+    for key_name in candidate_keys:
+        val = os.environ.get(key_name)
+        if val and val.strip():
+            return val.strip()
+    return None
+
+
 def get_ocr_engine_info() -> Dict[str, Any]:
-    """Returns status and version of the local OCR engine."""
-    cmd = get_tesseract_path()
-    if not cmd:
-        return {
-            "available": False,
-            "engine": "Tesseract (Not Detected)",
-            "version": None,
-            "path": None
-        }
-    try:
-        ver = pytesseract.get_tesseract_version()
+    """
+    Returns status and active engine of the OCR subsystem.
+    Priority:
+    1. Explicit override via EATGOOD_OCR_PROVIDER ('cloud'/'vision' vs 'local'/'tesseract')
+    2. Serverless environment (Vercel / AWS Lambda): Cloud Vision prioritized
+    3. Local development environment: Local Tesseract prioritized (offline, zero-cost)
+    4. Cloud Vision fallback if local Tesseract missing
+    5. Clean diagnostic instructions if neither is configured
+    """
+    preferred = os.environ.get("EATGOOD_OCR_PROVIDER", "").lower().strip()
+    vision_key = get_cloud_vision_api_key()
+    tess_path = get_tesseract_path()
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+    # Priority 1: Explicit user override
+    if preferred in ["cloud", "vision", "google"]:
+        if vision_key:
+            return {
+                "available": True,
+                "engine": "Google Cloud Vision v1 (Cloud)",
+                "provider": "cloud_vision",
+                "version": "v1",
+                "path": None
+            }
+        else:
+            return {
+                "available": False,
+                "engine": "Google Cloud Vision (Unconfigured)",
+                "provider": "cloud_vision",
+                "version": None,
+                "path": None,
+                "message": "EATGOOD_OCR_PROVIDER is set to cloud, but VISION_API_KEY is not configured in environment variables."
+            }
+    elif preferred in ["local", "tesseract"]:
+        if tess_path:
+            try:
+                ver = pytesseract.get_tesseract_version() if pytesseract else None
+                return {
+                    "available": True,
+                    "engine": f"Tesseract {ver} (Local)",
+                    "provider": "tesseract",
+                    "version": str(ver) if ver else None,
+                    "path": tess_path
+                }
+            except Exception as e:
+                return {
+                    "available": False,
+                    "engine": "Tesseract (Error)",
+                    "provider": "tesseract",
+                    "version": None,
+                    "path": tess_path,
+                    "error": str(e)
+                }
+        else:
+            return {
+                "available": False,
+                "engine": "Tesseract (Not Detected)",
+                "provider": "tesseract",
+                "version": None,
+                "path": None,
+                "message": "EATGOOD_OCR_PROVIDER is set to local, but Tesseract binary was not found on this system."
+            }
+
+    # Priority 2: Serverless production (Vercel / AWS Lambda) -> Cloud Vision
+    if is_serverless and vision_key:
         return {
             "available": True,
-            "engine": f"Tesseract {ver} (Local)",
-            "version": str(ver),
-            "path": cmd
+            "engine": "Google Cloud Vision v1 (Cloud)",
+            "provider": "cloud_vision",
+            "version": "v1",
+            "path": None
         }
-    except Exception as e:
+
+    # Priority 3: Local development with Tesseract installed
+    if tess_path:
+        try:
+            ver = pytesseract.get_tesseract_version() if pytesseract else None
+            return {
+                "available": True,
+                "engine": f"Tesseract {ver} (Local)",
+                "provider": "tesseract",
+                "version": str(ver) if ver else None,
+                "path": tess_path
+            }
+        except Exception:
+            pass
+
+    # Priority 4: Cloud Vision if key is configured (even on local machine without Tesseract)
+    if vision_key:
         return {
-            "available": False,
-            "engine": "Tesseract (Error)",
-            "version": None,
-            "error": str(e)
+            "available": True,
+            "engine": "Google Cloud Vision v1 (Cloud)",
+            "provider": "cloud_vision",
+            "version": "v1",
+            "path": None
         }
+
+    # Priority 5: Neither available
+    return {
+        "available": False,
+        "engine": "No OCR Engine Configured",
+        "provider": "none",
+        "version": None,
+        "path": None,
+        "message": (
+            "OCR service is not configured on this system. "
+            "To enable food label scanning in production, set the VISION_API_KEY environment variable in your Vercel project settings. "
+            "You can enter nutrition facts manually."
+        )
+    }
 
 
 def preprocess_image_for_ocr(image_path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
@@ -143,21 +246,198 @@ def preprocess_image_for_ocr(image_path: str) -> Tuple[np.ndarray, Dict[str, Any
     return enhanced, metadata
 
 
-def run_image_ocr(image_path: str) -> Dict[str, Any]:
+def run_cloud_vision_ocr(image_path: str) -> Dict[str, Any]:
     """
-    Executes Tesseract OCR on the supplied food label photograph.
-    Employs a multi-pass strategy (uniform tabular block, followed by sparse layout if needed).
-    Calculates overall OCR word confidence.
-    NEVER returns hardcoded fallback mock data.
+    Executes Google Cloud Vision Document Text Detection via REST API.
+    Endpoint: https://vision.googleapis.com/v1/images:annotate
+    Provides enterprise-grade label reading for food packaging with zero native binary dependencies.
     """
-    engine_info = get_ocr_engine_info()
-    if not engine_info["available"]:
+    api_key = get_cloud_vision_api_key()
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "Google Cloud Vision API key is not configured. Set VISION_API_KEY in environment variables.",
+            "raw_text": "",
+            "lines": [],
+            "engine": "Google Cloud Vision (Unconfigured)",
+            "ocr_confidence": 0.0
+        }
+
+    if not os.path.exists(image_path):
+        return {
+            "status": "error",
+            "message": f"Image file not found at {image_path}",
+            "raw_text": "",
+            "lines": [],
+            "engine": "Google Cloud Vision v1",
+            "ocr_confidence": 0.0
+        }
+
+    try:
+        with open(image_path, "rb") as f:
+            img_bytes = f.read()
+
+        b64_content = base64.b64encode(img_bytes).decode("utf-8")
+        payload = {
+            "requests": [
+                {
+                    "image": {"content": b64_content},
+                    "features": [
+                        {"type": "DOCUMENT_TEXT_DETECTION"}
+                    ],
+                    "imageContext": {
+                        "languageHints": ["en", "hi"]
+                    }
+                }
+            ]
+        }
+
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+
+        with httpx.Client(timeout=12.0) as client:
+            resp = client.post(url, json=payload)
+
+        if resp.status_code == 400:
+            err_msg = resp.json().get("error", {}).get("message", "Invalid request")
+            logger.error(f"Cloud Vision 400: {err_msg}")
+            return {
+                "status": "error",
+                "message": f"Cloud Vision OCR error: {err_msg}",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+        elif resp.status_code == 403:
+            logger.error("Cloud Vision 403: Permission denied or API key invalid.")
+            return {
+                "status": "error",
+                "message": "Cloud Vision API key is invalid or 'Cloud Vision API' is not enabled in your Google Cloud Console project.",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+        elif resp.status_code == 429:
+            logger.error("Cloud Vision 429: Rate limit or quota exceeded.")
+            return {
+                "status": "error",
+                "message": "Cloud Vision API quota limit exceeded. You can enter nutrition facts manually.",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+        elif resp.status_code != 200:
+            logger.error(f"Cloud Vision HTTP {resp.status_code}: {resp.text}")
+            return {
+                "status": "error",
+                "message": f"Cloud Vision service returned HTTP {resp.status_code}. You can enter nutrition facts manually.",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+
+        data = resp.json()
+        responses = data.get("responses", [])
+        if not responses:
+            return {
+                "status": "no_text_found",
+                "message": "No response returned by Cloud Vision OCR.",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+
+        first_res = responses[0]
+        if "error" in first_res:
+            err_msg = first_res["error"].get("message", "Unknown error")
+            return {
+                "status": "error",
+                "message": f"Cloud Vision error: {err_msg}",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+
+        # Extract text
+        full_ann = first_res.get("fullTextAnnotation")
+        raw_text = ""
+        confidences = []
+
+        if full_ann and full_ann.get("text"):
+            raw_text = full_ann.get("text", "")
+            for page in full_ann.get("pages", []):
+                if "confidence" in page:
+                    confidences.append(float(page["confidence"]))
+                for block in page.get("blocks", []):
+                    if "confidence" in block:
+                        confidences.append(float(block["confidence"]))
+                    for para in block.get("paragraphs", []):
+                        if "confidence" in para:
+                            confidences.append(float(para["confidence"]))
+        elif first_res.get("textAnnotations"):
+            raw_text = first_res["textAnnotations"][0].get("description", "")
+
+        avg_conf = round(sum(confidences) / len(confidences), 2) if confidences else 0.92
+        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+
+        if not lines or not raw_text.strip():
+            return {
+                "status": "no_text_found",
+                "message": "No legible text was detected in the uploaded image. Please ensure the nutrition panel is clearly visible and well-lit.",
+                "raw_text": "",
+                "lines": [],
+                "engine": "Google Cloud Vision v1",
+                "ocr_confidence": 0.0
+            }
+
+        return {
+            "status": "success",
+            "raw_text": raw_text,
+            "lines": lines,
+            "engine": "Google Cloud Vision v1",
+            "ocr_confidence": avg_conf,
+            "preprocessing": {"source": "cloud_vision", "features": ["DOCUMENT_TEXT_DETECTION"]}
+        }
+    except httpx.TimeoutException:
+        logger.error("Cloud Vision OCR request timed out.")
+        return {
+            "status": "error",
+            "message": "Cloud Vision OCR request timed out. You can enter nutrition facts manually.",
+            "raw_text": "",
+            "lines": [],
+            "engine": "Google Cloud Vision v1",
+            "ocr_confidence": 0.0
+        }
+    except Exception as e:
+        logger.error(f"Unexpected Cloud Vision error: {e}")
+        return {
+            "status": "error",
+            "message": f"Cloud Vision network error: {str(e)}. You can enter nutrition facts manually.",
+            "raw_text": "",
+            "lines": [],
+            "engine": "Google Cloud Vision v1",
+            "ocr_confidence": 0.0
+        }
+
+
+def _run_tesseract_ocr(image_path: str) -> Dict[str, Any]:
+    """
+    Executes local Tesseract OCR on the supplied food label photograph.
+    Employs OpenCV/PIL preprocessing and multi-pass PSM 6 / PSM 3 strategy.
+    """
+    cmd = get_tesseract_path()
+    if not cmd or pytesseract is None:
         return {
             "status": "error",
             "message": "Local Tesseract OCR binary is not installed or accessible on this system. You can enter nutrition facts manually.",
             "raw_text": "",
             "lines": [],
-            "engine": engine_info["engine"],
+            "engine": "Tesseract (Not Detected)",
             "ocr_confidence": 0.0
         }
 
@@ -170,7 +450,7 @@ def run_image_ocr(image_path: str) -> Dict[str, Any]:
             "message": f"Unable to decode or preprocess image: {str(e)}",
             "raw_text": "",
             "lines": [],
-            "engine": engine_info["engine"],
+            "engine": "Tesseract (Local)",
             "ocr_confidence": 0.0
         }
 
@@ -200,13 +480,19 @@ def run_image_ocr(image_path: str) -> Dict[str, Any]:
 
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
 
+    try:
+        ver = pytesseract.get_tesseract_version()
+        engine_str = f"Tesseract {ver} (Local)"
+    except Exception:
+        engine_str = "Tesseract (Local)"
+
     if not lines:
         return {
             "status": "no_text_found",
             "message": "No legible text was detected in the uploaded image. Please ensure the nutrition panel is clearly visible and well-lit.",
             "raw_text": "",
             "lines": [],
-            "engine": engine_info["engine"],
+            "engine": engine_str,
             "ocr_confidence": 0.0,
             "preprocessing": meta
         }
@@ -215,10 +501,59 @@ def run_image_ocr(image_path: str) -> Dict[str, Any]:
         "status": "success",
         "raw_text": raw_text,
         "lines": lines,
-        "engine": engine_info["engine"],
+        "engine": engine_str,
         "ocr_confidence": avg_confidence,
         "preprocessing": meta
     }
+
+
+def run_image_ocr(image_path: str) -> Dict[str, Any]:
+    """
+    Executes OCR on the supplied food label photograph using the optimal available engine:
+    - Google Cloud Vision v1 (production serverless / cloud)
+    - Tesseract 5 (local offline development)
+    NEVER returns hardcoded fallback mock data.
+    """
+    engine_info = get_ocr_engine_info()
+    if not engine_info.get("available"):
+        return {
+            "status": "error",
+            "message": engine_info.get("message") or (
+                "OCR service is not configured on this system. "
+                "Set VISION_API_KEY in production or install Tesseract locally. "
+                "You can enter nutrition facts manually."
+            ),
+            "raw_text": "",
+            "lines": [],
+            "engine": engine_info.get("engine", "None"),
+            "ocr_confidence": 0.0
+        }
+
+    provider = engine_info.get("provider")
+
+    if provider == "cloud_vision":
+        res = run_cloud_vision_ocr(image_path)
+        # Graceful fallback: If cloud fails and local Tesseract is available, try local
+        if res.get("status") == "error" and get_tesseract_path():
+            logger.warning("Cloud Vision failed, falling back to local Tesseract.")
+            return _run_tesseract_ocr(image_path)
+        return res
+    elif provider == "tesseract":
+        res = _run_tesseract_ocr(image_path)
+        # Graceful fallback: If local fails and cloud key is available, try cloud
+        if res.get("status") == "error" and get_cloud_vision_api_key():
+            logger.warning("Local Tesseract failed, falling back to Cloud Vision.")
+            return run_cloud_vision_ocr(image_path)
+        return res
+    else:
+        return {
+            "status": "error",
+            "message": "No valid OCR provider found. You can enter nutrition facts manually.",
+            "raw_text": "",
+            "lines": [],
+            "engine": "None",
+            "ocr_confidence": 0.0
+        }
 
 
 def _clean_number_str(raw_str: str) -> Optional[float]:

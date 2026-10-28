@@ -947,8 +947,16 @@ async def analyze_food_label_image(file: UploadFile = File(...), request: Reques
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to store uploaded image: {str(e)}")
 
-    # Execute OCR pipeline
-    ocr_res = run_image_ocr(temp_path)
+    try:
+        # Execute OCR pipeline
+        ocr_res = run_image_ocr(temp_path)
+    finally:
+        # Clean up temporary upload in serverless microVMs (Vercel / AWS Lambda) to prevent disk exhaustion
+        if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
     
     # Structured extraction
     extraction = extract_nutrition_from_text(
