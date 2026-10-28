@@ -1,3 +1,4 @@
+# EATGOOD Production Serverless Entrypoint — v1.2.0 (Dual-Engine Cloud Vision & Layer 1 UI)
 import sys
 import os
 
