@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
+import AdditiveList from '../components/AdditiveList';
+import { GradeBadge, GoalMatchMeter, ScoreExplainer, ScorePair } from '../components/ScoreDisplay';
 import { apiFetch } from '../api';
 import { isSaved as isProductSaved, recordHistory, toggleSavedProduct } from '../storage';
 
@@ -429,33 +431,15 @@ export default function ProductAssessment({
           padding: '12px 18px',
           marginBottom: 20,
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          flexWrap: 'wrap',
           gap: 10
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Sliders size={18} color="var(--color-primary)" />
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <Sliders size={18} color="var(--color-primary)" style={{ flexShrink: 0, marginTop: 1 }} />
             <span style={{ fontSize: '0.85rem', color: 'var(--color-primary)', fontWeight: 600 }}>
               Need to change your entered values or add missing declarations? You can edit and recalculate anytime.
             </span>
           </div>
-          <button 
-            className="btn-secondary"
-            onClick={openEditModal}
-            style={{ 
-              padding: '6px 14px', 
-              fontSize: '0.8rem', 
-              background: '#fff', 
-              fontWeight: 700, 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 6 
-            }}
-          >
-            <Edit3 size={14} />
-            <span>Edit Values Now</span>
-          </button>
         </div>
       )}
 
@@ -553,45 +537,21 @@ export default function ProductAssessment({
             </div>
           </div>
 
-          {/* Quick Dual Score Pill */}
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-            {/* General Grade */}
-            <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--color-surface-alt)', borderRadius: 12, border: '1px solid var(--color-border)', minWidth: 95 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', textTransform: 'uppercase' }}>
-                General Grade
-              </span>
-              {['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? (
-                <span className={`grade-badge grade-${l1.grade}`} style={{ width: 38, height: 38, fontSize: '1.4rem', margin: '4px auto 0' }}>
-                  {l1.grade}
-                </span>
-              ) : (
-                <div style={{ marginTop: 2 }}>
-                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#757575', display: 'block' }}>N/A</span>
-                  <span style={{ fontSize: '0.65rem', color: '#9e9e9e', fontWeight: 600 }}>
-                    {l1.status === 'Insufficient Data' ? 'Incomplete' : (l1.status === 'Uncalibrated Category' ? 'Not rated' : 'Pending')}
-                  </span>
-                </div>
-              )}
+          {/* Score summary: nutrition grade (same for everyone) and Goal Match (personal) */}
+          <div className="score-summary">
+            <div className="score-summary-item">
+              <span className="score-summary-heading">Nutrition grade</span>
+              <GradeBadge grade={l1.grade} size="lg" />
+              <span className="score-summary-sub">Same for everyone · {l1.category_calibrated && l1.category_calibrated !== 'Unspecified' ? `${l1.category_calibrated} limits` : 'category limits'}</span>
             </div>
-
-            {/* Personalized Match */}
-            <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--color-surface-alt)', borderRadius: 12, border: '1px solid var(--color-border)', minWidth: 95 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', textTransform: 'uppercase' }}>
-                Goal Match
-              </span>
-              {l2.personalized_score != null ? (
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: l2.color === 'red' ? '#c62828' : (l2.color === 'green' ? '#2e7d32' : '#e65100'), marginTop: 2 }}>
-                  {l2.personalized_score}/100
-                </div>
-              ) : (
-                <div style={{ marginTop: 2 }}>
-                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#757575', display: 'block' }}>N/A</span>
-                  <span style={{ fontSize: '0.65rem', color: '#9e9e9e', fontWeight: 600 }}>Incomplete</span>
-                </div>
-              )}
+            <div className="score-summary-item">
+              <span className="score-summary-heading">Goal Match</span>
+              <GoalMatchMeter score={l2.personalized_score} allergenConflict={l2.has_critical_allergen_conflict} size="lg" />
+              <span className="score-summary-sub">Personal to you · goal: {l2.user_goal}</span>
             </div>
           </div>
         </div>
+        <ScoreExplainer layer1={l1} layer2={l2} />
       </div>
 
       {/* Grid: Layer 1 (General) & Layer 2 (Personalized) */}
@@ -604,7 +564,7 @@ export default function ProductAssessment({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
               <div>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                  Layer 1 — General Nutrition
+                  Nutrition grade · same for everyone
                 </span>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: '4px 0 2px', fontWeight: 800 }}>
                   {l1.grade_label || (['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? `Grade ${l1.grade}` : 'Overall Grade Unavailable')}
@@ -614,23 +574,7 @@ export default function ProductAssessment({
                 </p>
               </div>
 
-              {['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? (
-                <span className={`grade-badge grade-${l1.grade}`} style={{ width: 38, height: 38, fontSize: '1.35rem', flexShrink: 0 }}>
-                  {l1.grade}
-                </span>
-              ) : (
-                <span style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  flexShrink: 0,
-                  background: l1.status === 'Insufficient Data' ? '#fff3e0' : '#f1f5f9',
-                  color: l1.status === 'Insufficient Data' ? '#b73800' : '#475569'
-                }}>
-                  {l1.status === 'Insufficient Data' ? 'Incomplete' : (l1.status === 'Uncalibrated Category' ? 'Not rated' : 'Unavailable')}
-                </span>
-              )}
+              <GradeBadge grade={l1.grade} size="md" showLabel={false} />
             </div>
 
             {/* Uncalibrated Category Context Notice */}
@@ -834,7 +778,7 @@ export default function ProductAssessment({
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                LAYER 2 — PERSONALIZED SUITABILITY
+                Goal Match · personal to you
               </span>
               <span className="badge badge-verified">
                 Goal: {l2.user_goal}
@@ -847,25 +791,12 @@ export default function ProductAssessment({
             {/* Incomplete Data State */}
             {(l2.has_insufficient_data || l2.personalized_score == null) ? (
               <div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#757575' }}>
-                    N/A
-                  </span>
-                  <span style={{ fontSize: '1rem', color: 'var(--color-text-subtle)' }}>/ 100</span>
-                  <span style={{
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: '#f5f5f5',
-                    color: '#616161'
-                  }}>
-                    Incomplete Data
-                  </span>
+                <div style={{ margin: '4px 0 14px' }}>
+                  <GoalMatchMeter score={null} size="lg" />
                 </div>
 
-                <h4 style={{ fontSize: '1.05rem', color: '#c62828', marginBottom: 8 }}>
-                  Score Unavailable — Incomplete Nutrition Panel
+                <h4 style={{ fontSize: '1.05rem', color: 'var(--color-primary)', marginBottom: 8 }}>
+                  Score unavailable: incomplete nutrition panel
                 </h4>
                 
                 <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 12 }}>
@@ -901,55 +832,8 @@ export default function ProductAssessment({
             ) : (
               /* Complete Valid Data State */
               <div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: '2.5rem', fontWeight: 800, color: l2.color === 'red' ? '#c62828' : (l2.color === 'green' ? '#2e7d32' : '#e65100') }}>
-                    {l2.personalized_score}
-                  </span>
-                  <span style={{ fontSize: '1rem', color: 'var(--color-text-subtle)' }}>/ 100</span>
-                  <span style={{
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: l2.color === 'green' ? '#e8f5e9' : (l2.color === 'red' ? '#ffebee' : '#fff3e0'),
-                    color: l2.color === 'green' ? '#2e7d32' : (l2.color === 'red' ? '#c62828' : '#e65100')
-                  }}>
-                    {l2.suitability_badge}
-                  </span>
-                </div>
-
-                {/* Visual 1–100 Profile Scale Bar */}
-                <div style={{ margin: '12px 0 16px 0', background: 'var(--color-surface-alt)', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
-                      Profile Scale (1 = Unhealthy • 100 = Healthiest)
-                    </span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: l2.color === 'red' ? '#c62828' : (l2.color === 'green' ? '#2e7d32' : '#e65100') }}>
-                      {l2.personalized_score} / 100
-                    </span>
-                  </div>
-                  
-                  {/* Gradient Track with Marker */}
-                  <div style={{ position: 'relative', height: 10, borderRadius: 5, background: 'linear-gradient(to right, #d32f2f 0%, #ff9800 40%, #00897b 70%, #2e7d32 100%)', margin: '8px 0' }}>
-                    <div style={{
-                      position: 'absolute',
-                      top: -4,
-                      left: `calc(${Math.min(100, Math.max(1, l2.personalized_score))}% - 6px)`,
-                      width: 12,
-                      height: 18,
-                      background: '#1b1b1b',
-                      border: '2px solid #ffffff',
-                      borderRadius: 3,
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.35)',
-                      transition: 'left 0.3s ease'
-                    }} title={`Score: ${l2.personalized_score}/100`} />
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--color-text-subtle)', marginTop: 2 }}>
-                    <span><strong>1</strong> Unhealthy</span>
-                    <span><strong>50</strong> Moderate</span>
-                    <span><strong>100</strong> Healthiest</span>
-                  </div>
+                <div style={{ margin: '4px 0 14px' }}>
+                  <GoalMatchMeter score={l2.personalized_score} allergenConflict={l2.has_critical_allergen_conflict} size="lg" />
                 </div>
 
                 <h4 style={{ fontSize: '1.05rem', color: 'var(--color-primary)', marginBottom: 8 }}>
@@ -1275,19 +1159,7 @@ export default function ProductAssessment({
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
               Permitted Additives (Authoritative Regulatory Context)
             </span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
-              {l3_add.additives_list.map((add, i) => (
-                <div key={i} style={{ background: 'var(--color-surface-alt)', padding: 10, borderRadius: 6, fontSize: '0.78rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                    <span>{add.code} — {add.name}</span>
-                    <span style={{ color: 'var(--color-text-subtle)' }}>{add.functional_class}</span>
-                  </div>
-                  <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: '0.74rem' }}>
-                    {add.regulatory_context}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <AdditiveList additives={l3_add.additives_list} />
           </div>
         )}
       </div>
@@ -1520,22 +1392,17 @@ export default function ProductAssessment({
                       />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)' }}>
-                          {alt.brand}
-                        </span>
-                        <span className={`grade-badge grade-${alt.general_grade || 'NA'}`} style={{ width: 22, height: 22, fontSize: '0.75rem' }}>
-                          {alt.general_grade || 'NA'}
-                        </span>
-                      </div>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 2 }}>
+                        {alt.brand}
+                      </span>
                       <h4 style={{ fontSize: '0.92rem', color: 'var(--color-primary)', margin: 0, lineHeight: 1.25 }}>
                         {alt.product_name}
                       </h4>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '0.78rem', color: '#2e7d32', fontWeight: 700, marginBottom: 8 }}>
-                    Suitability Score: {alt.personalized_score != null ? `${alt.personalized_score}/100` : 'N/A'}
+                  <div style={{ marginBottom: 8 }}>
+                    <ScorePair grade={alt.general_grade} score={alt.personalized_score} />
                   </div>
 
                   <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>

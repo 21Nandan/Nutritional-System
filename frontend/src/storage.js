@@ -11,6 +11,13 @@ const KEYS = {
 };
 
 const HISTORY_LIMIT = 30;
+// IDs of the former bundled catalogue. Those products no longer exist, so stored references to
+// them are dropped instead of linking to a missing product.
+const RETIRED_ID_PREFIX = 'IND_PKG_';
+
+export function isRetiredProductId(productId) {
+  return String(productId || '').startsWith(RETIRED_ID_PREFIX);
+}
 
 export const DEFAULT_PROFILE = {
   name: 'Guest',
@@ -51,7 +58,7 @@ export function saveProfile(profile) {
 
 export function loadSavedProducts() {
   const items = read(KEYS.saved, []);
-  return Array.isArray(items) ? items : [];
+  return Array.isArray(items) ? items.filter((p) => !isRetiredProductId(p.product_id)) : [];
 }
 
 export function isSaved(productId) {
@@ -71,7 +78,7 @@ export function toggleSavedProduct(product) {
 
 export function loadHistory() {
   const items = read(KEYS.history, []);
-  return Array.isArray(items) ? items : [];
+  return Array.isArray(items) ? items.filter((p) => !isRetiredProductId(p.product_id)) : [];
 }
 
 export function recordHistory(assessment) {

@@ -22,9 +22,17 @@ client = TestClient(app)
 
 # ---------- product resolution ----------
 
-def test_resolve_catalogue_id_and_barcode():
-    assert resolve_product("IND_PKG_001")["product_name"] == "Haldiram's Bhujia Sev"
-    assert resolve_product("8903585650756")["product_id"] == "IND_PKG_001"
+def test_resolve_open_food_facts_id_and_barcode():
+    assert resolve_product("OFF_2000000000015")["product_name"] == "Masala Bhujia Test"
+    assert resolve_product("2000000000015")["product_id"] == "OFF_2000000000015"
+
+
+def test_retired_catalogue_ids_no_longer_resolve_and_say_why():
+    """IDs of the former bundled catalogue are not products any more; the error says what happened."""
+    assert resolve_product("IND_PKG_001") is None
+    res = client.get("/api/products/IND_PKG_001")
+    assert res.status_code == 404
+    assert res.json()["detail"]["error_code"] == "PRODUCT_RETIRED"
 
 
 def test_resolve_unknown_non_numeric_id_is_none():
@@ -71,9 +79,29 @@ def test_invalid_barcode_is_400():
     assert res.json()["detail"]["error_code"] == "INVALID_BARCODE"
 
 
-def test_compare_requires_two_to_four_products():
-    assert client.get("/api/compare?ids=IND_PKG_001").status_code == 400
-    assert client.get("/api/compare?ids=IND_PKG_001,NOPE").status_code == 404
+def test_compare_accepts_one_to_four_products():
+    assert client.get("/api/compare?ids=").status_code == 400
+    five = ",".join(f"OFF_200000000{n:04d}" for n in range(5))
+    assert client.get(f"/api/compare?ids={five}").status_code == 400
+    assert client.get("/api/compare?ids=OFF_2000000000015").status_code == 200
+
+
+def test_compare_lists_unavailable_products_instead_of_failing():
+    """A stale or unknown ID is reported per product; the valid products are still compared."""
+    data = client.get("/api/compare?ids=IND_PKG_001,OFF_2000000000015,NOPE,OFF_2000000000053").json()
+    assert [p["product_name"] for p in data["products_compared"]] == ["Masala Bhujia Test", "Baked Oat Crackers Test"]
+    unavailable = {u["product_id"]: u for u in data["unavailable"]}
+    assert set(unavailable) == {"IND_PKG_001", "NOPE"}
+    assert unavailable["IND_PKG_001"]["error_code"] == "PRODUCT_RETIRED"
+    assert unavailable["NOPE"]["retryable"] is False
+
+
+def test_compare_reports_an_upstream_failure_as_retryable():
+    failure = {"status": "error", "error_code": "OFF_TIMEOUT", "http_status": 504, "message": "slow", "technical_detail": "t"}
+    with patch("backend.products.fetch_product_from_openfoodfacts", return_value=failure):
+        data = client.get("/api/compare?ids=OFF_4000000000026,OFF_4000000000033").json()
+    assert data["products_compared"] == []
+    assert all(u["retryable"] and u["error_code"] == "OFF_TIMEOUT" for u in data["unavailable"])
 
 
 # ---------- rate limiting ----------

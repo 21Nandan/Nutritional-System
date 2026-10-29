@@ -3,14 +3,13 @@ import { X, Plus, ChevronRight, Check, AlertTriangle } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import { apiFetch } from '../api';
 import { basisLabel } from '../format';
+import { GradeBadge, GoalMatchMeter } from '../components/ScoreDisplay';
 import {
   COMPARE_METRICS, basisComparison, compareMetric, compareGrades, compareGoalMatch, allergenState, buildVerdict,
 } from '../compare';
 
-export default function ProductComparison({ initialProductIds = [], onSelectProduct, activeProfile }) {
-  const [selectedIds, setSelectedIds] = useState(
-    initialProductIds.length >= 2 ? initialProductIds : ['IND_PKG_001', 'IND_PKG_002']
-  );
+export default function ProductComparison({ productIds = [], onChangeIds, onSelectProduct, activeProfile }) {
+  const selectedIds = productIds;
   const [comparedData, setComparedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,7 +23,10 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
-    if (selectedIds.length < 2) return undefined;
+    if (selectedIds.length === 0) {
+      setComparedData(null);
+      return undefined;
+    }
     const controller = new AbortController();
     setLoading(true);
     setCompareError(null);
@@ -48,7 +50,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
       setSearchResults([]);
       return;
     }
-    apiFetch(`/api/products?query=${encodeURIComponent(q)}&limit=12`)
+    apiFetch(`/api/products?query=${encodeURIComponent(q)}&india_only=false&limit=12`)
       .then((data) => setSearchResults(data.products))
       .catch((err) => {
         setSearchResults([]);
@@ -58,7 +60,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
 
   const addProductToCompare = (pid) => {
     if (!selectedIds.includes(pid) && selectedIds.length < 4) {
-      setSelectedIds([...selectedIds, pid]);
+      onChangeIds([...selectedIds, pid]);
     }
     setShowSearchModal(false);
     setSearchQuery('');
@@ -66,14 +68,15 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
   };
 
   const removeProduct = (pid) => {
-    if (selectedIds.length > 2) {
-      setSelectedIds(selectedIds.filter(id => id !== pid));
-    } else {
-      window.alert('Please keep at least 2 products to compare.');
-    }
+    onChangeIds(selectedIds.filter((id) => id !== pid));
+  };
+  const removeUnavailable = () => {
+    const bad = new Set(unavailable.map((u) => u.product_id));
+    onChangeIds(selectedIds.filter((id) => !bad.has(id)));
   };
 
   const products = useMemo(() => comparedData?.products_compared || [], [comparedData]);
+  const unavailable = comparedData?.unavailable || [];
   const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
   const goal = comparedData?.user_goal || activeProfile?.goal || 'Balanced Choices';
   const profileAllergens = (activeProfile?.allergens_to_avoid || '').trim();
@@ -123,6 +126,29 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
         )}
       </div>
 
+      {!loading && unavailable.length > 0 && (
+        <div className="compare-unavailable" role="alert">
+          <p className="compare-unavailable-title">
+            <AlertTriangle size={16} aria-hidden="true" />
+            {unavailable.length === 1 ? '1 selected product couldn\u2019t be loaded' : `${unavailable.length} selected products couldn\u2019t be loaded`}
+          </p>
+          <ul>
+            {unavailable.map((u) => (
+              <li key={u.product_id}>
+                <span><strong>{u.product_id}</strong>: {u.message}</span>
+                <button type="button" className="btn-secondary btn-compact" onClick={() => removeProduct(u.product_id)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+          <div className="compare-unavailable-actions">
+            <button type="button" className="btn-primary btn-compact" onClick={removeUnavailable}>Remove unavailable products</button>
+            {unavailable.some((u) => u.retryable) && (
+              <button type="button" className="btn-secondary btn-compact" onClick={() => setReloadToken((t) => t + 1)}>Try again</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>
           Comparing products...
@@ -133,8 +159,20 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
           <button className="btn-primary" onClick={() => setReloadToken((t) => t + 1)}>Try again</button>
         </div>
       ) : products.length < 2 ? (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          Select at least 2 items to compare.
+        <div className="compare-empty">
+          {products.length === 1 ? (
+            <>
+              <p><strong>{products[0].product_name}</strong> is selected. Add at least one more product to compare.</p>
+              <button type="button" className="btn-secondary btn-compact" onClick={() => removeProduct(products[0].product_id)}>
+                Remove {products[0].product_name}
+              </button>
+            </>
+          ) : (
+            <p>No products selected yet. Add two to four products to compare them side by side.</p>
+          )}
+          <button type="button" className="btn-primary btn-compact" onClick={() => setShowSearchModal(true)}>
+            <Plus size={16} aria-hidden="true" /> <span>Add Product to Compare</span>
+          </button>
         </div>
       ) : (
         <>
@@ -208,9 +246,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                   {comparison.grades.cells.map((cell, i) => (
                     <td key={products[i].product_id}>
                       <span className="compare-cell">
-                        <span className={`grade-badge grade-${cell.grade === 'N/A' ? 'NA' : cell.grade}`} style={{ width: 28, height: 28, fontSize: '1.1rem' }}>
-                          {cell.grade}
-                        </span>
+                        <GradeBadge grade={cell.grade} size="sm" showLabel={false} />
                         {cell.isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> Best grade</span>}
                       </span>
                     </td>
@@ -229,14 +265,10 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                   </th>
                   {products.map((p, i) => (
                     <td key={p.product_id}>
-                      <span className="compare-cell">
-                        <span className="compare-score" style={{ color: p.has_allergen_conflict ? '#c62828' : 'var(--color-primary)' }}>
-                          {p.personalized_score != null ? `${p.personalized_score}/100` : 'N/A'}
-                        </span>
-                        {comparison.goalMatch.cells[i].isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> Higher match</span>}
-                      </span>
-                      {p.personalized_score == null && <span className="compare-sub">Incomplete data</span>}
-                      {p.has_allergen_conflict && <span className="compare-sub" style={{ color: '#c62828', fontWeight: 700 }}>Allergen warning overrides score</span>}
+                      <GoalMatchMeter score={p.personalized_score} allergenConflict={p.has_allergen_conflict} size="md" />
+                      {comparison.goalMatch.cells[i].isBest && (
+                        <span className="compare-best" style={{ marginTop: 6 }}><Check size={12} aria-hidden="true" /> Higher match</span>
+                      )}
                     </td>
                   ))}
                 </tr>

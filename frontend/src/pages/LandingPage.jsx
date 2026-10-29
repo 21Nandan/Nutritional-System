@@ -5,7 +5,7 @@ import {
 
 export default function LandingPage({ setActivePage, onSelectProduct, activeProfile, onOpenProfile }) {
   // Sample demonstration products for quick interactive preview
-  const SAMPLE_SNACK_ID = "IND_PKG_001"; // Haldiram's Bhujia Sev
+  const SAMPLE_PRODUCT_ID = "OFF_8901058901511"; // Maggi 2-minute noodles, sold in India
 
   return (
     <div className="landing-page">
@@ -178,7 +178,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
               <button 
                 className="btn-accent" 
                 style={{ padding: '4px 10px', fontSize: '0.78rem' }}
-                onClick={() => { onSelectProduct(SAMPLE_SNACK_ID); setActivePage('assessment'); }}
+                onClick={() => { onSelectProduct(SAMPLE_PRODUCT_ID); setActivePage('assessment'); }}
               >
                 Inspect Sample
               </button>

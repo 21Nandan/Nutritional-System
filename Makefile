@@ -36,9 +36,9 @@ security: ## Dependency and code security scans
 	$(VENV)/bin/pip-audit -r requirements.txt
 	cd frontend && npm audit --audit-level=high
 
-e2e: build ## End-to-end browser tests against a local server
+e2e: build ## End-to-end browser tests against a local server with the offline test catalogue
 	cd frontend && npx playwright install chromium
-	EATGOOD_RATE_LIMIT=false $(VENV)/bin/uvicorn backend.main:app --port 8000 & echo $$! > .e2e.pid; \
+	EATGOOD_RATE_LIMIT=false $(VENV)/bin/python -m backend.tests.serve_offline 8000 & echo $$! > .e2e.pid; \
 	sleep 3; cd frontend && npm run e2e; status=$$?; kill `cat ../.e2e.pid`; rm -f ../.e2e.pid; exit $$status
 
 smoke: ## Post-deploy smoke test: make smoke URL=https://eatgood26.vercel.app

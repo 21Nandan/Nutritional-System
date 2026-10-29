@@ -6,7 +6,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.core.assistant import answer_product_question
-from backend.core.nutrition_scoring import run_full_product_assessment
+from backend.core.nutrition_scoring import (
+    assess_general_nutrition,
+    assess_personalized_suitability,
+    run_full_product_assessment,
+)
 from backend.core.off_catalogue import CATEGORIES, MAX_RESULT_WINDOW, alternative_candidates, browse_catalogue
 from backend.core.openfoodfacts import search_openfoodfacts_text
 from backend.core.rate_limiter import enforce_rate_limit
@@ -45,6 +49,7 @@ def list_products(
     has_image: bool = False,
     limit: int = Query(30, ge=1, le=MAX_PAGE_SIZE),
     offset: int = Query(0, ge=0),
+    profile: dict = Depends(get_request_profile),
 ):
     """The catalogue: products from Open Food Facts with search, category and nutrient filters.
 
@@ -82,8 +87,23 @@ def list_products(
         "query": query.strip(),
         "total": min(count, MAX_RESULT_WINDOW) if count is not None else len(result["products"]),
         "total_is_capped": count is not None and count >= MAX_RESULT_WINDOW,
-        "products": result["products"],
+        "products": [_with_scores(p, profile) for p in result["products"]],
         "interpreted_intent": result["interpreted_intent"],
+        "match_mode": result["match_mode"],
+        "searched_pool": result.get("searched_pool"),
+        "profile_source": profile["profile_source"],
+    }
+
+
+def _with_scores(product: dict[str, Any], profile: dict) -> dict[str, Any]:
+    """A listing item plus its grade and Goal Match, from the same functions as the product page."""
+    general = assess_general_nutrition(product)
+    personal = assess_personalized_suitability(product, profile)
+    return {
+        **product,
+        "general_grade": general["grade"],
+        "personalized_score": personal["personalized_score"],
+        "has_allergen_conflict": personal["has_critical_allergen_conflict"],
     }
 
 
@@ -161,19 +181,32 @@ def get_alternatives(
 
 @router.get("/compare")
 def compare_products(
-    ids: str = Query(..., description="Comma-separated product IDs (2 to 4)"),
+    ids: str = Query(..., description="Comma-separated product IDs (1 to 4)"),
     profile: dict = Depends(get_request_profile),
 ):
-    id_list = [i.strip() for i in ids.split(",") if i.strip()]
-    if not 2 <= len(id_list) <= 4:
+    """Products side by side. An ID that can't be loaded is listed in `unavailable` with the
+    reason, so one stale or missing product never hides the others."""
+    id_list = list(dict.fromkeys(i.strip() for i in ids.split(",") if i.strip()))
+    if not 1 <= len(id_list) <= 4:
         raise HTTPException(
             status_code=400,
             detail={"error_code": "COMPARE_COUNT", "message": "Choose between 2 and 4 products to compare."},
         )
 
     compared = []
+    unavailable = []
     for pid in id_list:
-        prod = _resolve_or_raise(pid)
+        try:
+            prod = _resolve_or_raise(pid)
+        except HTTPException as exc:
+            detail: dict[str, Any] = exc.detail if isinstance(exc.detail, dict) else {}
+            unavailable.append({
+                "product_id": pid,
+                "error_code": detail.get("error_code", "PRODUCT_UNAVAILABLE"),
+                "message": detail.get("message", "This product couldn't be loaded."),
+                "retryable": exc.status_code != 404,
+            })
+            continue
         assessment = run_full_product_assessment(prod, profile)
         compared.append(
             {
@@ -206,7 +239,12 @@ def compare_products(
                 "ingredients": prod.get("ingredients"),
             }
         )
-    return {"user_goal": profile["goal"], "profile_source": profile["profile_source"], "products_compared": compared}
+    return {
+        "user_goal": profile["goal"],
+        "profile_source": profile["profile_source"],
+        "products_compared": compared,
+        "unavailable": unavailable,
+    }
 
 
 @router.post("/assistant/ask")

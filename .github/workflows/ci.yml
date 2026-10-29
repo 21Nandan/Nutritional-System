@@ -73,9 +73,9 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: npm ci && npm run build && npx playwright install --with-deps chromium
         working-directory: frontend
-      - name: Start API serving the built frontend
+      - name: Start the app with the offline test catalogue, serving the built frontend
         run: |
-          EATGOOD_RATE_LIMIT=false uvicorn backend.main:app --port 8000 &
+          EATGOOD_RATE_LIMIT=false python -m backend.tests.serve_offline 8000 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/api/ready && exit 0; sleep 1; done; exit 1
       - run: npm run e2e
         working-directory: frontend

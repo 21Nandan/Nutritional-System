@@ -30,7 +30,7 @@ const getRouteFromLocation = () => {
   const rawHash = window.location.hash.replace(/^#\/?/, '');
   const hash = rawHash.toLowerCase();
 
-  // 1. Direct product path: /product/IND_PKG_001 or /assessment/IND_PKG_001
+  // 1. Direct product path: /product/OFF_8901058901511 or /assessment/OFF_8901058901511
   const productMatch = rawPath.match(/^(?:product|assessment)\/(.+)$/i);
   if (productMatch) {
     return {
@@ -39,7 +39,7 @@ const getRouteFromLocation = () => {
     };
   }
 
-  // 2. Query param: /assessment?id=IND_PKG_001 or ?product=IND_PKG_001
+  // 2. Query param: /assessment?id=OFF_8901058901511 or ?product=OFF_8901058901511
   if (path === 'assessment' || path === 'product') {
     const id = searchParams.get('id') || searchParams.get('product_id') || searchParams.get('productId');
     return {
@@ -48,7 +48,7 @@ const getRouteFromLocation = () => {
     };
   }
 
-  // 3. Compare with ids: /compare?ids=IND_PKG_001,IND_PKG_002
+  // 3. Compare with ids: /compare?ids=OFF_8901058901511,OFF_8901491101837
   if (path === 'compare') {
     const ids = searchParams.get('ids');
     return {
@@ -88,10 +88,10 @@ export default function App() {
   const [customAssessment, setCustomAssessment] = useState(() => readSession('eatgood_custom_assessment', null));
 
   const [compareIds, setCompareIds] = useState(() => {
-    if (initialRoute.compareIds && initialRoute.compareIds.length >= 2) {
-      return initialRoute.compareIds;
+    if (initialRoute.compareIds && initialRoute.compareIds.length > 0) {
+      return initialRoute.compareIds.slice(0, 4);
     }
-    return readSession('eatgood_compare_ids', ['IND_PKG_001', 'IND_PKG_002']);
+    return readSession('eatgood_compare_ids', []);
   });
 
   const [activeProfile, setActiveProfile] = useState(() => loadProfile() || DEFAULT_PROFILE);
@@ -218,6 +218,17 @@ export default function App() {
     }
   };
 
+  // The compare selection is shared by the catalogue, product pages and the compare page, and
+  // kept in the session and the page address so a reload or a shared link shows the same products.
+  const updateCompareIds = useCallback((ids) => {
+    setCompareIds(ids);
+    writeSession('eatgood_compare_ids', ids);
+    if (window.location.pathname === '/compare') {
+      const url = ids.length ? `/compare?ids=${ids.join(',')}` : '/compare';
+      window.history.replaceState({ page: 'compare', params: { compareIds: ids } }, document.title, url);
+    }
+  }, []);
+
   const handleCompareProduct = (productId) => {
     let newIds = compareIds;
     if (!compareIds.includes(productId)) {
@@ -300,7 +311,8 @@ export default function App() {
 
         {activePage === 'compare' && (
           <ProductComparison
-            initialProductIds={compareIds}
+            productIds={compareIds}
+            onChangeIds={updateCompareIds}
             onSelectProduct={handleSelectProduct}
             activeProfile={activeProfile}
           />

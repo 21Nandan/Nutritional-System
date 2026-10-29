@@ -17,9 +17,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.core.allergen_engine import MAJOR_ALLERGENS, analyze_allergens
-from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import run_full_product_assessment
 from backend.main import app
+from backend.tests import catalogue_fixture as fx
 
 client = TestClient(app)
 
@@ -36,9 +36,7 @@ def assert_overridden(assessment: dict, allergen: str) -> None:
 
 
 def first_catalogue_product_declaring(allergen_word: str) -> dict:
-    df = data_loader.products_df
-    row = df[df["allergens_declared"].fillna("").str.contains(allergen_word, case=False)].iloc[0]
-    return data_loader.get_product_by_id(row["product_id"])
+    return next(p for p in fx.PRODUCTS if allergen_word.lower() in str(p["allergens_declared"] or "").lower())
 
 
 # ---------- 1. Override on every path ----------
@@ -109,7 +107,7 @@ def test_manual_entry_path():
 
 def test_compare_path():
     milk = first_catalogue_product_declaring("Milk")
-    other = data_loader.products_df[data_loader.products_df["product_id"] != milk["product_id"]].iloc[0]["product_id"]
+    other = next(p["product_id"] for p in fx.PRODUCTS if p["product_id"] != milk["product_id"])
     data = client.get(f"/api/compare?ids={milk['product_id']},{other}", headers=profile_header("Milk")).json()
     row = next(p for p in data["products_compared"] if p["product_id"] == milk["product_id"])
     assert row["has_allergen_conflict"] is True
@@ -129,18 +127,17 @@ def test_saved_product_reassessment_path():
 def test_alternatives_exclude_user_allergen_for_every_category(allergen):
     header = profile_header(allergen)
     profile = {"allergens_to_avoid": allergen, "goal": "Balanced Choices", "dietary_preference": "No preference"}
-    df = data_loader.products_df
-    for category in df["category"].unique():
-        pid = df[df["category"] == category].iloc[0]["product_id"]
+    for category in {p["category"] for p in fx.PRODUCTS}:
+        pid = next(p["product_id"] for p in fx.PRODUCTS if p["category"] == category)
         alts = client.get(f"/api/alternatives/{pid}?limit=12", headers=header).json()["alternatives"]
         for alt in alts:
-            assessment = run_full_product_assessment(data_loader.get_product_by_id(alt["product_id"]), profile)
+            assessment = run_full_product_assessment(fx.BY_BARCODE[alt["product_id"].removeprefix("OFF_")], profile)
             assert assessment["safety_override"]["allergen_conflict"] is False, (allergen, alt["product_id"])
             assert assessment["safety_override"]["allergen_check_incomplete"] is False, (allergen, alt["product_id"])
 
 
 def test_alternatives_without_profile_header_use_no_one_elses_allergens():
-    data = client.get("/api/alternatives/IND_PKG_001").json()
+    data = client.get("/api/alternatives/OFF_2000000000015").json()
     assert data["profile_source"] == "default"
 
 
@@ -222,7 +219,9 @@ def test_every_group_name_is_matched_when_declared():
 
 def test_compare_reports_unknown_allergen_information_and_nutrient_flags():
     """The comparison must be able to tell "no alerts" apart from "allergen information missing"."""
-    data = client.get("/api/compare?ids=IND_PKG_001,IND_PKG_002", headers=profile_header("Milk")).json()
+    data = client.get("/api/compare?ids=OFF_2000000000015,OFF_2000000000114", headers=profile_header("Milk")).json()
+    unknown = {row["product_name"]: row["allergen_status_unknown"] for row in data["products_compared"]}
+    assert unknown == {"Masala Bhujia Test": False, "Mystery Snack Test": True}
     for row in data["products_compared"]:
         assert isinstance(row["allergen_status_unknown"], bool)
         assert isinstance(row["user_allergen_check_incomplete"], bool)

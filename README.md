@@ -11,19 +11,19 @@ EATGOOD helps people understand Indian packaged food labels. For a product it sh
 - a check of **marketing claims** ("low fat", "high protein") against the numbers,
 - **healthier alternatives** in the same category that don't contain your allergens.
 
-You can browse a catalogue, look up a barcode (with the camera or by typing it), or photograph a
-nutrition label: the text is read **in your browser** and you confirm every value before anything is
-scored.
+You can browse and search packaged foods sold in India (or worldwide), look up a barcode (with the
+camera or by typing it), or enter label values yourself. Product data comes from
+[Open Food Facts](https://world.openfoodfacts.org), a community database.
 
 **Live:** https://eatgood26.vercel.app
 
 ![Product assessment showing an allergen warning above the grade](docs/screenshot-assessment.png)
 
-> **Informational only, not medical advice.** The built-in catalogue is **demo data**: real product
-> names with randomly generated nutrition values, ingredients and allergens (see
-> [docs/DATA.md](docs/DATA.md)). Barcode lookups of real products use Open Food Facts. EATGOOD is not
-> affiliated with or endorsed by WHO or FSSAI, and its thresholds have not yet been verified against
-> the source documents ([docs/THRESHOLDS.md](docs/THRESHOLDS.md)).
+> **Informational only, not medical advice.** Product data is community-contributed and can be wrong
+> or incomplete; always check the pack. The former built-in catalogue (852 products with generated
+> values) is no longer used and is kept in `data/quarantine/` ([docs/DATA.md](docs/DATA.md)). EATGOOD
+> is not affiliated with or endorsed by WHO or FSSAI, and its thresholds have not yet been verified
+> against the source documents ([docs/THRESHOLDS.md](docs/THRESHOLDS.md)).
 
 ## Quick start
 
@@ -69,10 +69,8 @@ No secrets are required.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/health`, `GET /api/ready` | liveness; readiness (503 if the catalogue is empty or SQLite is unreachable) |
-| `GET /api/dataset` | dataset version, provenance and counts |
-| `GET /api/products` | catalogue: `query`, `category`, nutrient filters, `limit` (≤ 100), `offset` |
-| `GET /api/products/search?q=` | catalogue first, then Open Food Facts; external errors are reported |
+| `GET /api/health`, `GET /api/ready` | liveness; readiness (503 if SQLite is unreachable) |
+| `GET /api/products` | catalogue from Open Food Facts: `query` (words, an unfinished last word, or a barcode), `category`, `india_only`, nutrient filters, `has_image`, `limit` (≤ 100), `offset`; each item carries its grade and Goal Match |
 | `GET /api/products/search/openfoodfacts?q=&page=` | Open Food Facts world database only (search.openfoodfacts.org), 24 per page; a failed search is an HTTP error |
 | `GET /api/products/categories` | categories |
 | `GET /api/products/{id}` | full assessment (catalogue ID, `OFF_<barcode>`, `USER_SUB_<barcode>` or barcode) |
@@ -82,7 +80,7 @@ No secrets are required.
 | `POST /api/products/assess` | assess values you entered |
 | `POST /api/products/contribute` | add a missing product (unreviewed) |
 | `POST /api/assistant/ask` | rule-based answers about a product |
-| `GET /api/standards`, `GET /api/audit` | thresholds and data-quality report |
+| `GET /api/standards` | thresholds and category specifications |
 
 Personalised endpoints read the optional `X-Eatgood-Profile` header (URI-encoded JSON with `goal`,
 `dietary_preference`, `allergens_to_avoid`). Errors use
@@ -92,7 +90,7 @@ Personalised endpoints read the optional `X-Eatgood-Profile` header (URI-encoded
 
 ```bash
 make check     # ruff, mypy, pytest with coverage, bandit, pip-audit, npm audit, frontend lint and build
-make e2e       # Playwright: catalogue, search, allergen override, compare, profile, product search, score breakdown (desktop + mobile)
+make e2e       # Playwright with an offline test catalogue: catalogue, search, filters, compare, profile, scores (desktop + mobile)
 make smoke URL=https://eatgood26.vercel.app   # post-deploy smoke test
 ```
 
@@ -115,7 +113,8 @@ once, or behind a corporate proxy set `SSL_CERT_FILE` to your organisation's CA 
 
 ## Limitations
 
-- The catalogue is synthetic demo data. Real products come only from Open Food Facts barcode lookups.
+- Product data comes from Open Food Facts and is community-contributed. Text search matches whole words;
+  an unfinished last word is matched against the first 100 results, and ingredient text is not searchable.
 - Thresholds are informed by, but not yet checked against, the cited documents. Chocolates, sweets and
   condiments get no grade.
 - Label reading is English only and struggles with glare, curved packs and Hindi/bilingual labels.
