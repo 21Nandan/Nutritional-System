@@ -6,49 +6,88 @@ Enforces hard safety exclusions without fabricating toxicology claims.
 """
 
 import re
+from typing import Any
 
-MAJOR_ALLERGENS = {
+# Allergen groups. "keywords" are matched as whole words/phrases in ingredients and
+# declarations; "exclusions" are phrases removed first because they contain a keyword
+# without containing the allergen (e.g. "coconut milk", "cocoa butter").
+# fssai_mandate: listed in FSSAI Labelling & Display Regulations 2020, Schedule on allergens
+# (cereals containing gluten, crustaceans, milk, eggs, fish, peanuts, tree nuts, soybeans, sulphites).
+MAJOR_ALLERGENS: dict[str, dict[str, Any]] = {
     "Milk": {
-        "keywords": ["milk", "dairy", "butter", "cheese", "whey", "casein", "lactose", "curd", "paneer", "dahi", "cream", "ghee", "milk solids", "skimmed milk"],
-        "fssai_mandate": True
+        "keywords": [
+            "milk", "milk solids", "milk powder", "skimmed milk", "milk fat", "dairy", "butter", "butter oil",
+            "buttermilk", "cheese", "whey", "casein", "caseinate", "lactose", "curd", "paneer", "dahi",
+            "cream", "ghee", "khoa", "khoya", "malai", "yoghurt", "yogurt",
+        ],
+        "exclusions": [
+            "coconut milk", "almond milk", "soy milk", "soya milk", "oat milk", "rice milk", "cocoa butter",
+            "peanut butter", "nut butter", "shea butter", "cream of tartar", "milk thistle", "coconut cream",
+        ],
+        "fssai_mandate": True,
     },
     "Soy": {
-        "keywords": ["soy", "soya", "soybean", "soy lecithin", "edamame", "hydrolysed vegetable protein (soy)", "tofu"],
-        "fssai_mandate": True
+        "keywords": ["soy", "soya", "soybean", "soybeans", "soy lecithin", "soya lecithin", "edamame", "tofu"],
+        "exclusions": [],
+        "possible": ["lecithin", "ins 322", "e322"],
+        "possible_exclusions": ["sunflower lecithin", "lecithin (sunflower)", "rapeseed lecithin"],
+        "fssai_mandate": True,
     },
     "Gluten": {
-        "keywords": ["gluten", "wheat", "maida", "atta", "barley", "malt", "rye", "oats (non-certified)", "semolina", "suji", "rava"],
-        "fssai_mandate": True
+        "keywords": [
+            "gluten", "wheat", "maida", "atta", "barley", "malt", "malt extract", "rye", "semolina", "suji",
+            "sooji", "rava", "dalia", "spelt", "seitan", "wheat flour",
+        ],
+        "exclusions": ["buckwheat", "gluten free", "gluten-free"],
+        "fssai_mandate": True,
     },
     "Peanuts": {
-        "keywords": ["peanut", "peanuts", "groundnut", "groundnuts", "monkey nut", "arachis"],
-        "fssai_mandate": True
+        "keywords": ["peanut", "peanuts", "groundnut", "groundnuts", "monkey nut", "arachis", "moongphali", "mungfali"],
+        "exclusions": [],
+        "fssai_mandate": True,
     },
     "Tree Nuts": {
-        "keywords": ["almond", "almonds", "cashew", "cashews", "walnut", "walnuts", "pistachio", "pistachios", "hazelnut", "hazelnuts", "pecan", "brazil nut", "badam", "kaju", "akhrot", "pista"],
-        "fssai_mandate": True
+        "keywords": [
+            "tree nut", "tree nuts", "almond", "almonds", "cashew", "cashews", "walnut", "walnuts", "pistachio",
+            "pistachios", "hazelnut", "hazelnuts", "pecan", "pecans", "brazil nut", "macadamia", "pine nut",
+            "badam", "kaju", "akhrot", "pista", "chironji",
+        ],
+        "exclusions": [],
+        "fssai_mandate": True,
     },
     "Eggs": {
-        "keywords": ["egg", "eggs", "egg powder", "albumin", "egg yolk", "lysozyme", "ovalbumin"],
-        "fssai_mandate": True
+        "keywords": ["egg", "eggs", "egg powder", "albumin", "albumen", "egg yolk", "egg white", "lysozyme", "ovalbumin"],
+        "exclusions": ["eggplant", "eggless"],
+        "fssai_mandate": True,
     },
     "Fish": {
-        "keywords": ["fish", "cod", "salmon", "tuna", "anchovy", "gelatin (fish)", "isinglass"],
-        "fssai_mandate": True
+        "keywords": ["fish", "cod", "salmon", "tuna", "anchovy", "anchovies", "sardine", "fish sauce", "isinglass"],
+        "exclusions": [],
+        "fssai_mandate": True,
     },
     "Crustaceans": {
-        "keywords": ["crustacean", "crustaceans", "shrimp", "prawn", "crab", "lobster", "krill"],
-        "fssai_mandate": True
+        "keywords": ["crustacean", "crustaceans", "shrimp", "shrimps", "prawn", "prawns", "crab", "lobster", "krill"],
+        "exclusions": [],
+        "fssai_mandate": True,
     },
     "Sesame": {
-        "keywords": ["sesame", "til", "tahini", "sesame seeds", "sesame oil"],
-        "fssai_mandate": False
+        "keywords": ["sesame", "til", "tahini", "gingelly"],
+        "exclusions": [],
+        "fssai_mandate": False,
     },
     "Sulphites": {
-        "keywords": ["sulphite", "sulfite", "sulphur dioxide", "sodium metabisulphite", "ins 220", "ins 221", "ins 222", "ins 223", "ins 224"],
-        "fssai_mandate": True
-    }
+        "keywords": [
+            "sulphite", "sulphites", "sulfite", "sulfites", "sulphur dioxide", "sulfur dioxide",
+            "sodium metabisulphite", "potassium metabisulphite", "ins 220", "ins 221", "ins 222", "ins 223", "ins 224",
+        ],
+        "exclusions": [],
+        "fssai_mandate": True,
+    },
 }
+
+# Generic words on labels that point at more than one group. "May contain nuts" is treated
+# as a warning for both peanuts and tree nuts, because the label does not say which.
+GENERIC_TERMS = {"nut": ["Peanuts", "Tree Nuts"], "nuts": ["Peanuts", "Tree Nuts"]}
 
 ADDITIVE_KNOWLEDGE_BASE = {
     "INS 621": {"name": "Monosodium Glutamate (MSG)", "class": "Flavour Enhancer", "note": "Permitted food additive under FSSAI and Codex. Produces savory umami taste."},
@@ -75,99 +114,174 @@ ADDITIVE_KNOWLEDGE_BASE = {
     "INS 503(ii)": {"name": "Ammonium Bicarbonate", "class": "Raising Agent", "note": "Baker's ammonia; standard biscuit leavener."}
 }
 
-def analyze_allergens(ingredients: str, allergens_declared: str, user_allergens_to_avoid: list = None):
-    """
-    Evaluates allergens present in a product against declared labels and user requirements.
-    Never assumes safety when allergen information is missing!
-    """
-    if user_allergens_to_avoid is None:
-        user_allergens_to_avoid = []
+_MAY_CONTAIN_PATTERN = re.compile(
+    r"(may\s+contain|may\s+also\s+contain|traces?\s+of|processed\s+in\s+a\s+facility|manufactured\s+in\s+a\s+facility|same\s+(?:facility|line))",
+    re.IGNORECASE,
+)
+_EMPTY_DECLARATIONS = {"", "nan", "none", "none declared", "not declared", "n/a"}
 
-    user_allgs_normalized = [a.strip().lower() for a in user_allergens_to_avoid if a.strip() and a.lower() != "none"]
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    return re.search(r"(?<![a-z])" + re.escape(phrase) + r"(?![a-z])", text) is not None
+
+
+def _strip_phrases(text: str, phrases: list) -> str:
+    for phrase in phrases:
+        text = re.sub(r"(?<![a-z])" + re.escape(phrase) + r"(?![a-z])", " ", text)
+    return text
+
+
+def _match(text: str, info: dict) -> str | None:
+    cleaned = _strip_phrases(text, info["exclusions"])
+    for kw in info["keywords"]:
+        if _contains_phrase(cleaned, kw):
+            return kw
+    return None
+
+
+def _match_possible(text: str, info: dict) -> str | None:
+    cleaned = _strip_phrases(text, info.get("possible_exclusions", []))
+    for kw in info.get("possible", []):
+        if _contains_phrase(cleaned, kw):
+            return kw
+    return None
+
+
+_SPECIFIC_NUT_PHRASES = ["tree nuts", "tree nut", "peanuts", "peanut", "groundnuts", "groundnut", "monkey nut",
+                         "brazil nut", "pine nut", "nutmeg", "coconut"]
+
+
+def _generic_groups(text: str) -> list[str]:
+    """Groups implied by a bare 'nut'/'nuts' that is not part of a more specific name."""
+    cleaned = _strip_phrases(text, _SPECIFIC_NUT_PHRASES)
+    return [g for term, groups in GENERIC_TERMS.items() if _contains_phrase(cleaned, term) for g in groups]
+
+
+def _split_declaration(declaration: str) -> tuple[str, str]:
+    """Splits a declaration into (contains_text, may_contain_text)."""
+    match = _MAY_CONTAIN_PATTERN.search(declaration)
+    if not match:
+        return declaration, ""
+    return declaration[: match.start()], declaration[match.start():]
+
+
+def canonical_user_allergens(user_allergens: list[str]) -> tuple[list[str], list[str]]:
+    """Maps profile entries to allergen groups. Returns (known_groups, custom_terms)."""
+    known: list[str] = []
+    custom: list[str] = []
+    for entry in user_allergens:
+        term = entry.strip().lower()
+        if not term or term == "none":
+            continue
+        group = next(
+            (name for name, info in MAJOR_ALLERGENS.items() if term == name.lower() or term in info["keywords"]),
+            None,
+        )
+        if group is not None:
+            known.append(group)
+        elif term in GENERIC_TERMS:
+            known.extend(GENERIC_TERMS[term])
+        else:
+            custom.append(term)
+    return sorted(set(known)), sorted(set(custom))
+
+
+def analyze_allergens(ingredients: str, allergens_declared: str, user_allergens_to_avoid: list[str] | None = None):
+    """
+    Checks a product's allergen declaration and ingredients against the major allergen groups
+    and the user's own list. Missing information is never treated as safe.
+
+    Status levels, most to least certain:
+      "Confirmed Allergen"                  named in the "contains" part of the declaration
+      "Ingredient Match (Requires Review)"  an ingredient word belongs to the group
+      "Advisory Warning (May Contain)"      named in a "may contain / traces of" statement
+      "Possible Source (Check Label)"       an ingredient that is often, but not always, from the group
+    Any of these counts as a conflict with the user's profile.
+    """
+    known_user, custom_user = canonical_user_allergens(user_allergens_to_avoid or [])
 
     ing_text = str(ingredients or "").lower()
-    decl_text = str(allergens_declared or "").lower()
+    decl_text = str(allergens_declared or "").lower().strip()
+    has_declaration = decl_text not in _EMPTY_DECLARATIONS
+    has_ingredients = ing_text.strip() not in ("", "nan")
+    contains_text, may_contain_text = _split_declaration(decl_text) if has_declaration else ("", "")
 
-    # Distinguish status
-    has_declaration = bool(decl_text.strip() and decl_text.strip() != "none declared" and decl_text.strip() != "nan")
-    has_ingredients = bool(ing_text.strip() and ing_text.strip() != "nan")
+    generic_may = _generic_groups(may_contain_text)
+    generic_contains = _generic_groups(contains_text)
 
     allergen_results = []
     user_conflicts = []
 
     for allergen, info in MAJOR_ALLERGENS.items():
-        allg_lower = allergen.lower()
-        confirmed = False
-        warning = False
-        ingredient_match = False
-        matched_terms = []
+        evidence = []
+        status = None
+        severity = "low"
 
-        # 1. Check explicit declaration
-        if has_declaration:
-            if allg_lower in decl_text or (allg_lower == "gluten" and "wheat" in decl_text):
-                confirmed = True
-                matched_terms.append("Declared on label")
-            elif "may contain" in decl_text and allg_lower in decl_text:
-                warning = True
-                matched_terms.append("Cross-contact advisory declaration")
+        declared_kw = _match(contains_text, info) or (allergen.lower() if _contains_phrase(contains_text, allergen.lower()) else None)
+        if declared_kw or allergen in generic_contains:
+            status, severity = "Confirmed Allergen", "high"
+            evidence.append(f"Declared on label ('{declared_kw or 'nuts'}')")
+        ingredient_kw = _match(ing_text, info) if has_ingredients else None
+        if ingredient_kw:
+            evidence.append(f"Ingredient '{ingredient_kw}' belongs to this group")
+            if status is None:
+                status, severity = "Ingredient Match (Requires Review)", "medium"
+        may_kw = _match(may_contain_text, info) or (allergen.lower() if _contains_phrase(may_contain_text, allergen.lower()) else None)
+        if may_kw or allergen in generic_may:
+            evidence.append(f"Label says it may contain '{may_kw or 'nuts'}'")
+            if status is None:
+                status, severity = "Advisory Warning (May Contain)", "medium"
+        possible_kw = _match_possible(ing_text, info) if has_ingredients else None
+        if possible_kw and status is None:
+            status, severity = "Possible Source (Check Label)", "medium"
+            evidence.append(f"'{possible_kw}' is often made from {allergen.lower()}; the label does not say which source")
 
-        # 2. Check ingredient keywords
-        if has_ingredients:
-            for kw in info["keywords"]:
-                pattern = r'\b' + re.escape(kw) + r'\b'
-                if re.search(pattern, ing_text):
-                    ingredient_match = True
-                    matched_terms.append(f"Found keyword '{kw}' in ingredients")
-                    break
+        if status is None:
+            continue
+        conflicts_user = allergen in known_user
+        if conflicts_user:
+            user_conflicts.append({"allergen": allergen, "status": status, "evidence": evidence})
+        allergen_results.append(
+            {"allergen": allergen, "status": status, "severity": severity, "evidence": evidence, "conflicts_user": conflicts_user}
+        )
 
-        # Synthesize status for this allergen
-        if confirmed:
-            status = "Confirmed Allergen"
-            severity = "high"
-        elif ingredient_match:
-            status = "Ingredient Match (Requires Review)"
-            severity = "medium"
-        elif warning:
-            status = "Advisory Warning (May Contain)"
-            severity = "medium"
-        else:
-            status = "Not Detected in Available Text"
-            severity = "low"
+    for term in custom_user:
+        in_contains = _contains_phrase(contains_text, term)
+        in_ingredients = has_ingredients and _contains_phrase(ing_text, term)
+        in_may = _contains_phrase(may_contain_text, term)
+        if not (in_contains or in_ingredients or in_may):
+            continue
+        status = (
+            "Confirmed Allergen" if in_contains
+            else "Ingredient Match (Requires Review)" if in_ingredients
+            else "Advisory Warning (May Contain)"
+        )
+        evidence = [f"'{term}' appears in the {'declaration' if in_contains or in_may else 'ingredients'}"]
+        user_conflicts.append({"allergen": term.title(), "status": status, "evidence": evidence})
+        allergen_results.append(
+            {"allergen": term.title(), "status": status, "severity": "high" if in_contains else "medium",
+             "evidence": evidence, "conflicts_user": True}
+        )
 
-        is_user_conflict = False
-        if allg_lower in user_allgs_normalized or (allg_lower == "gluten" and "wheat" in user_allgs_normalized):
-            if status in ["Confirmed Allergen", "Ingredient Match (Requires Review)", "Advisory Warning (May Contain)"]:
-                is_user_conflict = True
-                user_conflicts.append({
-                    "allergen": allergen,
-                    "status": status,
-                    "evidence": matched_terms
-                })
-
-        if status != "Not Detected in Available Text":
-            allergen_results.append({
-                "allergen": allergen,
-                "status": status,
-                "severity": severity,
-                "evidence": matched_terms,
-                "conflicts_user": is_user_conflict
-            })
-
-    # Handling missing or ambiguous allergen information
-    data_completeness = "Complete"
     if not has_declaration and not has_ingredients:
         data_completeness = "Unknown — Verification Required"
     elif not has_declaration:
         data_completeness = "Partial (No Formal Allergen Box, Ingredients Only)"
+    else:
+        data_completeness = "Complete"
 
+    allergen_status_unknown = not has_declaration and not has_ingredients
+    user_has_allergens = bool(known_user or custom_user)
     return {
         "data_completeness": data_completeness,
-        "allergen_status_unknown": not has_declaration and not has_ingredients,
+        "allergen_status_unknown": allergen_status_unknown,
+        "user_allergen_check_incomplete": user_has_allergens and allergen_status_unknown,
         "detected_allergens": allergen_results,
         "user_conflicts": user_conflicts,
         "has_critical_conflict": len(user_conflicts) > 0,
-        "disclaimer": "Allergen absence in text is NOT proof of safety. Always verify package markings for cross-contact notices."
+        "disclaimer": "Not finding an allergen in the text is NOT proof the product is free of it. Always check the pack.",
     }
+
 
 def analyze_additives(ingredients: str, additives_declared: str = ""):
     """
@@ -175,7 +289,7 @@ def analyze_additives(ingredients: str, additives_declared: str = ""):
     """
     text = f"{ingredients or ''} {additives_declared or ''}"
     ins_matches = re.findall(r'INS\s*([0-9]+[a-zA-Z]?(?:\([iIvVxX]+\))?)', text, re.IGNORECASE)
-    
+
     unique_ins = list(set([f"INS {m.strip()}" for m in ins_matches]))
     additives_found = []
 

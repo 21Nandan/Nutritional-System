@@ -22,10 +22,6 @@ yarn-error.log*
 .vscode/
 
 # Local data & binaries
-scripts/ocr_helper
-data/uploads/*
-!data/uploads/.gitkeep
-frontend/data/uploads/*
 *.db-wal
 *.db-shm
 
@@ -34,3 +30,15 @@ frontend/data/uploads/*
 .env.local
 .env.*.local
 *.env
+
+# Runtime databases (caches only; recreated on startup)
+*.db
+*.db-journal
+
+# OCR assets copied from node_modules at build time
+frontend/public/ocr/
+
+# Build output (Vercel and local runs rebuild it)
+frontend/dist/
+test-results/
+playwright-report/

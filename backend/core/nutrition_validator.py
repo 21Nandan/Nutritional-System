@@ -9,7 +9,7 @@ Performs rigorous pre-scoring verification:
 """
 
 import math
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 
 NUTRIENT_FIELDS = [
     "energy_kcal",
@@ -39,7 +39,7 @@ FIELD_FRIENDLY_NAMES = {
     "dietary_fibre_g": "Dietary Fibre (g)"
 }
 
-def parse_float_safe(val: Any) -> Optional[float]:
+def parse_float_safe(val: Any) -> float | None:
     """Parses a float value safely; returns None if null, empty, or unparseable."""
     if val is None:
         return None
@@ -61,10 +61,10 @@ def parse_float_safe(val: Any) -> Optional[float]:
         return None
 
 def validate_and_normalize_nutrition(
-    product_data: Dict[str, Any],
-    mandatory_fields: Optional[List[str]] = None,
+    product_data: dict[str, Any],
+    mandatory_fields: list[str] | None = None,
     target_basis: str = "per 100g"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Validates and normalizes nutritional facts before feeding them into scoring engines.
     Preserves raw inputs and flags anomalies.
@@ -72,19 +72,19 @@ def validate_and_normalize_nutrition(
     if mandatory_fields is None:
         mandatory_fields = ["energy_kcal", "sugars_g", "saturated_fat_g", "sodium_mg"]
 
-    raw_nutrition: Dict[str, Any] = {}
-    cleaned_nutrition: Dict[str, Optional[float]] = {}
-    missing_mandatory: List[str] = []
-    missing_optional: List[str] = []
-    validation_warnings: List[str] = []
-    contradictions: List[str] = []
+    raw_nutrition: dict[str, Any] = {}
+    cleaned_nutrition: dict[str, float | None] = {}
+    missing_mandatory: list[str] = []
+    missing_optional: list[str] = []
+    validation_warnings: list[str] = []
+    contradictions: list[str] = []
 
     # 1. Extract raw and cleaned numeric values
     for f in NUTRIENT_FIELDS:
         raw_val = product_data.get(f)
         raw_nutrition[f] = raw_val
         parsed = parse_float_safe(raw_val)
-        
+
         # Check negative
         if parsed is not None and parsed < 0:
             contradictions.append(f"Invalid negative value for {FIELD_FRIENDLY_NAMES.get(f, f)}: {parsed}")
@@ -96,12 +96,17 @@ def validate_and_normalize_nutrition(
     raw_basis = str(product_data.get("measurement_basis", "per 100g")).strip().lower()
     raw_serving_size = parse_float_safe(product_data.get("serving_size"))
     serving_unit = str(product_data.get("serving_size_unit", "g")).strip().lower()
-    
+
     normalized_nutrition = dict(cleaned_nutrition)
     basis_converted = False
     conversion_factor = 1.0
 
-    if "serving" in raw_basis:
+    if raw_basis.replace(" ", "") not in ("per100g", "per100ml") and "serving" not in raw_basis:
+        # Without a stated basis the values cannot be compared with per-100 g/ml thresholds.
+        contradictions.append(
+            "The label does not say whether values are per 100 g, per 100 ml or per serving, so they cannot be graded."
+        )
+    elif "serving" in raw_basis:
         if raw_serving_size and raw_serving_size > 0:
             # Convert per-serving values to per-100g or per-100ml
             target_denom = 100.0
@@ -119,8 +124,8 @@ def validate_and_normalize_nutrition(
             )
 
     # 3. Check Mandatory and Optional Nutrient Completeness
-    missing_mandatory_labels: List[str] = []
-    missing_optional_labels: List[str] = []
+    missing_mandatory_labels: list[str] = []
+    missing_optional_labels: list[str] = []
 
     for f in mandatory_fields:
         if normalized_nutrition.get(f) is None:

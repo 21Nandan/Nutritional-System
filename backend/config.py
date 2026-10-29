@@ -1,58 +1,87 @@
 """
-EATGOOD — Centralized Configuration Management
-Loads environment variables safely with sensible defaults for local development,
-testing, and production environments.
+EATGOOD — Centralized configuration.
+Every setting is read once from the environment and validated at import time,
+so a misconfigured deployment fails at startup instead of on the first request.
 """
 
 import os
-from typing import List
+from pathlib import Path
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
 
-# Environment mode
-ENVIRONMENT = os.environ.get("EATGOOD_ENV", os.environ.get("ENVIRONMENT", "development")).lower()
-DEBUG = os.environ.get("EATGOOD_DEBUG", "false" if ENVIRONMENT == "production" else "true").lower() in ["1", "true", "yes"]
+IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
-# Server settings
-HOST = os.environ.get("EATGOOD_HOST", "127.0.0.1")
-PORT = int(os.environ.get("EATGOOD_PORT", "8000"))
 
-# Allowed CORS Origins
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in ("1", "true", "yes"):
+        return True
+    if value in ("0", "false", "no"):
+        return False
+    raise RuntimeError(f"Environment variable {name} must be true/false, got {raw!r}")
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Environment variable {name} must be an integer, got {raw!r}") from exc
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Environment variable {name} must be a number, got {raw!r}") from exc
+
+
+ENVIRONMENT = os.environ.get("EATGOOD_ENV", "development").lower()
+if ENVIRONMENT not in ("development", "test", "production"):
+    raise RuntimeError(f"EATGOOD_ENV must be development, test or production, got {ENVIRONMENT!r}")
+
+# SQLite only holds caches and unmoderated user contributions (no personal data).
+# The serverless filesystem is read-only except /tmp, and /tmp is per-instance and ephemeral.
+# Vercel only allows writes under /tmp; no personal data is stored there.
+_SERVERLESS_DB = "/tmp/eatgood_app.db"  # noqa: S108  # nosec B108
+DB_PATH = Path(os.environ.get("EATGOOD_DB_PATH") or (_SERVERLESS_DB if IS_SERVERLESS else DATA_DIR / "eatgood_app.db"))
+
+# Allowed CORS origins. The production frontend is served from the same origin as the API,
+# so cross-origin access is only needed for the local Vite dev server.
 _DEFAULT_CORS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
 ]
-custom_cors = os.environ.get("EATGOOD_CORS_ORIGINS")
-if custom_cors:
-    CORS_ORIGINS: List[str] = [origin.strip() for origin in custom_cors.split(",") if origin.strip()]
-else:
-    CORS_ORIGINS: List[str] = _DEFAULT_CORS
+_custom_cors = os.environ.get("EATGOOD_CORS_ORIGINS")
+CORS_ORIGINS: list[str] = (
+    [origin.strip() for origin in _custom_cors.split(",") if origin.strip()] if _custom_cors else _DEFAULT_CORS
+)
+if "*" in CORS_ORIGINS:
+    raise RuntimeError("EATGOOD_CORS_ORIGINS must list explicit origins; '*' is not allowed.")
 
-# Security & Upload Constraints
-MAX_UPLOAD_SIZE_MB = int(os.environ.get("EATGOOD_MAX_UPLOAD_MB", "10"))
-MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
-ALLOWED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"]
-ALLOWED_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"]
+# OCR now runs in the browser; the server only parses text. Cap the text size it accepts.
+MAX_OCR_TEXT_CHARS = _env_int("EATGOOD_MAX_OCR_TEXT_CHARS", 20000)
 
-# Upload Directory Configuration (Serverless / Read-Only Filesystem Safe)
-if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-    UPLOAD_DIR = "/tmp/eatgood_uploads"
-else:
-    UPLOAD_DIR = os.environ.get("EATGOOD_UPLOAD_DIR", os.path.join(BASE_DIR, "data", "uploads"))
-
-# Open Food Facts API v3 Configuration
+# Open Food Facts API v3
 OFF_BASE_URL = os.environ.get("OFF_BASE_URL", "https://world.openfoodfacts.org/api/v3/product")
 OFF_USER_AGENT = os.environ.get(
     "OFF_USER_AGENT",
-    "EATGOOD-NutritionScanner/1.0 (local-desktop; dev@eatgood.local)"
+    "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)",
 )
-OFF_TIMEOUT_SECONDS = float(os.environ.get("OFF_TIMEOUT_SECONDS", "8.0"))
-OFF_CACHE_TTL_HOURS = int(os.environ.get("OFF_CACHE_TTL_HOURS", "168"))  # 7 days
+OFF_TIMEOUT_SECONDS = _env_float("OFF_TIMEOUT_SECONDS", 8.0)
+OFF_CACHE_TTL_HOURS = _env_int("OFF_CACHE_TTL_HOURS", 168)
 
-# Rate Limiting Configuration
-RATE_LIMIT_ENABLED = os.environ.get("EATGOOD_RATE_LIMIT", "true").lower() in ["1", "true", "yes"]
-RATE_LIMIT_OCR_RPM = int(os.environ.get("RATE_LIMIT_OCR_RPM", "20"))
-RATE_LIMIT_OFF_RPM = int(os.environ.get("RATE_LIMIT_OFF_RPM", "45"))
-RATE_LIMIT_CONTRIB_RPM = int(os.environ.get("RATE_LIMIT_CONTRIB_RPM", "30"))
+# Rate limiting (requests per minute per client IP, per server instance)
+RATE_LIMIT_ENABLED = _env_bool("EATGOOD_RATE_LIMIT", True)
+RATE_LIMIT_OCR_RPM = _env_int("RATE_LIMIT_OCR_RPM", 20)
+RATE_LIMIT_OFF_RPM = _env_int("RATE_LIMIT_OFF_RPM", 45)
+RATE_LIMIT_CONTRIB_RPM = _env_int("RATE_LIMIT_CONTRIB_RPM", 30)

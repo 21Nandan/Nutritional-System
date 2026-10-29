@@ -1,78 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { apiFetch } from '../api';
+import { clearHistory, loadHistory, loadSavedProducts, toggleSavedProduct } from '../storage';
 import { 
-  BarChart3, Bookmark, Clock, User, ShieldCheck, 
-  ArrowRight, ScanLine, Search, ChevronRight, Award, AlertCircle 
+  Bookmark, Clock, User, ScanLine, ChevronRight 
 } from 'lucide-react';
 
-export default function Dashboard({ setActivePage, onSelectProduct, activeProfile, onOpenProfile, onRetakeOnboarding }) {
-  const [history, setHistory] = useState([]);
-  const [savedProducts, setSavedProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustomAssessment, activeProfile, onOpenProfile, onRetakeOnboarding }) {
+  // History and saved products are kept only in this browser.
+  const [history, setHistory] = useState(() => loadHistory());
+  const [savedProducts, setSavedProducts] = useState(() => loadSavedProducts());
+  const [openError, setOpenError] = useState(null);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = () => {
-    // 1. Load client-recorded interaction history from localStorage
-    let localHist = [];
-    try {
-      const savedHist = localStorage.getItem('eatgood_interaction_history');
-      if (savedHist) localHist = JSON.parse(savedHist);
-    } catch (e) {}
-
-    // 2. Fetch user-partitioned history and saved from backend
-    const clientId = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
-    Promise.all([
-      fetch(`/api/history?user_id=${encodeURIComponent(clientId)}`, {
-        headers: { 'X-User-Id': clientId }
-      }).then(res => res.json()).catch(() => []),
-      fetch('/api/saved').then(res => res.json()).catch(() => ({ saved_products: [] }))
-    ])
-      .then(([apiHist, savedData]) => {
-        const combined = [...localHist];
-        if (Array.isArray(apiHist)) {
-          apiHist.forEach(item => {
-            if (!combined.some(c => c.product_id === item.product_id)) {
-              combined.push(item);
-            }
-          });
-        }
-        // Exclude any legacy localhost developer records (before 2026-10-28 02:00 UTC)
-        const cleanHistory = combined.filter(item => {
-          if (!item.timestamp) return true;
-          return new Date(item.timestamp) > new Date('2026-10-28T02:00:00Z');
-        });
-        setHistory(cleanHistory);
-        setSavedProducts(savedData.saved_products || []);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setHistory(localHist);
-        setLoading(false);
-      });
+  // Custom scans have no server record, so a saved one is re-assessed from its confirmed values.
+  const openSaved = (p) => {
+    setOpenError(null);
+    if (!p.is_custom) {
+      onSelectProduct(p.product_id);
+      return;
+    }
+    apiFetch('/api/products/assess', { method: 'POST', body: p.raw_input })
+      .then((assessment) => onOpenCustomAssessment(assessment))
+      .catch((err) => setOpenError(err.message));
   };
 
   const handleClearHistory = () => {
-    try {
-      localStorage.removeItem('eatgood_interaction_history');
-    } catch (e) {}
+    clearHistory();
     setHistory([]);
-    const clientId = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
-    fetch(`/api/history?user_id=${encodeURIComponent(clientId)}`, {
-      method: 'DELETE',
-      headers: { 'X-User-Id': clientId }
-    }).catch(() => {});
   };
 
   const handleRemoveSaved = (productId) => {
-    fetch(`/api/saved/${productId}`, { method: 'POST' })
-      .then(res => res.json())
-      .then(() => {
-        setSavedProducts(prev => prev.filter(p => p.product_id !== productId));
-      })
-      .catch(err => console.error(err));
+    const product = savedProducts.find((p) => p.product_id === productId);
+    if (!product) return;
+    try {
+      toggleSavedProduct(product);
+      setSavedProducts(loadSavedProducts());
+    } catch (err) {
+      window.alert(err.message);
+    }
   };
 
   return (
@@ -186,9 +150,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
             </div>
           </div>
 
-          {loading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: '#888' }}>Loading history...</div>
-          ) : history.length === 0 ? (
+          {history.length === 0 ? (
             <div style={{ padding: '36px 20px', textAlign: 'center', background: 'var(--color-surface-alt)', borderRadius: 10 }}>
               <ScanLine size={32} color="var(--color-text-subtle)" style={{ margin: '0 auto 10px' }} />
               <h4 style={{ fontSize: '1rem', marginBottom: 4 }}>No food analyses yet</h4>
@@ -207,8 +169,9 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {history.map(item => (
                 <div
-                  key={item.id}
-                  onClick={() => onSelectProduct(item.product_id)}
+                  key={`${item.product_id}-${item.timestamp}`}
+                  onClick={() => (item.product_id === 'CUSTOM_SCAN' ? null : onSelectProduct(item.product_id))}
+                  title={item.product_id === 'CUSTOM_SCAN' ? 'Label scans are not stored. Save a scan to reopen it.' : undefined}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -264,9 +227,10 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
             </span>
           </div>
 
-          {loading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: '#888' }}>Loading saved products...</div>
-          ) : savedProducts.length === 0 ? (
+          {openError && (
+            <p role="alert" style={{ color: '#c62828', fontSize: '0.82rem', marginBottom: 10 }}>{openError}</p>
+          )}
+          {savedProducts.length === 0 ? (
             <div style={{ padding: '36px 20px', textAlign: 'center', background: 'var(--color-surface-alt)', borderRadius: 10 }}>
               <Bookmark size={32} color="var(--color-text-subtle)" style={{ margin: '0 auto 10px' }} />
               <h4 style={{ fontSize: '1rem', marginBottom: 4 }}>No saved products</h4>
@@ -286,7 +250,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, activeProfil
               {savedProducts.map(p => (
                 <div
                   key={p.product_id}
-                  onClick={() => onSelectProduct(p.product_id)}
+                  onClick={() => openSaved(p)}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',

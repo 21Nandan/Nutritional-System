@@ -1,0 +1,7 @@
+{
+  "dataset_version": "synthetic-2026.10-v2",
+  "provenance": "synthetic",
+  "provenance_note": "Demo data. Product names and brands are real; nutrient values, ingredients, allergens and barcodes are randomly generated and do not describe the real products.",
+  "generator": "scripts/generate_initial_data.py (random.seed(42))",
+  "catalogue_rows": 852
+}

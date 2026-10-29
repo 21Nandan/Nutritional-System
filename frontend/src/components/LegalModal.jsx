@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, FileText, CheckCircle2, AlertTriangle, Lock, Eye, Database } from 'lucide-react';
+import { X, ShieldCheck, FileText, CheckCircle2, AlertTriangle, Lock } from 'lucide-react';
 import { useLockBodyScroll } from './useLockBodyScroll';
 
 export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) {
@@ -127,52 +127,48 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
               <div style={{ background: '#f1f8e9', padding: 14, borderRadius: 8, border: '1px solid #c8e6c9', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <CheckCircle2 size={18} color="#2e7d32" style={{ flexShrink: 0, marginTop: 2 }} />
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#1b5e20' }}>
-                  <strong>Local-First Guarantee:</strong> EATGOOD operates 100% on your host computer. Your health goals, dietary preferences, scanned food labels, and bookmark records are processed locally and never transmitted to external cloud servers.
+                  <strong>In short:</strong> your profile, saved products and history are stored only in this browser. Label photos are read on your device and never uploaded. EATGOOD has no accounts and stores nothing that identifies you.
                 </p>
               </div>
 
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  1. Data Collection & Local Storage Architecture
+                  1. What stays on your device
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  We practice strict data minimization. The application collects only the parameters explicitly required to calibrate Layer 2 personalized scoring and Layer 3 allergen safety exclusions. All user profiles, dietary restriction lists, and product search histories reside exclusively in your local SQLite database (<code>eatgood_app.db</code>) and browser local storage.
+                  Your profile (name, goals, diet, allergens, age group, activity level), saved products and assessment history are kept in this browser&apos;s local storage. Clearing site data or using another browser removes them. Label photos are processed by a text reader that runs inside your browser.
                 </p>
               </div>
-
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  2. Offline OCR & Image Processing Privacy
+                  2. What is sent to the EATGOOD server
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  When you upload photograph files (JPEG, PNG) for label analysis, text recognition is handled offline through native computer vision libraries running directly in your execution environment. Images are never transmitted across the public internet, sold, or shared with commercial AI vision APIs.
+                  To compute results, your browser sends: your goal, dietary preference and allergens (with each request, not stored); product IDs, barcodes and search terms; the text recognised from a label photo; and any values you type in. The server runs on Vercel. It keeps short-lived technical logs (time, page path, status) without search terms or profile data, and a cache of Open Food Facts lookups.
                 </p>
               </div>
-
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  3. Zero Third-Party Telemetry & No Behavioral Tracking
+                  3. What is shared with others
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  EATGOOD employs no marketing pixels, analytics beacons, behavioral fingerprinting scripts, or third-party cookies. The platform does not profile consumer purchasing habits, monitor user location, or sell data to packaged food manufacturers or insurers.
+                  If you choose to contribute a missing product, what you submit is stored without your identity and can be shown, marked as unreviewed, to anyone who scans the same barcode. When a barcode is not in our catalogue, the server asks Open Food Facts about that barcode or search term (never your profile). Product photos are loaded by your browser directly from Open Food Facts&apos; image servers.
                 </p>
               </div>
-
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  4. User Autonomy, Data Portability & Complete Erasure
+                  4. Analytics
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  You maintain unconditional control over your dietary data. At any moment, you can modify your stated nutrition goals, remove individual food items from your saved favorites, or reset the local database without external approval.
+                  Vercel Web Analytics counts anonymous page views (no cookies, no cross-site tracking). There are no advertising pixels and no data is sold.
                 </p>
               </div>
-
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  5. Ethical Machine Learning Transparency
+                  5. Your control
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  The integrated machine learning suitability model serves as an experimental secondary perspective trained on synthetic, rule-based data points. Deterministic, evidence-based nutrition standards (WHO & FSSAI benchmarks) remain the primary ground truth.
+                  You can change or clear your profile at any time, remove saved products, and clear your history from the profile page. Clearing this site&apos;s data in your browser deletes everything EATGOOD stored on your device.
                 </p>
               </div>
             </div>
@@ -182,7 +178,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
               <div style={{ background: '#fff3e0', padding: 14, borderRadius: 8, border: '1px solid #ffe0b2', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <AlertTriangle size={18} color="#e65100" style={{ flexShrink: 0, marginTop: 2 }} />
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#e65100' }}>
-                  <strong>Important Medical Notice:</strong> EATGOOD is an evidence-based educational and nutritional assessment tool. It does not provide medical diagnosis, prescribe therapeutic diets, or substitute for personalized medical consultation.
+                  <strong>Important medical notice:</strong> EATGOOD is an informational tool. It does not provide medical diagnosis, prescribe therapeutic diets, or substitute for personalized medical consultation.
                 </p>
               </div>
 
@@ -227,7 +223,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                   5. Category-Specific Benchmarks
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Automated letter grades are established for Snacks, Breakfast Cereals, and Packaged Beverages where reliable comparative benchmarks exist. Other categories (Chocolates, Instant Foods, Condiments, Dairy) display raw nutritional disclosures with category-specific nutrition details.
+                  Letter grades are given for Snacks, Breakfast Cereals, Packaged Beverages, Biscuits &amp; Bakery, Instant Foods and Dairy, using category thresholds informed by WHO SEARO and FSSAI documents. Chocolates &amp; Sweets and Condiments &amp; Spreads show their nutrition values without a grade, because no suitable threshold model is used for them.
                 </p>
               </div>
 
@@ -236,7 +232,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                   6. Limitation of Liability
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  The software is provided on an &quot;as is&quot; basis without warranty of any kind. The developers, contributors, and affiliated academic institutions disclaim all liability for any direct, indirect, incidental, or consequential health issues or consumer purchasing decisions resulting from the use of this software.
+                  The software is provided on an &quot;as is&quot; basis without warranty of any kind. The developers and contributors disclaim all liability for any direct, indirect, incidental, or consequential health issues or consumer purchasing decisions resulting from the use of this software.
                 </p>
               </div>
             </div>
@@ -253,7 +249,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
           background: 'var(--color-surface)'
         }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-            EATGOOD Intelligence Platform &bull; Offline Architecture
+            EATGOOD &bull; Informational only, not medical advice
           </span>
           <button 
             className="btn-primary" 

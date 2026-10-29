@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { 
-  X, CheckCircle2, AlertTriangle, Upload, PlusCircle, 
-  HelpCircle, Sparkles, RefreshCw, Info, ShieldCheck
+  X, CheckCircle2, PlusCircle, 
+  Sparkles, RefreshCw, Info
 } from 'lucide-react';
 import { useLockBodyScroll } from './useLockBodyScroll';
+import { apiFetch } from '../api';
 
 /**
  * ProductContributionModal
@@ -68,10 +69,10 @@ export default function ProductContributionModal({
     const payload = {
       barcode: formData.barcode.trim(),
       product_name: formData.product_name.trim(),
-      brand: formData.brand.trim() || 'Unspecified Brand',
+      brand: formData.brand.trim(),
       category: formData.category,
-      sub_category: formData.sub_category || 'General',
-      serving_size: parseNum(formData.serving_size) || 100,
+      sub_category: formData.sub_category || 'User contributed',
+      serving_size: parseNum(formData.serving_size),
       serving_size_unit: formData.serving_size_unit,
       measurement_basis: formData.measurement_basis,
       energy_kcal: parseNum(formData.energy_kcal),
@@ -86,25 +87,16 @@ export default function ProductContributionModal({
       dietary_fibre_g: parseNum(formData.dietary_fibre_g),
       ingredients: formData.ingredients.trim(),
       allergens_declared: formData.allergens_declared.trim(),
-      submission_notes: formData.submission_notes.trim() || 'User contributed via barcode modal'
+      submission_notes: formData.submission_notes.trim()
     };
 
     try {
-      const res = await fetch('/api/products/contribute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to submit product contribution.');
-      }
+      const data = await apiFetch('/api/products/contribute', { method: 'POST', body: payload });
       setSuccessData(data);
-      setSubmitting(false);
     } catch (err) {
-      console.error(err);
+      setSubmitError(err.message);
+    } finally {
       setSubmitting(false);
-      setSubmitError(err.message || 'Error saving product contribution.');
     }
   };
 
@@ -271,8 +263,8 @@ export default function ProductContributionModal({
               }}>
                 <Info size={18} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <strong>Scientific Data Integrity:</strong> Contributed products are explicitly tagged as 
-                  <em> "User Submitted (Unverified)"</em>. EATGOOD never marks self-reported nutrition values as lab-certified.
+                  <strong>Data honesty:</strong> Contributed products are explicitly tagged as 
+                  <em> "User Submitted (Unverified)"</em>. EATGOOD never marks self-reported nutrition values as checked.
                 </div>
               </div>
 

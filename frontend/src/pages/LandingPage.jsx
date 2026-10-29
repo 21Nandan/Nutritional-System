@@ -1,13 +1,11 @@
 import React from 'react';
 import { 
-  ScanLine, Search, ShieldCheck, ArrowRight, CheckCircle2, 
-  AlertTriangle, Check, Layers, Cpu, HeartPulse, Scale, FileText, ExternalLink 
+  ScanLine, Search, ShieldCheck, ArrowRight, AlertTriangle, HeartPulse, Scale 
 } from 'lucide-react';
 
 export default function LandingPage({ setActivePage, onSelectProduct, activeProfile, onOpenProfile }) {
   // Sample demonstration products for quick interactive preview
   const SAMPLE_SNACK_ID = "IND_PKG_001"; // Haldiram's Bhujia Sev
-  const SAMPLE_CEREAL_ID = "IND_PKG_221"; // Kellogg's Corn Flakes
 
   return (
     <div className="landing-page">
@@ -38,7 +36,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           margin: '0 auto 36px'
         }}>
           Packaged food labels are filled with complex numbers, deceptive serving sizes, and obscure additives.
-          <strong> EATGOOD</strong> translates intricate nutrition panels into simple, evidence-based assessments personalized to your unique health goals and dietary restrictions.
+          <strong> EATGOOD</strong> turns nutrition panels into a simple grade, a personal fit score and allergen warnings, with every number explained.
         </p>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -87,10 +85,10 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             The EATGOOD Transformation Engine
           </span>
           <h2 style={{ fontSize: '1.8rem', color: 'var(--color-primary)', marginTop: 6 }}>
-            From Obscure Label to Actionable Intelligence
+            From a confusing label to a clear answer
           </h2>
           <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginTop: 6 }}>
-            Raw manufacturer packaging declarations are audited, checked against international standards, and personalized.
+            Label values are checked for consistency, compared with category thresholds, and matched to your profile.
           </p>
         </div>
 
@@ -192,9 +190,9 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
       {/* 3. Core Feature Cards */}
       <section style={{ marginBottom: 60 }}>
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <h2 style={{ fontSize: '2rem', color: 'var(--color-primary)' }}>Engineered for Clarity & Scientific Integrity</h2>
+          <h2 style={{ fontSize: '2rem', color: 'var(--color-primary)' }}>Built to be clear and checkable</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem', marginTop: 6 }}>
-            Unlike black-box calorie counters, every score in EATGOOD is traceable to documented guidelines.
+            Every grade shows the thresholds it used and the documents they are informed by.
           </p>
         </div>
 
@@ -295,14 +293,16 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           </div>
           <div>
             <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', marginBottom: 6 }}>
-              Nutritional Standards & Transparency Commitments
+              Limits you should know about
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              • <strong>Verified Standards:</strong> General nutritional assessments follow WHO and FSSAI guidelines across benchmarked food categories. Other categories display verified packaging facts without estimating a grade.
+              • <strong>Demo catalogue:</strong> the product catalogue uses generated nutrition values for demonstration. Barcode scans of real products use Open Food Facts, a community database.
               <br />
-              • <strong>Accurate Nutrition Data:</strong> Missing nutrient declarations are kept explicitly blank and are never assumed to be zero.
+              • <strong>Thresholds:</strong> grades use category thresholds informed by WHO and FSSAI reference documents; these bodies have not reviewed or endorsed EATGOOD. Chocolates, sweets and condiments get no grade.
               <br />
-              • <strong>Educational Scope:</strong> EATGOOD provides nutritional assessments for educational guidance and does not replace medical advice.
+              • <strong>Missing values:</strong> a nutrient missing from the label is shown as &ldquo;Not stated&rdquo; and never counted as zero.
+              <br />
+              • <strong>Not medical advice:</strong> EATGOOD is informational only.
             </p>
             <div style={{ display: 'flex', gap: 14 }}>
               <button 
@@ -310,7 +310,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
                 style={{ padding: '6px 14px', fontSize: '0.82rem' }}
                 onClick={() => setActivePage('audit')}
               >
-                Inspect Data Quality Audit Report
+                About the data
               </button>
             </div>
           </div>
@@ -320,4 +320,3 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
   );
 }
 
-const var_shadow_sm = '0 1px 3px rgba(20, 56, 40, 0.05)';

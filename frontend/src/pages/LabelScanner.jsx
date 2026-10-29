@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { apiFetch } from '../api';
+import { recognizeLabel } from '../ocr';
 import { 
   Upload, Camera, FileText, CheckCircle2, AlertTriangle, 
-  HelpCircle, Sparkles, ArrowRight, RefreshCw, Barcode, Search,
-  ChevronDown, ChevronUp, Info, Smartphone, ExternalLink,
-  PlusCircle, Globe, ShieldCheck, Zap, Package, AlertCircle
+  Sparkles, ArrowRight, RefreshCw, Barcode, Search,
+  ChevronDown, ChevronUp, Smartphone, PlusCircle, Globe, ShieldCheck, Package, AlertCircle
 } from 'lucide-react';
 import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
 import ProductContributionModal from '../components/ProductContributionModal';
@@ -20,9 +21,12 @@ export default function LabelScanner({
   const mode = propMode !== undefined ? propMode : internalMode;
   const setMode = propSetMode || setInternalMode;
 
-  const [file, setFile] = useState(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState(null);
+  const [ocrError, setOcrError] = useState(null);
+  const [ocrProgress, setOcrProgress] = useState({ value: 0, label: '' });
+  const [suggestions, setSuggestions] = useState({});
+  const [checksConfirmed, setChecksConfirmed] = useState(false);
   const [showRawText, setShowRawText] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeError, setBarcodeError] = useState('');
@@ -75,63 +79,68 @@ export default function LabelScanner({
 
   const [fieldStatuses, setFieldStatuses] = useState({});
   const [fieldNotes, setFieldNotes] = useState({});
-  const [confidenceScores, setConfidenceScores] = useState({});
   const [suspiciousFlags, setSuspiciousFlags] = useState([]);
   const [evaluating, setEvaluating] = useState(false);
 
   const processUploadedFile = async (uploadedFile) => {
     if (!uploadedFile) return;
-    setFile(uploadedFile);
     setOcrLoading(true);
     setOcrResult(null);
-
-    const body = new FormData();
-    body.append('file', uploadedFile);
+    setOcrError(null);
+    setOcrProgress({ value: 0, label: 'Preparing the photo…' });
+    setChecksConfirmed(false);
 
     try {
-      const res = await fetch('/api/analyze/ocr', {
+      const recognised = await recognizeLabel(uploadedFile, (value, label) => setOcrProgress({ value, label }));
+      setOcrProgress({ value: 1, label: 'Finding nutrition values…' });
+      const data = await apiFetch('/api/analyze/label-text', {
         method: 'POST',
-        body
+        body: { raw_text: recognised.text, ocr_confidence: recognised.confidence, engine: recognised.engine },
       });
-      const data = await res.json();
       setOcrResult(data);
-      setOcrLoading(false);
 
-      if (data.status === 'error') {
-        alert(data.detail || data.message || 'OCR processing failed. You can enter details manually.');
-        return;
-      }
-
-      // Prepopulate confirmation form with OCR results
-      const vals = data.extracted_values || {};
+      // Fill the confirmation form only with values the parser found; everything else stays empty.
+      const vals = data.extracted_values;
+      const asText = (v) => (v != null ? String(v) : '');
       setFormData(prev => ({
         ...prev,
         product_name: prev.product_name || uploadedFile.name.replace(/\.[^/.]+$/, ''),
-        serving_size: vals.serving_size != null ? String(vals.serving_size) : prev.serving_size || '100',
-        serving_size_unit: vals.serving_size_unit || prev.serving_size_unit || 'g',
-        measurement_basis: vals.measurement_basis || prev.measurement_basis || 'per 100g',
-        energy_kcal: vals.energy_kcal != null ? String(vals.energy_kcal) : '',
-        carbohydrates_g: vals.carbohydrates_g != null ? String(vals.carbohydrates_g) : '',
-        sugars_g: vals.sugars_g != null ? String(vals.sugars_g) : '',
-        added_sugars_g: vals.added_sugars_g != null ? String(vals.added_sugars_g) : '',
-        protein_g: vals.protein_g != null ? String(vals.protein_g) : '',
-        total_fat_g: vals.total_fat_g != null ? String(vals.total_fat_g) : '',
-        saturated_fat_g: vals.saturated_fat_g != null ? String(vals.saturated_fat_g) : '',
-        trans_fat_g: vals.trans_fat_g != null ? String(vals.trans_fat_g) : '',
-        sodium_mg: vals.sodium_mg != null ? String(vals.sodium_mg) : '',
-        dietary_fibre_g: vals.dietary_fibre_g != null ? String(vals.dietary_fibre_g) : '',
-        ingredients: vals.ingredients || prev.ingredients
+        serving_size: asText(vals.serving_size),
+        serving_size_unit: vals.serving_size_unit,
+        measurement_basis: vals.measurement_basis,
+        energy_kcal: asText(vals.energy_kcal),
+        carbohydrates_g: asText(vals.carbohydrates_g),
+        sugars_g: asText(vals.sugars_g),
+        added_sugars_g: asText(vals.added_sugars_g),
+        protein_g: asText(vals.protein_g),
+        total_fat_g: asText(vals.total_fat_g),
+        saturated_fat_g: asText(vals.saturated_fat_g),
+        trans_fat_g: asText(vals.trans_fat_g),
+        sodium_mg: asText(vals.sodium_mg),
+        dietary_fibre_g: asText(vals.dietary_fibre_g),
+        ingredients: vals.ingredients || ''
       }));
 
-      setFieldStatuses(data.field_statuses || {});
-      setFieldNotes(data.field_notes || {});
-      setConfidenceScores(data.confidence_scores || {});
-      setSuspiciousFlags(data.suspicious_flags || []);
+      setFieldStatuses(data.field_statuses);
+      setFieldNotes(data.field_notes);
+      setSuspiciousFlags(data.suspicious_flags);
+      setSuggestions(data.suggestions);
     } catch (err) {
-      console.error(err);
+      setOcrError(err.message);
+    } finally {
       setOcrLoading(false);
-      alert('OCR network request failed. You can proceed with manual entry below.');
     }
+  };
+
+  const acceptSuggestion = (field) => {
+    const suggestion = suggestions[field];
+    if (!suggestion || suggestion.suggested_value == null) return;
+    setFormData(prev => ({ ...prev, [field]: String(suggestion.suggested_value) }));
+    setSuggestions(prev => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
 
   const handleFileUpload = (e) => {
@@ -152,26 +161,20 @@ export default function LabelScanner({
     setIsCameraActive(false);
 
     try {
-      const res = await fetch(`/api/products/barcode/${encodeURIComponent(code)}`);
-      const data = await res.json();
-      setBarcodeSearching(false);
-
-      if (res.ok && data.status === 'found') {
-        setBarcodeFoundResult(data);
-      } else if (res.status === 404) {
+      const data = await apiFetch(`/api/products/barcode/${encodeURIComponent(code)}`);
+      setBarcodeFoundResult(data);
+    } catch (err) {
+      if (err.status === 404 && err.code === 'OFF_PRODUCT_NOT_FOUND') {
         setBarcodeNotFoundInfo({
           barcode: code,
-          format: data.detail?.barcode_format || 'EAN / UPC',
-          message: data.detail?.message || `Barcode ${code} was not found in the local catalogue or Open Food Facts.`
+          format: err.detail?.barcode_format || 'EAN / UPC',
+          message: err.message
         });
       } else {
-        const errorMsg = data?.detail?.message || (typeof data?.detail === 'string' ? data.detail : null) || 'Unable to complete barcode lookup. Please check connection or enter nutrition details manually.';
-        setBarcodeError(errorMsg);
+        setBarcodeError(err.message);
       }
-    } catch (err) {
-      console.error(err);
+    } finally {
       setBarcodeSearching(false);
-      setBarcodeError('Network error connecting to barcode service. Please check your connection.');
     }
   };
 
@@ -202,19 +205,18 @@ export default function LabelScanner({
       searchAbortControllerRef.current = controller;
 
       try {
-        const res = await fetch(
+        const data = await apiFetch(
           `/api/products/search?q=${encodeURIComponent(query)}&limit=8&include_external=true`,
           { signal: controller.signal }
         );
-        if (!res.ok) throw new Error('Search failed');
-        const data = await res.json();
-        setNameSearchResults(data.products || []);
+        setNameSearchResults(data.products);
+        setNameSearchError(data.external_error ? `Open Food Facts results are missing: ${data.external_error.message}` : null);
         setShowSuggestions(true);
         setActiveSuggestionIdx(-1);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.error('Live search error:', err);
-          setNameSearchError('Could not fetch suggestions. Please check connection.');
+          setNameSearchResults([]);
+          setNameSearchError(err.message);
         }
       } finally {
         setNameSearchLoading(false);
@@ -249,14 +251,14 @@ export default function LabelScanner({
     setNameSearchLoading(true);
     setNameSearchError(null);
     try {
-      const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=12&include_external=true`);
-      const data = await res.json();
-      setNameSearchResults(data.products || []);
+      const data = await apiFetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=12&include_external=true`);
+      setNameSearchResults(data.products);
+      setNameSearchError(data.external_error ? `Open Food Facts results are missing: ${data.external_error.message}` : null);
       setShowSuggestions(true);
       setActiveSuggestionIdx(-1);
     } catch (err) {
-      console.error('Name search failed:', err);
-      setNameSearchError('Search failed. Please try again.');
+      setNameSearchResults([]);
+      setNameSearchError(err.message);
     } finally {
       setNameSearchLoading(false);
     }
@@ -295,26 +297,29 @@ export default function LabelScanner({
     setShowSuggestions(false);
     setActiveSuggestionIdx(-1);
 
-    // Prepopulate confirmation form data with verified fields
+    // Fill the form from the chosen product only. Missing values stay empty: they are never
+    // carried over from whatever was in the form before.
+    const asText = (v) => (v != null ? String(v) : '');
     setFormData(prev => ({
       ...prev,
-      product_name: prod.product_name || prev.product_name || '',
-      brand: prod.brand || prev.brand || '',
-      category: prod.category || prev.category || 'Other',
-      serving_size: prod.serving_size != null ? String(prod.serving_size) : (prev.serving_size || '100'),
-      serving_size_unit: prod.serving_size_unit || prev.serving_size_unit || 'g',
-      measurement_basis: 'per 100g',
-      energy_kcal: prod.energy_kcal != null ? String(prod.energy_kcal) : (prev.energy_kcal || ''),
-      carbohydrates_g: prod.carbohydrates_g != null ? String(prod.carbohydrates_g) : (prev.carbohydrates_g || ''),
-      sugars_g: prod.sugars_g != null ? String(prod.sugars_g) : (prev.sugars_g || ''),
-      added_sugars_g: prod.added_sugars_g != null ? String(prod.added_sugars_g) : (prev.added_sugars_g || ''),
-      protein_g: prod.protein_g != null ? String(prod.protein_g) : (prev.protein_g || ''),
-      total_fat_g: prod.total_fat_g != null ? String(prod.total_fat_g) : (prev.total_fat_g || ''),
-      saturated_fat_g: prod.saturated_fat_g != null ? String(prod.saturated_fat_g) : (prev.saturated_fat_g || ''),
-      trans_fat_g: prod.trans_fat_g != null ? String(prod.trans_fat_g) : (prev.trans_fat_g || ''),
-      sodium_mg: prod.sodium_mg != null ? String(prod.sodium_mg) : (prev.sodium_mg || ''),
-      dietary_fibre_g: prod.dietary_fibre_g != null ? String(prod.dietary_fibre_g) : (prev.dietary_fibre_g || ''),
-      ingredients: prod.ingredients || prev.ingredients || ''
+      product_name: prod.product_name || '',
+      brand: prod.brand || '',
+      category: prod.category || 'Snacks',
+      serving_size: asText(prod.serving_size),
+      serving_size_unit: prod.serving_size_unit || 'g',
+      measurement_basis: prod.measurement_basis || 'per 100g',
+      energy_kcal: asText(prod.energy_kcal),
+      carbohydrates_g: asText(prod.carbohydrates_g),
+      sugars_g: asText(prod.sugars_g),
+      added_sugars_g: asText(prod.added_sugars_g),
+      protein_g: asText(prod.protein_g),
+      total_fat_g: asText(prod.total_fat_g),
+      saturated_fat_g: asText(prod.saturated_fat_g),
+      trans_fat_g: asText(prod.trans_fat_g),
+      sodium_mg: asText(prod.sodium_mg),
+      dietary_fibre_g: asText(prod.dietary_fibre_g),
+      ingredients: prod.ingredients || '',
+      allergens_declared: prod.allergens_declared || ''
     }));
 
     if (prod.is_local && prod.product_id) {
@@ -523,10 +528,16 @@ export default function LabelScanner({
     handleBarcodeLookup(productObj.barcode);
   };
 
+  const needsConfirmation = Object.values(fieldStatuses).includes('needs_review') || Object.keys(suggestions).length > 0;
+
   const handleGenerateAssessment = async (e) => {
     e.preventDefault();
     if (!formData.product_name.trim()) {
-      alert('Please enter a product name.');
+      window.alert('Please enter a product name.');
+      return;
+    }
+    if (needsConfirmation && !checksConfirmed) {
+      window.alert('Some values were flagged. Check them against the label and tick the confirmation box first.');
       return;
     }
 
@@ -536,9 +547,9 @@ export default function LabelScanner({
 
     const payload = {
       product_name: formData.product_name,
-      brand: formData.brand || 'Custom',
+      brand: formData.brand,
       category: formData.category,
-      serving_size: parseNum(formData.serving_size) || 100,
+      serving_size: parseNum(formData.serving_size),
       serving_size_unit: formData.serving_size_unit,
       measurement_basis: formData.measurement_basis,
       energy_kcal: parseNum(formData.energy_kcal),
@@ -557,29 +568,18 @@ export default function LabelScanner({
     };
 
     try {
-      const cid = localStorage.getItem('eatgood_client_id') || 'USR_DEFAULT';
-      const res = await fetch(`/api/products/assess?user_id=${encodeURIComponent(cid)}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-User-Id': cid
-        },
-        body: JSON.stringify(payload)
-      });
-      const assessmentData = await res.json();
-      setEvaluating(false);
+      const assessmentData = await apiFetch('/api/products/assess', { method: 'POST', body: payload });
       onAssessmentGenerated(assessmentData, formData);
     } catch (err) {
-      console.error(err);
+      window.alert(err.message);
+    } finally {
       setEvaluating(false);
-      alert('Failed to generate food assessment.');
     }
   };
 
   const renderFieldBadge = (fieldKey) => {
     const status = fieldStatuses[fieldKey];
     const note = fieldNotes[fieldKey];
-    const conf = confidenceScores[fieldKey];
 
     if (status === 'extracted') {
       return (
@@ -1105,7 +1105,7 @@ export default function LabelScanner({
               Select or Photograph Food Label
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 18 }}>
-              Supports PNG, JPEG, WebP photos of nutrition tables or ingredient panels.
+              PNG, JPEG or WebP photos of the nutrition table or ingredients. The text is read on your device; the photo is not uploaded.
             </p>
 
             {/* Action Buttons for Mobile & Desktop */}
@@ -1162,8 +1162,15 @@ export default function LabelScanner({
           {ocrLoading && (
             <div style={{ marginTop: 20, textAlign: 'center', padding: 20, background: '#eaf6e5', borderRadius: 8, color: 'var(--color-primary)' }}>
               <RefreshCw size={24} className="spin" style={{ margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontWeight: 700 }}>Extracting nutrition facts...</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Analyzing packaging image and validating nutritional figures</div>
+              <div style={{ fontWeight: 700 }}>{ocrProgress.label || 'Reading the label…'}</div>
+              <progress value={ocrProgress.value} max={1} style={{ width: '60%', marginTop: 8 }} aria-label="Label reading progress" />
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 6 }}>Your photo stays on this device; only the recognised text is sent to EATGOOD.</div>
+            </div>
+          )}
+
+          {ocrError && (
+            <div role="alert" style={{ marginTop: 20, padding: 16, background: '#ffebee', borderRadius: 8, color: '#b71c1c', fontSize: '0.88rem' }}>
+              {ocrError}
             </div>
           )}
 
@@ -1251,7 +1258,7 @@ export default function LabelScanner({
             Editable Nutrition & Ingredient Confirmation
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-            Review every field. EATGOOD refuses to silently turn uncertain OCR text into unverified nutrition scores.
+            Check every value against the pack before continuing. Nothing is scored until you submit this form.
           </p>
         </div>
 
@@ -1265,6 +1272,26 @@ export default function LabelScanner({
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.8rem', color: '#8c2d00' }}>
               {suspiciousFlags.map((flag, i) => (
                 <li key={i}>{flag}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {Object.keys(suggestions).length > 0 && (
+          <div role="alert" style={{ background: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: 8, padding: 14, marginBottom: 20 }}>
+            <div style={{ color: '#b73800', fontWeight: 700, fontSize: '0.85rem', marginBottom: 6 }}>
+              These values look misread, so we left them empty:
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.82rem', color: '#8c2d00', display: 'grid', gap: 6 }}>
+              {Object.entries(suggestions).map(([field, sug]) => (
+                <li key={field}>
+                  {fieldNotes[field]}{' '}
+                  {sug.suggested_value != null && (
+                    <button type="button" className="btn-secondary" style={{ padding: '2px 10px', fontSize: '0.78rem', marginLeft: 6 }} onClick={() => acceptSuggestion(field)}>
+                      Use {sug.suggested_value}
+                    </button>
+                  )}
+                </li>
               ))}
             </ul>
           </div>
@@ -1570,12 +1597,19 @@ export default function LabelScanner({
           </div>
         </div>
 
+        {needsConfirmation && (
+          <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.88rem', marginBottom: 16, padding: 12, background: '#fff3e0', borderRadius: 8 }}>
+            <input type="checkbox" checked={checksConfirmed} onChange={(e) => setChecksConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
+            <span>I have checked the flagged values against the label. Empty fields are treated as &ldquo;not stated&rdquo;, not zero.</span>
+          </label>
+        )}
+
         {/* Submit Action */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button
             type="submit"
             className="btn-accent"
-            disabled={evaluating}
+            disabled={evaluating || (needsConfirmation && !checksConfirmed)}
             style={{ padding: '12px 28px', fontSize: '1rem', minHeight: 48, width: '100%', maxWidth: 320 }}
           >
             {evaluating ? 'Analyzing...' : 'Generate Assessment'}

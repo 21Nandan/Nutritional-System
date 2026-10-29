@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeftRight, X, Plus, AlertTriangle, CheckCircle2, ChevronRight, Scale } from 'lucide-react';
+import { X, Plus, ChevronRight } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
+import { apiFetch } from '../api';
+import { basisLabel } from '../format';
 
 export default function ProductComparison({ initialProductIds = [], onSelectProduct, activeProfile }) {
   const [selectedIds, setSelectedIds] = useState(
@@ -14,35 +16,41 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
 
   useLockBodyScroll(showSearchModal);
 
+  const [compareError, setCompareError] = useState(null);
+  const [searchError, setSearchError] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
   useEffect(() => {
-    if (selectedIds.length >= 2) {
-      setLoading(true);
-      const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
-      fetch(`/api/compare?ids=${selectedIds.join(',')}&user_id=${encodeURIComponent(cid)}`, {
-        headers: { 'X-User-Id': cid }
+    if (selectedIds.length < 2) return undefined;
+    const controller = new AbortController();
+    setLoading(true);
+    setCompareError(null);
+    apiFetch(`/api/compare?ids=${selectedIds.map(encodeURIComponent).join(',')}`, { signal: controller.signal })
+      .then((data) => {
+        setComparedData(data);
+        setLoading(false);
       })
-        .then(res => res.json())
-        .then(data => {
-          setComparedData(data);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoading(false);
-        });
-    }
-  }, [selectedIds, activeProfile]);
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        setCompareError(err.message);
+        setLoading(false);
+      });
+    return () => controller.abort();
+  }, [selectedIds, activeProfile, reloadToken]);
 
   const handleSearch = (q) => {
     setSearchQuery(q);
+    setSearchError(null);
     if (!q.trim()) {
       setSearchResults([]);
       return;
     }
-    fetch(`/api/products?query=${encodeURIComponent(q)}&limit=12`)
-      .then(res => res.json())
-      .then(data => setSearchResults(data.products || []))
-      .catch(err => console.error(err));
+    apiFetch(`/api/products?query=${encodeURIComponent(q)}&limit=12`)
+      .then((data) => setSearchResults(data.products))
+      .catch((err) => {
+        setSearchResults([]);
+        setSearchError(err.message);
+      });
   };
 
   const addProductToCompare = (pid) => {
@@ -58,7 +66,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
     if (selectedIds.length > 2) {
       setSelectedIds(selectedIds.filter(id => id !== pid));
     } else {
-      alert('Please select at least 2 items to compare.');
+      window.alert('Please keep at least 2 products to compare.');
     }
   };
 
@@ -71,7 +79,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
           Product Comparison Matrix
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Side-by-side nutritional trade-off evaluation normalized per 100g / 100ml. Tailored to your goal: <strong>{activeProfile?.goal || 'Balanced Choices'}</strong>.
+          Side-by-side nutrition values, per 100 g for foods and per 100 ml for drinks (shown under each product). Personal scores use your goal: <strong>{activeProfile?.goal || 'Balanced Choices'}</strong>.
         </p>
       </div>
 
@@ -95,6 +103,11 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
       {loading ? (
         <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>
           Comparing products...
+        </div>
+      ) : compareError ? (
+        <div role="alert" style={{ textAlign: 'center', padding: '48px 0', color: '#c62828' }}>
+          <p style={{ marginBottom: 12 }}>We couldn&apos;t compare these products: {compareError}</p>
+          <button className="btn-primary" onClick={() => setReloadToken((t) => t + 1)}>Try again</button>
         </div>
       ) : products.length < 2 ? (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
@@ -138,6 +151,9 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                           </h4>
                           <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
                             {p.category}
+                          </span>
+                          <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                            Values {basisLabel(p.measurement_basis)}
                           </span>
                         </div>
                       </div>
@@ -323,6 +339,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
               }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {searchError && <p role="alert" style={{ color: '#c62828', fontSize: '0.85rem' }}>{searchError}</p>}
               {searchResults.map(p => (
                 <div 
                   key={p.product_id}

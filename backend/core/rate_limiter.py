@@ -2,26 +2,29 @@
 EATGOOD — In-Memory Rate Limiter & Abuse Protection
 Provides thread-safe, sliding-window rate limiting for sensitive/expensive endpoints
 (OCR processing, external Open Food Facts queries, and public user contributions).
-Requires zero external dependencies (no Redis daemon required for local-first deployment).
+State is per server instance, so on serverless hosts this is a best-effort limit, not a guarantee.
 """
 
-import time
 import threading
-from typing import Dict, List, Tuple
-from fastapi import Request, HTTPException
+import time
+
+from fastapi import HTTPException, Request
+
 from backend.config import (
+    IS_SERVERLESS,
+    RATE_LIMIT_CONTRIB_RPM,
     RATE_LIMIT_ENABLED,
     RATE_LIMIT_OCR_RPM,
     RATE_LIMIT_OFF_RPM,
-    RATE_LIMIT_CONTRIB_RPM
 )
+
 
 class SlidingWindowRateLimiter:
     def __init__(self):
-        self._history: Dict[str, List[float]] = {}
+        self._history: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
-    def is_rate_limited(self, key: str, max_requests: int, window_seconds: int = 60) -> Tuple[bool, int]:
+    def is_rate_limited(self, key: str, max_requests: int, window_seconds: int = 60) -> tuple[bool, int]:
         """
         Evaluates whether a given key has exceeded max_requests in the window_seconds.
         Returns (is_limited: bool, retry_after_seconds: int).
@@ -33,7 +36,7 @@ class SlidingWindowRateLimiter:
             timestamps = self._history.get(key, [])
             # Prune timestamps outside current sliding window
             valid_timestamps = [t for t in timestamps if t > window_start]
-            
+
             if len(valid_timestamps) >= max_requests:
                 oldest = valid_timestamps[0]
                 retry_after = max(1, int(oldest + window_seconds - now))
@@ -58,17 +61,18 @@ class SlidingWindowRateLimiter:
 rate_limiter = SlidingWindowRateLimiter()
 
 def get_client_identifier(request: Request) -> str:
-    """Extracts client IP or forward-header without trusting spoofed values."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-    elif request.client and request.client.host:
-        client_ip = request.client.host
-    else:
-        client_ip = "127.0.0.1"
-    
-    user_header = request.headers.get("x-user-id", "")
-    return f"{client_ip}_{user_header}"
+    """Returns the client IP.
+
+    On Vercel the edge overwrites X-Forwarded-For with the real client IP, so it can be
+    trusted there. Anywhere else the header is client-controlled, so the socket peer is used.
+    """
+    if IS_SERVERLESS:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 def enforce_rate_limit(request: Request, endpoint_type: str):
     """

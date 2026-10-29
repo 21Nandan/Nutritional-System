@@ -7,19 +7,18 @@ Validates:
 4. Multi-tier search endpoint (/api/products/search) deduplicating against local catalogue.
 """
 
-import pytest
+import httpx
 from fastapi.testclient import TestClient
 
-from backend.main import app
 from backend.core.data_loader import data_loader
-from backend.core.openfoodfacts import search_openfoodfacts_text, map_off_product_to_eatgood
+from backend.core.openfoodfacts import map_off_product_to_eatgood, search_openfoodfacts_text
+from backend.main import app
 
 client = TestClient(app)
 
 
 def test_data_loader_multitoken_search_amul_choco():
     """Verifies that multi-token search 'amul choco' finds local Amul chocolates."""
-    data_loader.load_all()
     res = data_loader.search_products(query="amul choco", limit=10)
     assert res["total"] > 0, "Should find matching Amul chocolate products"
     top_prod = res["products"][0]
@@ -32,7 +31,6 @@ def test_data_loader_multitoken_search_amul_choco():
 
 def test_data_loader_multitoken_search_britannia_good_day():
     """Verifies that 'britannia good day' finds Britannia Good Day biscuits."""
-    data_loader.load_all()
     res = data_loader.search_products(query="britannia good day", limit=5)
     assert res["total"] > 0
     top_prod = res["products"][0]
@@ -40,16 +38,51 @@ def test_data_loader_multitoken_search_britannia_good_day():
     assert "good day" in top_prod["product_name"].lower()
 
 
+def _mock_client(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
 def test_search_openfoodfacts_text_structure():
-    """Verifies that search_openfoodfacts_text returns correctly mapped products."""
-    results = search_openfoodfacts_text("haldiram bhujia", limit=3)
-    if results:
-        first = results[0]
-        assert "product_name" in first
-        assert "brand" in first
-        assert first["is_local"] is False
-        assert first["source"] == "Open Food Facts"
-        assert "nutrition_summary" in first
+    """search_openfoodfacts_text maps Open Food Facts results into the EATGOOD schema."""
+    def handler(request):
+        assert request.url.host == "world.openfoodfacts.org"
+        return httpx.Response(200, json={"products": [
+            {"code": "8904004400069", "product_name": "Bhujia Sev", "brands": "Haldiram's", "nutriments": {}},
+            {"code": "", "product_name": "No barcode, skipped"},
+        ]})
+
+    result = search_openfoodfacts_text("haldiram bhujia test", limit=3, client=_mock_client(handler))
+    assert result["status"] == "ok"
+    assert len(result["products"]) == 1
+    first = result["products"][0]
+    assert first["product_name"] == "Bhujia Sev"
+    assert first["is_local"] is False
+    assert first["source"] == "Open Food Facts"
+    assert "nutrition_summary" in first
+
+
+def test_search_openfoodfacts_text_reports_errors_instead_of_empty_list():
+    """A failed external search must surface as an error, never as 'no results'."""
+    result = search_openfoodfacts_text(
+        "rate limited query", limit=3, client=_mock_client(lambda request: httpx.Response(429))
+    )
+    assert result["status"] == "error"
+    assert result["error_code"] == "OFF_RATE_LIMITED"
+    assert result["message"]
+
+
+def test_search_endpoint_exposes_external_failure(monkeypatch):
+    from backend.routes import catalogue
+
+    monkeypatch.setattr(
+        catalogue,
+        "search_openfoodfacts_text",
+        lambda term, limit: {"status": "error", "products": [], "error_code": "OFF_TIMEOUT", "message": "slow"},
+    )
+    data = client.get("/api/products/search?q=haldiram+bhujia&include_external=true").json()
+    assert data["local_count"] > 0
+    assert data["external_status"] == "error"
+    assert data["external_error"]["error_code"] == "OFF_TIMEOUT"
 
 
 def test_api_products_search_prioritizes_local_and_deduplicates():
@@ -57,7 +90,7 @@ def test_api_products_search_prioritizes_local_and_deduplicates():
     Verifies that /api/products/search returns local catalogue products first,
     enriches with Open Food Facts results, and deduplicates barcodes.
     """
-    resp = client.get("/api/products/search?q=haldiram+bhujia&limit=10&include_external=true")
+    resp = client.get("/api/products/search?q=haldiram+bhujia&limit=10&include_external=false")
     assert resp.status_code == 200
     data = resp.json()
     assert "products" in data

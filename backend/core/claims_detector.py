@@ -14,7 +14,8 @@ Principles:
 """
 
 import re
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
+
 import pandas as pd
 
 # ----------------- Statutory Benchmarks & References -----------------
@@ -129,7 +130,7 @@ def normalize_claim_text(claim: str) -> str:
     text = text.strip('"\' ')
     return text
 
-def detect_nutrients_in_claim(normalized_claim: str) -> List[str]:
+def detect_nutrients_in_claim(normalized_claim: str) -> list[str]:
     """Identifies which nutritional dimensions are referenced in the claim text."""
     lower = normalized_claim.lower()
     matched_nutrients = []
@@ -138,7 +139,7 @@ def detect_nutrients_in_claim(normalized_claim: str) -> List[str]:
             matched_nutrients.append(nutrient)
     return matched_nutrients
 
-def classify_claim_taxonomy(normalized_claim: str) -> Dict[str, Any]:
+def classify_claim_taxonomy(normalized_claim: str) -> dict[str, Any]:
     """
     Classifies a claim into one or more categories based on strict rule precedence.
     Returns detected categories, primary category, matching keywords, and classification rationale.
@@ -152,11 +153,11 @@ def classify_claim_taxonomy(normalized_claim: str) -> Dict[str, Any]:
     # 1. Check Comparative Nutrition Claims (superlatives & relative differences)
     is_superlative = any(re.search(pat, lower) for pat in COMPARATIVE_SUPERLATIVE_PATTERNS)
     is_relative = any(re.search(pat, lower) for pat in COMPARATIVE_RELATIVE_PATTERNS)
-    
+
     # Exclude non-addition claims ("no added sugar", "zero added sugar") from relative comparative category
     if bool(re.search(r"\b(?:no|without|zero)\s*added\b", lower)):
         is_relative = False
-    
+
     # Must involve a nutrient or nutritional dimension (or comparison context like 'less calorie', 'more protein')
     if (is_superlative or is_relative) and (detected_nutrients or "calorie" in lower or "nutrition" in lower):
         detected_types.append("Comparative Nutrition Claim")
@@ -265,7 +266,7 @@ def classify_claim_taxonomy(normalized_claim: str) -> Dict[str, Any]:
 
 # ----------------- Empirical Compliance Evaluation -----------------
 
-def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
+def evaluate_single_claim(claim_raw: str, product_data: dict) -> dict[str, Any]:
     """
     Performs decoupled 2-stage auditing:
     Stage 1: Taxonomic Classification.
@@ -273,12 +274,12 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
     """
     normalized = normalize_claim_text(claim_raw)
     taxonomy = classify_claim_taxonomy(normalized)
-    
+
     primary_type = taxonomy["primary_claim_type"]
     detected_types = taxonomy["detected_claim_types"]
     nutrients = taxonomy["detected_nutrients"]
     primary_nutrient = nutrients[0] if nutrients else None
-    
+
     ingredients_text = str(product_data.get("ingredients", "")).lower()
 
     # Default result container
@@ -332,15 +333,15 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
             compliance_status = "Insufficient evidence to assess compliance"
             confidence = "Needs Verification"
             explanation = (
-                f"Superlative claims ('highest') invoke market-wide superiority across all competing products. "
-                f"A single product nutrition panel cannot substantiate category-wide superiority without an identified "
-                f"market comparator dataset and category benchmark."
+                "Superlative claims ('highest') invoke market-wide superiority across all competing products. "
+                "A single product nutrition panel cannot substantiate category-wide superiority without an identified "
+                "market comparator dataset and category benchmark."
             )
 
         else: # Relative comparison (e.g. 'more protein', '30% less sugar', 'reduced sodium')
             evidence_required = (
-                f"FSSAI Reg 6 & Schedule IV / Codex CAC/GL 23-1997: Relative comparative claims require a minimum 25% "
-                f"difference in nutrient content (energy or macronutrients) compared to an explicitly named reference food."
+                "FSSAI Reg 6 & Schedule IV / Codex CAC/GL 23-1997: Relative comparative claims require a minimum 25% "
+                "difference in nutrient content (energy or macronutrients) compared to an explicitly named reference food."
             )
             claimed_diff = comparison_details.get("claimed_difference") if comparison_details else None
             comparator = comparison_details.get("comparator") if comparison_details else None
@@ -374,8 +375,8 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
                     "Quantitative difference (minimum 25% required by FSSAI/Codex)"
                 ])
                 explanation = (
-                    f"FSSAI and Codex require comparative claims to explicitly name the reference food "
-                    f"and demonstrate at least a 25% difference. The claim does not state what food it is being compared to."
+                    "FSSAI and Codex require comparative claims to explicitly name the reference food "
+                    "and demonstrate at least a 25% difference. The claim does not state what food it is being compared to."
                 )
 
     # --- Case 2: Sugar-Related Claims (without comparative precedence, or secondary sugar check) ---
@@ -396,7 +397,7 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
                 evidence_available = f"Reported total sugars is {val}g per 100g (Statutory limit: <= 0.5g)."
                 compliance_status = "Consistent with the checked criteria"
                 confidence = "High"
-                explanation = f"Meets statutory threshold (<= 0.5g/100g) for sugar-free claims."
+                explanation = "Meets statutory threshold (<= 0.5g/100g) for sugar-free claims."
             else:
                 evidence_available = f"Reported total sugars is {val}g per 100g (Statutory limit: <= 0.5g)."
                 compliance_status = "Potentially inconsistent with the checked criteria"
@@ -416,7 +417,7 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
                 evidence_available = f"Reported total sugars is {val}g per 100g (Statutory limit: <= 5.0g)."
                 compliance_status = "Consistent with the checked criteria"
                 confidence = "High"
-                explanation = f"Meets statutory threshold (<= 5.0g/100g) for low sugar claims."
+                explanation = "Meets statutory threshold (<= 5.0g/100g) for low sugar claims."
             else:
                 evidence_available = f"Reported total sugars is {val}g per 100g (Statutory limit: <= 5.0g)."
                 compliance_status = "Potentially inconsistent with the checked criteria"
@@ -465,7 +466,7 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
             threshold = 10.0 if is_high else 5.0
             claim_label = "High Protein" if is_high else "Source of Protein"
             evidence_required = f"FSSAI Schedule II / Codex: '{claim_label}' requires >= {threshold}g protein per 100g (or 20% of energy for high, 10% for source)."
-            
+
             val = product_data.get("protein_g")
             if val is None or pd.isna(val):
                 evidence_available = "Protein declaration is absent from the nutritional facts panel."
@@ -603,7 +604,7 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
                     evidence_available = f"Declared trans fat is {tf}g/100g with no partially hydrogenated oils."
                     compliance_status = "Consistent with available data"
                     confidence = "High"
-                    explanation = f"Meets trans-fat free standard (<= 0.2g/100g)."
+                    explanation = "Meets trans-fat free standard (<= 0.2g/100g)."
                 else:
                     evidence_available = f"Declared trans fat is {tf}g/100g."
                     compliance_status = "Potentially inconsistent with the checked criteria"
@@ -639,7 +640,7 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
     elif "Ingredient & Composition Claim" in detected_types:
         regulatory_source = "FSSAI (Advertising and Claims) Regulations, 2018 (Regulation 4)"
         evidence_required = "FSSAI Reg 4: Ingredient highlighted on front-of-pack must specify quantitative percentage in ingredient list (QUID rules)."
-        
+
         # Check if the highlighted ingredient is in ingredients
         lower_claim = normalized.lower()
         if "juice" in lower_claim:
@@ -714,7 +715,7 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> Dict[str, Any]:
         "disclaimer": "Automated claim auditing evaluates available packaging data against benchmark criteria. It does not constitute a formal legal or regulatory determination."
     }
 
-def evaluate_claims(marketing_claims: str, product_data: dict) -> List[Dict[str, Any]]:
+def evaluate_claims(marketing_claims: str, product_data: dict) -> list[dict[str, Any]]:
     """
     Evaluates marketing claims declared on packaging against available nutrition facts and ingredients.
     Parses multiple claims separated by commas, semicolons, or slashes.

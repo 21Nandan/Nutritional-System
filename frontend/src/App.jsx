@@ -10,26 +10,31 @@ import ProductAssessment from './pages/ProductAssessment';
 import ProductComparison from './pages/ProductComparison';
 import Dashboard from './pages/Dashboard';
 import DataAuditPage from './pages/DataAuditPage';
+import DemoDataBanner from './components/DemoDataBanner';
+import { DEFAULT_PROFILE, completeOnboarding, isOnboardingComplete, loadProfile, readSession, saveProfile, writeSession } from './storage';
 
 const PAGE_TITLES = {
-  landing: 'EATGOOD — AI-Powered Personalized Food Safety & Nutrition Assessment',
-  catalogue: 'EATGOOD — Indian Packaged Food Catalogue',
-  scanner: 'EATGOOD — Food Label Scanner & OCR Extraction',
-  assessment: 'EATGOOD — Product Nutritional Assessment',
-  compare: 'EATGOOD — Product Comparison Matrix',
-  profile: 'EATGOOD — User Profile & History',
-  dashboard: 'EATGOOD — User Dashboard',
-  audit: 'EATGOOD — Data Quality & Integrity Audit'
+  landing: 'EATGOOD — Understand Indian packaged food labels',
+  catalogue: 'Catalogue — EATGOOD',
+  scanner: 'Scan a label — EATGOOD',
+  assessment: 'Product assessment — EATGOOD',
+  compare: 'Compare products — EATGOOD',
+  profile: 'Your profile — EATGOOD',
+  dashboard: 'Your profile — EATGOOD',
+  audit: 'Data quality — EATGOOD'
 };
 
 // URL Route Parser (supports real URL paths, search params, and hash fallback)
 const getRouteFromLocation = () => {
-  const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
+  // Product IDs are case-sensitive, so only the route name is compared case-insensitively.
+  const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  const path = rawPath.toLowerCase();
   const searchParams = new URLSearchParams(window.location.search);
-  const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+  const rawHash = window.location.hash.replace(/^#\/?/, '');
+  const hash = rawHash.toLowerCase();
 
   // 1. Direct product path: /product/IND_PKG_001 or /assessment/IND_PKG_001
-  const productMatch = path.match(/^(?:product|assessment)\/(.+)$/);
+  const productMatch = rawPath.match(/^(?:product|assessment)\/(.+)$/i);
   if (productMatch) {
     return {
       page: 'assessment',
@@ -64,7 +69,7 @@ const getRouteFromLocation = () => {
   // 5. Fallback to hash if present (e.g. #/catalogue or #scanner)
   if (hash) {
     const cleanHash = hash.replace(/^\/+/, '');
-    const hashProductMatch = cleanHash.match(/^(?:product|assessment)\/(.+)$/);
+    const hashProductMatch = rawHash.replace(/^\/+/, '').match(/^(?:product|assessment)\/(.+)$/i);
     if (hashProductMatch) {
       return { page: 'assessment', productId: decodeURIComponent(hashProductMatch[1]) };
     }
@@ -83,92 +88,23 @@ export default function App() {
   const [selectedProductId, setSelectedProductId] = useState(initialRoute.productId || null);
 
   // Restore custom assessment from session storage if present across refreshes
-  const [customAssessment, setCustomAssessment] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('eatgood_custom_assessment');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [customAssessment, setCustomAssessment] = useState(() => readSession('eatgood_custom_assessment', null));
 
   const [compareIds, setCompareIds] = useState(() => {
     if (initialRoute.compareIds && initialRoute.compareIds.length >= 2) {
       return initialRoute.compareIds;
     }
-    try {
-      const saved = sessionStorage.getItem('eatgood_compare_ids');
-      return saved ? JSON.parse(saved) : ['IND_PKG_001', 'IND_PKG_002'];
-    } catch (e) {
-      return ['IND_PKG_001', 'IND_PKG_002'];
-    }
+    return readSession('eatgood_compare_ids', ['IND_PKG_001', 'IND_PKG_002']);
   });
 
-  const getClientId = () => {
-    try {
-      let cid = localStorage.getItem('eatgood_client_id');
-      if (!cid) {
-        cid = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
-        localStorage.setItem('eatgood_client_id', cid);
-      }
-      return cid;
-    } catch (e) {
-      return 'USR_DEFAULT';
-    }
-  };
-
-  const [activeProfile, setActiveProfile] = useState(() => {
-    try {
-      const saved = localStorage.getItem('eatgood_user_profile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          return {
-            user_id: parsed.user_id || 'USR_DEFAULT',
-            name: parsed.name || 'Guest User',
-            goal: parsed.goal || 'Balanced Choices',
-            dietary_preference: parsed.dietary_preference || 'No preference',
-            allergens_to_avoid: parsed.allergens_to_avoid || '',
-            age_group: parsed.age_group || '18-24',
-            activity_level: parsed.activity_level || 'Moderately active'
-          };
-        }
-      }
-    } catch (e) {}
-    return {
-      user_id: 'USR_DEFAULT',
-      name: 'Guest User',
-      goal: 'Balanced Choices',
-      dietary_preference: 'No preference',
-      allergens_to_avoid: '',
-      age_group: '18-24',
-      activity_level: 'Moderately active'
-    };
-  });
+  const [activeProfile, setActiveProfile] = useState(() => loadProfile() || DEFAULT_PROFILE);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // Initialize persistent device client ID eagerly
-  useEffect(() => {
-    getClientId();
-  }, []);
-
   // First-time visit onboarding & terms acceptance state
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
-    try {
-      const completed = localStorage.getItem('eatgood_onboarding_completed');
-      return completed !== 'true';
-    } catch (e) {
-      return true;
-    }
-  });
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => !isOnboardingComplete());
 
   // Persistent scanner form data (preserved across refreshes)
-  const [scannerFormData, setScannerFormData] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('eatgood_scanner_form');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
+  const [scannerFormData, setScannerFormData] = useState(() => readSession('eatgood_scanner_form', null) || {
       product_name: '',
       brand: '',
       category: 'Snacks',
@@ -188,7 +124,6 @@ export default function App() {
       ingredients: '',
       allergens_declared: '',
       marketing_claims: ''
-    };
   });
 
   const [scannerMode, setScannerMode] = useState('upload');
@@ -232,17 +167,14 @@ export default function App() {
     }
     if (params.compareIds) {
       setCompareIds(params.compareIds);
-      try {
-        sessionStorage.setItem('eatgood_compare_ids', JSON.stringify(params.compareIds));
-      } catch (e) {}
+      writeSession('eatgood_compare_ids', params.compareIds);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [compareIds, selectedProductId]);
 
   // Initial load and popstate event listener for browser Back/Forward
   useEffect(() => {
-    const route = getRouteFromLocation();
-    navigateTo(route.page, { productId: route.productId, compareIds: route.compareIds }, true);
+    document.title = PAGE_TITLES[getRouteFromLocation().page] || PAGE_TITLES.landing;
 
     const handlePopState = () => {
       const currentRoute = getRouteFromLocation();
@@ -256,59 +188,19 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Fetch active profile on load with client identity
-  useEffect(() => {
-    const cid = getClientId();
-    fetch(`/api/profile?user_id=${encodeURIComponent(cid)}`, {
-      headers: { 'X-User-Id': cid }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.user_id) {
-          const localSaved = localStorage.getItem('eatgood_user_profile');
-          if (localSaved) {
-            try {
-              const parsed = JSON.parse(localSaved);
-              if (parsed && (parsed.goal || parsed.dietary_preference || parsed.allergens_to_avoid)) {
-                // If local storage has user preferences, keep them as primary and sync to backend
-                setActiveProfile(parsed);
-                if (data.user_id === 'USR_DEFAULT' && parsed.user_id !== 'USR_DEFAULT') {
-                  handleSaveProfile(parsed);
-                }
-                return;
-              }
-            } catch (e) {}
-          }
-          setActiveProfile(data);
-          try {
-            localStorage.setItem('eatgood_user_profile', JSON.stringify(data));
-          } catch (e) {}
-        }
-      })
-      .catch(err => {
-        console.error('Error fetching profile:', err);
-      });
-  }, []);
-
   const handleSelectProduct = (productId) => {
     setCustomAssessment(null);
-    try {
-      sessionStorage.removeItem('eatgood_custom_assessment');
-    } catch (e) {}
+    writeSession('eatgood_custom_assessment', null);
     navigateTo('assessment', { productId });
   };
 
   const handleAssessmentGenerated = (assessmentData, enteredData = null) => {
     setCustomAssessment(assessmentData);
-    try {
-      sessionStorage.setItem('eatgood_custom_assessment', JSON.stringify(assessmentData));
-    } catch (e) {}
+    writeSession('eatgood_custom_assessment', assessmentData);
 
     if (enteredData) {
       setScannerFormData(enteredData);
-      try {
-        sessionStorage.setItem('eatgood_scanner_form', JSON.stringify(enteredData));
-      } catch (e) {}
+      writeSession('eatgood_scanner_form', enteredData);
     }
     navigateTo('assessment', { productId: assessmentData.product_id });
   };
@@ -320,16 +212,12 @@ export default function App() {
 
   const handleUpdateCustomAssessment = (updatedAssessment, updatedForm = null) => {
     setCustomAssessment(updatedAssessment);
-    try {
-      sessionStorage.setItem('eatgood_custom_assessment', JSON.stringify(updatedAssessment));
-    } catch (e) {}
+    writeSession('eatgood_custom_assessment', updatedAssessment);
 
     if (updatedForm) {
       setScannerFormData(prev => {
         const next = { ...prev, ...updatedForm };
-        try {
-          sessionStorage.setItem('eatgood_scanner_form', JSON.stringify(next));
-        } catch (e) {}
+        writeSession('eatgood_scanner_form', next);
         return next;
       });
     }
@@ -340,48 +228,22 @@ export default function App() {
     if (!compareIds.includes(productId)) {
       newIds = [productId, ...compareIds.slice(0, 3)];
       setCompareIds(newIds);
-      try {
-        sessionStorage.setItem('eatgood_compare_ids', JSON.stringify(newIds));
-      } catch (e) {}
+      writeSession('eatgood_compare_ids', newIds);
     }
     navigateTo('compare', { ids: newIds });
   };
 
   const handleSaveProfile = (newProfile) => {
-    const cid = getClientId();
-    const profileToSave = { ...newProfile, user_id: cid };
-
-    try {
-      localStorage.setItem('eatgood_user_profile', JSON.stringify(profileToSave));
-    } catch (e) {}
-    setActiveProfile(profileToSave);
-
-    fetch('/api/profile', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'X-User-Id': cid
-      },
-      body: JSON.stringify(profileToSave)
-    })
-      .then(res => res.json())
-      .then(saved => {
-        if (saved && saved.user_id) {
-          setActiveProfile(saved);
-          try {
-            localStorage.setItem('eatgood_user_profile', JSON.stringify(saved));
-          } catch (e) {}
-        }
-      })
-      .catch(err => console.error(err));
+    const profile = { ...DEFAULT_PROFILE, ...newProfile };
+    setActiveProfile(profile);
+    if (!saveProfile(profile)) {
+      window.alert('Your browser blocked saving your profile, so it will be forgotten when you close this tab. Allow site data for this site to keep it.');
+    }
   };
 
   const handleCompleteOnboarding = (newProfile) => {
     handleSaveProfile(newProfile);
-    try {
-      localStorage.setItem('eatgood_onboarding_completed', 'true');
-      localStorage.setItem('eatgood_terms_accepted_at', new Date().toISOString());
-    } catch (e) {}
+    completeOnboarding();
     setIsOnboardingOpen(false);
   };
 
@@ -393,6 +255,8 @@ export default function App() {
         activeProfile={activeProfile}
         onOpenProfile={() => setIsProfileModalOpen(true)}
       />
+
+      <DemoDataBanner onOpenAudit={() => navigateTo('audit')} />
 
       <main className="main-content">
         {activePage === 'landing' && (
@@ -420,9 +284,7 @@ export default function App() {
             setFormData={(updater) => {
               setScannerFormData(prev => {
                 const next = typeof updater === 'function' ? updater(prev) : updater;
-                try {
-                  sessionStorage.setItem('eatgood_scanner_form', JSON.stringify(next));
-                } catch (e) {}
+                writeSession('eatgood_scanner_form', next);
                 return next;
               });
             }}
@@ -455,6 +317,7 @@ export default function App() {
           <Dashboard
             setActivePage={(page) => navigateTo(page)}
             onSelectProduct={handleSelectProduct}
+            onOpenCustomAssessment={(assessment) => handleAssessmentGenerated(assessment)}
             activeProfile={activeProfile}
             onOpenProfile={() => setIsProfileModalOpen(true)}
             onRetakeOnboarding={() => setIsOnboardingOpen(true)}
@@ -462,9 +325,7 @@ export default function App() {
         )}
 
         {activePage === 'audit' && (
-          <DataAuditPage
-            onSelectProduct={handleSelectProduct}
-          />
+          <DataAuditPage />
         )}
       </main>
 

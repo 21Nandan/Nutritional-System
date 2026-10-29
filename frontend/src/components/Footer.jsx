@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, BookOpen, Database, HeartHandshake } from 'lucide-react';
+import { HeartHandshake } from 'lucide-react';
 import logoImg from '../assets/logo.png';
 import LegalModal from './LegalModal';
 
@@ -37,12 +37,11 @@ export default function Footer({ setActivePage }) {
             <h3 style={{ color: '#fff', fontSize: '1.2rem', margin: 0 }}>EATGOOD</h3>
           </div>
           <p style={{ color: '#b0c9bb', lineHeight: 1.6, fontSize: '0.85rem', marginBottom: 16 }}>
-            AI-Powered Personalized Food Safety and Nutrition Assessment.
-            Transforming complicated front-of-pack and back-of-pack food labels into simple, transparent, evidence-based recommendations.
+            Helps you read Indian packaged food labels: a nutrition grade, a personal fit score, allergen checks and plain explanations.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#82c733', fontSize: '0.78rem', fontWeight: 600 }}>
             <HeartHandshake size={15} />
-            <span>AI Platform for Public Health & Nutrition Intelligence</span>
+            <span>Open-source student project</span>
           </div>
         </div>
 
@@ -61,7 +60,12 @@ export default function Footer({ setActivePage }) {
           <div className="footer-col">
             <h4>Standards & Data</h4>
             <ul>
-              <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>Data Quality Audit</a></li>
+              <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>About the data</a></li>
+              <li>
+                <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener noreferrer">
+                  Open Food Facts (ODbL) ↗
+                </a>
+              </li>
               <li>
                 <a 
                   href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet" 
@@ -87,8 +91,10 @@ export default function Footer({ setActivePage }) {
         <div className="footer-disclaimer">
           <h4>Important Disclaimer</h4>
           <p style={{ color: '#8da698', fontSize: '0.8rem', lineHeight: 1.5, background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
-            EATGOOD is an educational, research-oriented food assessment platform. It does not provide clinical diagnoses, 
-            prescribe medical diets, or guarantee regulatory certification. Consult a registered dietitian or physician for individual medical requirements.
+            Informational only, not medical advice. EATGOOD is not affiliated with or endorsed by WHO or FSSAI and does not
+            certify regulatory compliance. The catalogue uses demo nutrition data; always read the actual pack. Consult a
+            registered dietitian or doctor for medical needs. Product data from Open Food Facts is available under the
+            Open Database License (ODbL).
           </p>
         </div>
       </div>

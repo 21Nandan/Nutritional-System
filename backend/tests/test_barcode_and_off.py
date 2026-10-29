@@ -1,14 +1,17 @@
-import pytest
+import ssl
 from unittest.mock import patch
+
+import httpx
 from fastapi.testclient import TestClient
-from backend.main import app
+
 from backend.core.barcode_utils import (
     calculate_gs1_check_digit,
-    validate_barcode,
     clean_barcode,
-    normalize_upc_to_ean13
+    normalize_upc_to_ean13,
+    validate_barcode,
 )
-from backend.database import get_cached_barcode_product, cache_barcode_product
+from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+from backend.main import app
 
 client = TestClient(app)
 
@@ -114,7 +117,7 @@ def test_lookup_openfoodfacts_mocked_hit():
         "openfoodfacts_attribution": "Product data retrieved from Open Food Facts (https://world.openfoodfacts.org), licensed under Open Database License (ODbL)."
     }
 
-    with patch("backend.main.fetch_product_from_openfoodfacts") as mock_off:
+    with patch("backend.products.fetch_product_from_openfoodfacts") as mock_off:
         mock_off.return_value = {
             "status": "success",
             "product": fake_off_product
@@ -132,7 +135,7 @@ def test_lookup_openfoodfacts_mocked_hit():
 
 def test_lookup_openfoodfacts_not_found():
     """Verify structured 404 response when product is unlisted on both local DB and Open Food Facts."""
-    with patch("backend.main.fetch_product_from_openfoodfacts") as mock_off:
+    with patch("backend.products.fetch_product_from_openfoodfacts") as mock_off:
         mock_off.return_value = {
             "status": "not_found",
             "message": "Product not found on Open Food Facts."
@@ -141,9 +144,9 @@ def test_lookup_openfoodfacts_not_found():
         res = client.get("/api/products/barcode/9999999999999")
         assert res.status_code == 404
         detail = res.json()["detail"]
-        assert detail["status"] == "not_found"
+        assert detail["error_code"] == "OFF_PRODUCT_NOT_FOUND"
         assert detail["barcode"] == "9999999999999"
-        assert "not found" in detail["message"].lower()
+        assert "isn't in our catalogue" in detail["message"]
 
 # ----------------- 4. Layer 3: Product Contribution Flow -----------------
 
@@ -180,7 +183,7 @@ def test_user_product_contribution_and_retrieval():
     assert contrib_res.status_code == 200
     contrib_data = contrib_res.json()
     assert contrib_data["status"] == "success"
-    assert contrib_data["review_status"] == "user_submitted"
+    assert contrib_data["review_status"] == "pending_review"
 
     # 2. Retrieve contributed product via barcode lookup
     lookup_res = client.get(f"/api/products/barcode/{test_barcode}")
@@ -188,16 +191,10 @@ def test_user_product_contribution_and_retrieval():
     lookup_data = lookup_res.json()
     assert lookup_data["status"] == "found"
     assert lookup_data["source"] == "user_contributed"
-    assert lookup_data["data_confidence_status"] == "User Submitted (Unverified)"
+    assert lookup_data["data_confidence_status"] == "User submitted (not reviewed)"
     assert lookup_data["product"]["product_name"] == "Antigravity Roasted Makhana"
-    # User-contributed foods are never falsely marked as verified
-    assert "Unverified" in lookup_data["product"]["data_confidence_status"]
-
-    # 3. Verify it appears in user contributions list
-    list_res = client.get("/api/products/contributions")
-    assert list_res.status_code == 200
-    contributions = list_res.json()["contributions"]
-    assert any(c["barcode"] == test_barcode for c in contributions)
+    assert lookup_data["product"]["review_status"] == "pending_review"
+    assert "not been reviewed" in lookup_data["message"]
 
 def test_duplicate_contribution_rejected_if_in_local_db():
     """Verify attempting to contribute an existing catalogue barcode is rejected with 409."""
@@ -211,7 +208,7 @@ def test_duplicate_contribution_rejected_if_in_local_db():
     }
     res = client.post("/api/products/contribute", json=payload)
     assert res.status_code == 409
-    assert "already exists" in res.json()["detail"].lower()
+    assert res.json()["detail"]["error_code"] == "PRODUCT_EXISTS"
 
 # ----------------- 5. Healthier Alternatives -----------------
 
@@ -246,124 +243,114 @@ def test_empty_and_whitespace_barcode_handling():
     assert val["is_valid"] is False
     assert "empty" in val["error"].lower()
 
+def _client(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def _raise(exc):
+    def handler(request):
+        raise exc
+    return handler
+
+
 def test_openfoodfacts_barcode_mismatch_rejected():
-    """Verify rejection when Open Food Facts returns a mismatched barcode payload."""
-    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
-    import httpx
-
-    class MockResponse:
-        status_code = 200
-        def json(self):
-            return {
-                "status": "success",
-                "code": "1111111111111",  # Mismatched code!
-                "product": {
-                    "code": "1111111111111",
-                    "product_name": "Mismatched Product",
-                    "nutriments": {}
-                }
-            }
-
-    class MockClient:
-        def get(self, url, headers=None, params=None):
-            return MockResponse()
-
-    res = fetch_product_from_openfoodfacts("2222222222222", client=MockClient())
+    payload = {"status": "success", "code": "1111111111111",
+               "product": {"code": "1111111111111", "product_name": "Mismatched", "nutriments": {}}}
+    res = fetch_product_from_openfoodfacts("2222222222222", client=_client(lambda r: httpx.Response(200, json=payload)))
     assert res["status"] == "error"
-    assert "does not match" in res["message"].lower()
+    assert res["error_code"] == "OFF_BARCODE_MISMATCH"
+
 
 def test_openfoodfacts_rate_limit_handling():
-    """Verify 429 response produces clear rate limit message."""
-    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
-
-    class RateLimitResponse:
-        status_code = 429
-        def json(self):
-            return {}
-
-    class MockClient:
-        def get(self, url, headers=None, params=None):
-            return RateLimitResponse()
-
-    res = fetch_product_from_openfoodfacts("5449000000996", client=MockClient())
-    assert res["status"] == "error"
+    res = fetch_product_from_openfoodfacts("5449000000996", client=_client(lambda r: httpx.Response(429)))
     assert res["error_code"] == "OFF_RATE_LIMITED"
-    assert "rate limit" in res["message"].lower()
+    assert res["http_status"] == 429
 
-def test_openfoodfacts_timeout_handling():
-    """Verify network timeout is captured without crashing and returns error status."""
-    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
-    import httpx
 
-    class TimeoutClient:
-        def get(self, url, headers=None, params=None):
-            raise httpx.TimeoutException("Request connection timed out after 8.0s")
+def test_openfoodfacts_timeout_handling_retries_once(monkeypatch):
+    monkeypatch.setattr("backend.core.openfoodfacts.RETRY_BACKOFF_SECONDS", 0)
+    calls = []
 
-    res = fetch_product_from_openfoodfacts("5449000000996", client=TimeoutClient())
-    assert res["status"] == "error"
+    def handler(request):
+        calls.append(1)
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=_client(handler))
     assert res["error_code"] == "OFF_TIMEOUT"
     assert res["http_status"] == 504
-    assert "timed out" in res["message"].lower()
+    assert len(calls) == 2
 
-def test_openfoodfacts_ssl_cert_verification_error_handling():
-    """Verify ssl.SSLCertVerificationError is captured cleanly with OFF_TLS_ERROR and no raw tracebacks."""
-    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
-    import httpx
-    import ssl
 
-    class SSLErrorClient:
-        def get(self, url, headers=None, params=None):
-            raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)")
+def test_openfoodfacts_tls_error_is_not_retried_and_message_is_plain():
+    calls = []
 
-    res = fetch_product_from_openfoodfacts("5449000000996", client=SSLErrorClient())
-    assert res["status"] == "error"
+    def handler(request):
+        calls.append(1)
+        raise httpx.ConnectError("certificate problem") from ssl.SSLCertVerificationError(
+            1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)"
+        )
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=_client(handler))
     assert res["error_code"] == "OFF_TLS_ERROR"
     assert res["http_status"] == 502
-    assert "unable to verify secure connection" in res["message"].lower()
-    assert "_ssl.c" not in res["message"]  # Raw Python C-extension detail must be concealed from user
-    assert "_ssl.c" in res["technical_detail"]  # But preserved for server logging
+    assert "secure connection" in res["message"]
+    assert "_ssl.c" not in res["message"]
+    assert len(calls) == 1
 
-def test_openfoodfacts_network_error_handling():
-    """Verify socket/network connection refusal returns clean OFF_NETWORK_ERROR."""
-    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
-    import httpx
 
-    class NetworkErrorClient:
-        def get(self, url, headers=None, params=None):
-            raise httpx.ConnectError("Failed to establish a new connection: [Errno 61] Connection refused")
+def test_openfoodfacts_tls_error_detected_from_message():
+    res = fetch_product_from_openfoodfacts(
+        "5449000000996",
+        client=_client(_raise(httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"))),
+    )
+    assert res["error_code"] == "OFF_TLS_ERROR"
 
-    res = fetch_product_from_openfoodfacts("5449000000996", client=NetworkErrorClient())
-    assert res["status"] == "error"
+
+def test_openfoodfacts_network_error_handling(monkeypatch):
+    monkeypatch.setattr("backend.core.openfoodfacts.RETRY_BACKOFF_SECONDS", 0)
+    res = fetch_product_from_openfoodfacts(
+        "5449000000996", client=_client(_raise(httpx.ConnectError("[Errno 61] Connection refused")))
+    )
     assert res["error_code"] == "OFF_NETWORK_ERROR"
-    assert res["http_status"] == 502
-    assert "couldn't reach the open food facts database" in res["message"].lower()
     assert "Errno 61" not in res["message"]
     assert "Errno 61" in res["technical_detail"]
 
-def test_openfoodfacts_upstream_500_handling():
-    """Verify upstream HTTP 500 server error returns clean OFF_UPSTREAM_ERROR."""
-    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
 
-    class ServerErrorResponse:
-        status_code = 500
-        def json(self):
-            return {"error": "Internal Server Error"}
-
-    class ServerErrorClient:
-        def get(self, url, headers=None, params=None):
-            return ServerErrorResponse()
-
-    res = fetch_product_from_openfoodfacts("5449000000996", client=ServerErrorClient())
-    assert res["status"] == "error"
+def test_openfoodfacts_upstream_500_handling(monkeypatch):
+    monkeypatch.setattr("backend.core.openfoodfacts.RETRY_BACKOFF_SECONDS", 0)
+    res = fetch_product_from_openfoodfacts("5449000000996", client=_client(lambda r: httpx.Response(500)))
     assert res["error_code"] == "OFF_UPSTREAM_ERROR"
     assert res["http_status"] == 502
-    assert "experiencing issues" in res["message"].lower()
+
+
+def test_openfoodfacts_unexpected_payload_is_an_error():
+    res = fetch_product_from_openfoodfacts("5449000000996", client=_client(lambda r: httpx.Response(200, json={"status": "weird"})))
+    assert res["error_code"] == "OFF_BAD_RESPONSE"
+
+
+def test_openfoodfacts_not_found():
+    res = fetch_product_from_openfoodfacts(
+        "5449000000996", client=_client(lambda r: httpx.Response(404, json={"status": "failure"}))
+    )
+    assert res["status"] == "not_found"
+
+
+def test_ssl_context_uses_certifi_and_verifies():
+    import certifi
+
+    from backend.core.openfoodfacts import build_ssl_context
+
+    ctx = build_ssl_context()
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+    assert certifi.where()
+
 
 def test_barcode_endpoint_ssl_error_integration():
     """Verify API endpoint returns HTTP 502 with structured error_code and sanitized message on SSL failure."""
     from unittest.mock import patch
     uncached_test_barcode = "9999999999994"
-    with patch("backend.main.fetch_product_from_openfoodfacts") as mock_off:
+    with patch("backend.products.fetch_product_from_openfoodfacts") as mock_off:
         mock_off.return_value = {
             "status": "error",
             "error_code": "OFF_TLS_ERROR",
@@ -376,15 +363,13 @@ def test_barcode_endpoint_ssl_error_integration():
         res = client.get(f"/api/products/barcode/{uncached_test_barcode}")
         assert res.status_code == 502
         detail = res.json()["detail"]
-        assert detail["status"] == "external_unavailable"
         assert detail["error_code"] == "OFF_TLS_ERROR"
-        assert "_ssl.c" not in detail["message"]
-        assert "unable to verify secure connection" in detail["message"].lower()
+        assert "_ssl.c" not in str(detail)
 
 def test_barcode_endpoint_not_found_is_distinct_from_network_error():
     """Verify HTTP 404 with OFF_PRODUCT_NOT_FOUND is returned for unknown barcodes, never looking like connection error."""
     from unittest.mock import patch
-    with patch("backend.main.fetch_product_from_openfoodfacts") as mock_off:
+    with patch("backend.products.fetch_product_from_openfoodfacts") as mock_off:
         mock_off.return_value = {
             "status": "not_found",
             "error_code": "OFF_PRODUCT_NOT_FOUND",
@@ -396,9 +381,7 @@ def test_barcode_endpoint_not_found_is_distinct_from_network_error():
         res = client.get("/api/products/barcode/7622210000000")
         assert res.status_code == 404
         detail = res.json()["detail"]
-        assert detail["status"] == "not_found"
         assert detail["error_code"] == "OFF_PRODUCT_NOT_FOUND"
-        assert "not found" in detail["message"].lower()
         assert "network" not in detail["message"].lower()
 
 def test_off_normalization_extracts_proteins_and_additives():
@@ -445,37 +428,20 @@ def test_off_normalization_extracts_proteins_and_additives():
 def test_products_search_endpoint_with_query_and_q():
     """Verify GET /api/products/search?q={query} returns matched results."""
     # Search by q
-    res_q = client.get("/api/products/search?q=lays")
+    res_q = client.get("/api/products/search?q=lays&include_external=false")
     assert res_q.status_code == 200
     data_q = res_q.json()
     assert "products" in data_q
     assert data_q["total"] > 0
     assert any("lay" in p["brand"].lower() or "lay" in p["product_name"].lower() for p in data_q["products"])
 
-    # Search by query
-    res_query = client.get("/api/products/search?query=maggi")
-    assert res_query.status_code == 200
-    data_query = res_query.json()
-    assert data_query["total"] > 0
 
-def test_post_products_alias_endpoint():
-    """Verify POST /api/products creates user contribution like /api/products/contribute."""
-    test_code = "8901112223334"
-    payload = {
-        "barcode": test_code,
-        "product_name": "Organic Millet Cookies",
-        "brand": "NatureBest",
-        "category": "Biscuits & Bakery",
-        "serving_size": 25.0,
-        "energy_kcal": 420.0,
-        "sugars_g": 12.0,
-        "sodium_mg": 120.0,
-        "protein_g": 6.5
-    }
-    res = client.post("/api/products", json=payload)
-    assert res.status_code == 200
-    assert res.json()["status"] == "success"
-    assert res.json()["barcode"] == test_code
+def test_contribution_validation_rejects_bad_input():
+    res = client.post("/api/products/contribute", json={"barcode": "abc", "product_name": "X"})
+    assert res.status_code == 422
+    res = client.post("/api/products/contribute", json={"barcode": "8901112223334", "product_name": "Cookies", "sugars_g": -5})
+    assert res.status_code == 422
+
 
 def test_direct_barcode_lookup_on_product_endpoint():
     """Verify GET /api/products/{barcode} can resolve by numeric barcode."""

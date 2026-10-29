@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, AlertCircle, Info, ShieldAlert } from 'lucide-react';
+import { X, Check, Info, ShieldAlert } from 'lucide-react';
 import { useLockBodyScroll } from './useLockBodyScroll';
 
 const GOALS = [
-  { id: 'Reduce Sugar', title: 'Reduce Sugar', desc: 'Prioritizes foods with lower verified sugar and penalizes high sugar content.' },
+  { id: 'Reduce Sugar', title: 'Reduce Sugar', desc: 'Favours foods with less sugar and penalises high sugar.' },
   { id: 'Reduce Sodium', title: 'Reduce Sodium', desc: 'Focuses on low-sodium alternatives for cardiovascular and blood pressure management.' },
-  { id: 'Increase Fibre', title: 'Increase Fibre', desc: 'Rewards verified dietary fibre content (>= 6g/100g) for metabolic and gut health.' },
+  { id: 'Increase Fibre', title: 'Increase Fibre', desc: 'Rewards dietary fibre of 6 g per 100 g or more.' },
   { id: 'Increase Protein', title: 'Increase Protein', desc: 'Favours higher protein foods (>= 10g/100g) to support muscle maintenance and satiety.' },
   { id: 'Balanced Choices', title: 'Balanced Choices', desc: 'Evaluates macronutrient and micronutrient balance holistically without single-nutrient obsession.' }
 ];
@@ -322,7 +322,7 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
             <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>Optional Context (Stored Locally Only)</span>
           </div>
           <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.4, margin: 0 }}>
-            Demographic fields alone do not calculate medical requirements. EATGOOD does not prescribe clinical diets. Data is held in your local browser and SQLite instance.
+            Demographic fields alone do not calculate medical requirements. EATGOOD does not prescribe clinical diets. Your profile is stored only in this browser.
           </p>
         </div>
 

@@ -6,11 +6,12 @@ No invented thresholds. Every reference is cited and verifiable.
 Distinguishes voluntary front-of-pack nutrition profiling from mandatory statutory labeling.
 """
 
-from typing import List, Dict, Any, Optional
+from collections.abc import Mapping
+from typing import Any
 
 STANDARDS_REGISTRY_VERSION = "2026.2"
 
-STANDARDS_REGISTRY: List[Dict[str, Any]] = [
+STANDARDS_REGISTRY: list[dict[str, Any]] = [
     # -------------------------------------------------------------
     # 1. WHO SEARO (2017) Category 3: Biscuits, Cakes and Sweet Baked Goods
     # -------------------------------------------------------------
@@ -29,8 +30,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sugar)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -48,8 +49,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Saturated Fat)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -67,8 +68,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "mg",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sodium)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -90,8 +91,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sugar)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -109,8 +110,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "mg",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sodium)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -128,8 +129,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Saturated Fat)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -152,7 +153,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (Sugar-Sweetened Beverage)",
         "citation_url": "https://www.who.int/publications/i/item/9789240019447",
-        "verification_date": "2026-10-28",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -170,8 +171,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "mg",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (Elevated Sodium in Beverage)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -194,7 +195,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "comparison_operator": ">",
         "classification": "High Sugar Boundary for Cereals",
         "citation_url": "https://www.fssai.gov.in/upload/uploadfiles/files/Draft_Notification_Labelling_Display_20_09_2022.pdf",
-        "verification_date": "2026-10-28",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -212,8 +213,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Saturated Fat for Cereals)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -231,8 +232,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "mg",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sodium in Cereals)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -254,8 +255,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "mg",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sodium in Instant Foods)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -273,8 +274,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Saturated Fat in Instant Foods)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -292,8 +293,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (Added Sugars in Savoury Foods)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -315,8 +316,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (Added Sugars in Dairy)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -334,8 +335,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "g",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (Elevated Saturated Fat in Dairy)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -353,8 +354,8 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "unit": "mg",
         "comparison_operator": ">",
         "classification": "Nutrient of Concern (High Sodium in Processed Dairy)",
-        "citation_url": "https://www.who.int/publications/i/item/9789290225898",
-        "verification_date": "2026-10-28",
+        "citation_url": "https://www.who.int/publications/i/item/9789290225447",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -377,7 +378,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "comparison_operator": ">=",
         "classification": "Beneficial Nutrient (High in Fibre Claim Standard)",
         "citation_url": "https://www.fao.org/fao-who-codexalimentarius/sh-proxy/en/?lnk=1&url=https%253A%252F%252Fworkspace.fao.org%252Fsites%252Fcodex%252FStandards%252FCAC%2BGL%2B23-1997%252FCXG_023e.pdf",
-        "verification_date": "2026-10-28",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -396,7 +397,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "comparison_operator": ">=",
         "classification": "Beneficial Nutrient (High Protein Claim Standard)",
         "citation_url": "https://www.fao.org/fao-who-codexalimentarius/sh-proxy/en/?lnk=1&url=https%253A%252F%252Fworkspace.fao.org%252Fsites%252Fcodex%252FStandards%252FCAC%2BGL%2B23-1997%252FCXG_023e.pdf",
-        "verification_date": "2026-10-28",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
     {
@@ -415,7 +416,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "comparison_operator": ">",
         "classification": "Mandatory Elimination Target (<2% total fat / <0.2g per 100g)",
         "citation_url": "https://www.who.int/teams/nutrition-and-food-safety/replace-trans-fat",
-        "verification_date": "2026-10-28",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Calibrated"
     },
 
@@ -438,7 +439,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
         "comparison_operator": ">=",
         "classification": "Statutory Mandatory Declaration (Energy, Protein, Carbs, Total Sugars, Added Sugars, Total Fat, Sat Fat, Trans Fat, Sodium)",
         "citation_url": "https://www.fssai.gov.in/upload/uploadfiles/files/Gazette_Notification_Labelling_Display_18_11_2020.pdf",
-        "verification_date": "2026-10-28",
+        "source_check": "Not yet verified against the original document; see docs/THRESHOLDS.md",
         "implementation_status": "Active / Baseline Requirement"
     }
 ]
@@ -448,7 +449,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
 # Maps product categories to documented profiling standards, mandatory
 # fields, reference bases, and explicit status justifications.
 # -------------------------------------------------------------------
-CATEGORY_CALIBRATION_SPECS: Dict[str, Dict[str, Any]] = {
+CATEGORY_CALIBRATION_SPECS: dict[str, dict[str, Any]] = {
     "Biscuits & Bakery": {
         "status": "Calibrated",
         "canonical_name": "Biscuits & Bakery",
@@ -471,7 +472,7 @@ CATEGORY_CALIBRATION_SPECS: Dict[str, Dict[str, Any]] = {
             "protein_source_g": 6.0
         },
         "source_citations": [
-            "WHO Regional Office for South-East Asia Nutrient Profile Model (ISBN 978-92-9022-589-8, Cat 3)",
+            "WHO Regional Office for South-East Asia Nutrient Profile Model (ISBN 978-92-9022-544-7, Cat 3)",
             "FSSAI Draft Notification F. No. STD/SP-08/A-1.2022/N-01 (Indian Nutrition Rating Schedule 1)"
         ]
     },
@@ -617,7 +618,7 @@ CATEGORY_CALIBRATION_SPECS: Dict[str, Dict[str, Any]] = {
             "An overall grade is unavailable because confectionery is not currently calibrated under statutory front-of-pack grading systems."
         ),
         "source_citations": [
-            "WHO Regional Office for South-East Asia Nutrient Profile Model (ISBN 978-92-9022-589-8, Section Category 5)"
+            "WHO Regional Office for South-East Asia Nutrient Profile Model (ISBN 978-92-9022-544-7, Section Category 5)"
         ]
     },
     "Condiments & Spreads": {
@@ -693,7 +694,7 @@ CATEGORY_ALIASES = {
     "ketchup": "Condiments & Spreads"
 }
 
-def normalize_category(category: Optional[str]) -> str:
+def normalize_category(category: str | None) -> str:
     """Normalizes category aliases to the canonical calibrated category name."""
     if not category:
         return ""
@@ -706,12 +707,12 @@ def normalize_category(category: Optional[str]) -> str:
             return canonical
     return clean
 
-def get_category_spec(category: str) -> Optional[Dict[str, Any]]:
+def get_category_spec(category: str) -> dict[str, Any] | None:
     """Retrieves the official calibration specification for a category."""
     canonical = normalize_category(category)
     return CATEGORY_CALIBRATION_SPECS.get(canonical)
 
-def get_applicable_standards(category: str) -> List[Dict[str, Any]]:
+def get_applicable_standards(category: str) -> list[dict[str, Any]]:
     """Returns active standards applicable to a given product category."""
     canonical = normalize_category(category)
     standards = []
@@ -719,3 +720,31 @@ def get_applicable_standards(category: str) -> List[Dict[str, Any]]:
         if std["applicable_category"] in [canonical, category, "All Packaged Foods"]:
             standards.append(std)
     return standards
+
+
+FLAGGED_NUTRIENTS = ("sugars_g", "saturated_fat_g", "sodium_mg")
+
+
+def nutrient_flags(product: Mapping[Any, Any]) -> dict[str, dict[str, Any]]:
+    """Per-nutrient 'high' / 'ok' / 'missing' flags using the same category thresholds as the grade.
+
+    This is the single source for colour coding on catalogue cards, so a card can never disagree
+    with the assessment page. Uncalibrated categories return no flags.
+    """
+    spec = get_category_spec(product.get("category") or "")
+    if spec is None or "thresholds" not in spec:
+        return {}
+    flags = {}
+    for nutrient in FLAGGED_NUTRIENTS:
+        threshold = spec["thresholds"].get(nutrient)
+        if threshold is None:
+            continue
+        value = product.get(nutrient)
+        if value is None or value != value:  # None or NaN: missing, never treated as 0
+            level = "missing"
+        elif value > threshold:
+            level = "high"
+        else:
+            level = "ok"
+        flags[nutrient] = {"level": level, "threshold": threshold, "basis": spec["reference_basis"]}
+    return flags

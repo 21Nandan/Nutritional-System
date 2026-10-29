@@ -4,10 +4,15 @@ Loads and serves the multi-tier product datasets and audit reports.
 Preserves original values, tracks data quality statuses, and prevents silent zeroing.
 """
 
-import os
+import json
 import re
-import pandas as pd
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
+
+from backend.config import DATA_DIR
+from backend.core.standards_registry import nutrient_flags
 
 # Common stem and synonym expansions for Indian packaged foods search
 COMMON_STEMS = {
@@ -48,117 +53,86 @@ COMMON_STEMS = {
     "britannia": ["britannia", "good day"],
 }
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+REQUIRED_CATALOGUE_COLUMNS = [
+    "product_id", "product_name", "brand", "category", "sub_category",
+    "serving_size", "serving_size_unit", "measurement_basis",
+    "energy_kcal", "sugars_g", "sodium_mg", "saturated_fat_g",
+    "ingredients", "allergens_declared", "barcode", "data_source", "data_confidence_status",
+]
+IMAGE_COLUMNS = ["image_url", "image_small_url", "image_source", "matching_method", "review_status"]
 
-def resolve_data_dir() -> str:
-    candidates = [
-        os.path.join(BASE_DIR, "data"),
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")),
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data")),
-        os.path.abspath(os.path.join(os.getcwd(), "data")),
-        os.path.abspath(os.path.join(os.getcwd(), "frontend", "data")),
-        os.path.abspath(os.path.join(os.getcwd(), "..", "data")),
-        "/var/task/data",
-        "/var/task/frontend/data"
-    ]
-    for c in candidates:
-        if os.path.exists(os.path.join(c, "products_standardized.csv")):
-            return c
-    return candidates[0]
 
-DATA_DIR = resolve_data_dir()
+class CatalogueLoadError(RuntimeError):
+    """Raised when the bundled catalogue cannot be loaded. The app must not start without it."""
+
+
+def _read_required_csv(path: Path, **kwargs) -> pd.DataFrame:
+    if not path.is_file():
+        raise CatalogueLoadError(f"Required data file is missing: {path}")
+    df = pd.read_csv(path, **kwargs)
+    if df.empty:
+        raise CatalogueLoadError(f"Required data file is empty: {path}")
+    return df
+
 
 class DataLoaderService:
-    def __init__(self):
-        self.products_df = None
-        self.standardized_df = None
-        self.raw_df = None
-        self.quality_report_df = None
-        self.nutrition_review_df = None
-        self.serving_review_df = None
-        self.users_df = None
-        self.load_all()
+    def __init__(self, data_dir: Path = DATA_DIR):
+        self.data_dir = data_dir
+        self.manifest = self._load_manifest()
+        self.products_df = self._load_catalogue()
+        self.quality_report_df = _read_required_csv(data_dir / "data_quality_report.csv")
+        self.nutrition_review_df = _read_required_csv(data_dir / "nutrition_review.csv")
+        self.serving_review_df = _read_required_csv(data_dir / "serving_size_review.csv")
 
-    def load_all(self):
-        cleaned_path = os.path.join(DATA_DIR, "products_cleaned.csv")
-        if os.path.exists(cleaned_path):
-            self.products_df = pd.read_csv(cleaned_path, dtype={"barcode": str})
-        else:
-            self.products_df = pd.DataFrame()
+    def _load_manifest(self) -> dict:
+        path = self.data_dir / "dataset_manifest.json"
+        if not path.is_file():
+            raise CatalogueLoadError(f"Dataset manifest is missing: {path}")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
 
-        std_path = os.path.join(DATA_DIR, "products_standardized.csv")
-        if os.path.exists(std_path):
-            self.standardized_df = pd.read_csv(std_path, dtype={"barcode": str})
-        else:
-            self.standardized_df = pd.DataFrame()
+    def _load_catalogue(self) -> pd.DataFrame:
+        df = _read_required_csv(self.data_dir / "products_cleaned.csv", dtype={"barcode": str})
+        missing_cols = [c for c in REQUIRED_CATALOGUE_COLUMNS if c not in df.columns]
+        if missing_cols:
+            raise CatalogueLoadError(f"Catalogue is missing columns: {missing_cols}")
+        if df["product_id"].duplicated().any():
+            raise CatalogueLoadError("Catalogue contains duplicate product_id values.")
+        expected = self.manifest["catalogue_rows"]
+        if len(df) != expected:
+            raise CatalogueLoadError(f"Catalogue has {len(df)} rows but the manifest declares {expected}.")
 
-        raw_path = os.path.join(DATA_DIR, "raw", "packaged_foods_india.csv")
-        if os.path.exists(raw_path):
-            self.raw_df = pd.read_csv(raw_path, dtype={"barcode": str})
-        else:
-            self.raw_df = pd.DataFrame()
+        images = _read_required_csv(self.data_dir / "product_images.csv")
+        unknown = set(images["product_id"]) - set(df["product_id"])
+        if unknown:
+            raise CatalogueLoadError(f"product_images.csv references unknown product_ids: {sorted(unknown)}")
+        return df.merge(images[["product_id"] + IMAGE_COLUMNS], on="product_id", how="left")
 
-        q_path = os.path.join(DATA_DIR, "data_quality_report.csv")
-        if os.path.exists(q_path):
-            self.quality_report_df = pd.read_csv(q_path)
-
-        nr_path = os.path.join(DATA_DIR, "nutrition_review.csv")
-        if os.path.exists(nr_path):
-            self.nutrition_review_df = pd.read_csv(nr_path)
-
-        sr_path = os.path.join(DATA_DIR, "serving_size_review.csv")
-        if os.path.exists(sr_path):
-            self.serving_review_df = pd.read_csv(sr_path)
-
-        users_path = os.path.join(DATA_DIR, "users.csv")
-        if os.path.exists(users_path):
-            self.users_df = pd.read_csv(users_path)
-
-        # Seed curated authentic Open Food Facts images if table is fresh
-        try:
-            from backend.core.image_enrichment import seed_initial_curated_images
-            seed_initial_curated_images()
-        except Exception:
-            pass
-
-        # Merge enriched product images from SQLite registry
-        try:
-            from backend.database import get_all_product_images
-            image_records = get_all_product_images()
-            if image_records and self.products_df is not None and not self.products_df.empty:
-                img_df = pd.DataFrame(list(image_records.values()))
-                cols_to_merge = [
-                    "product_id", "image_url", "image_small_url",
-                    "image_ingredients_url", "image_nutrition_url",
-                    "image_source", "matching_method", "review_status"
-                ]
-                cols_present = [c for c in cols_to_merge if c in img_df.columns]
-                # Drop existing image cols if any to avoid duplication
-                for c in ["image_url", "image_small_url", "image_ingredients_url", "image_nutrition_url", "image_source", "matching_method", "review_status"]:
-                    if c in self.products_df.columns:
-                        self.products_df.drop(columns=[c], inplace=True)
-                self.products_df = self.products_df.merge(img_df[cols_present], on="product_id", how="left")
-        except Exception as e:
-            print(f"Notice: Image merge failed in DataLoader: {e}")
+    def dataset_info(self) -> dict:
+        return {
+            "dataset_version": self.manifest["dataset_version"],
+            "provenance": self.manifest["provenance"],
+            "provenance_note": self.manifest["provenance_note"],
+            "catalogue_rows": len(self.products_df),
+            "products_with_images": int(self.products_df["image_url"].notna().sum()),
+            "categories": sorted(self.products_df["category"].dropna().unique().tolist()),
+        }
 
     def search_products(
         self,
         query: str = "",
         category: str = "",
         brand: str = "",
-        max_sugars: float = None,
-        max_sodium: float = None,
-        max_sat_fat: float = None,
-        min_fibre: float = None,
-        min_protein: float = None,
-        has_image: bool = None,
+        max_sugars: float | None = None,
+        max_sodium: float | None = None,
+        max_sat_fat: float | None = None,
+        min_fibre: float | None = None,
+        min_protein: float | None = None,
+        has_image: bool | None = None,
         limit: int = 50,
         offset: int = 0,
         deduplicate_variants: bool = False
     ):
-        if self.products_df is None or self.products_df.empty:
-            return {"total": 0, "products": []}
-
         df = self.products_df.copy()
 
         if deduplicate_variants:
@@ -244,7 +218,7 @@ class DataLoaderService:
 
                 if not matched.empty:
                     # Relevance scoring: reward exact matches, prefix matches, and name matches
-                    scores = pd.Series(0, index=matched.index)
+                    scores: dict = {}
                     for idx, row in matched.iterrows():
                         score = 0
                         p_name = str(row.get("product_name", "")).lower()
@@ -272,7 +246,7 @@ class DataLoaderService:
 
                         scores[idx] = score
 
-                    matched["_relevance_score"] = scores
+                    matched["_relevance_score"] = pd.Series(scores)
                     df = matched.sort_values(by="_relevance_score", ascending=False)
                 else:
                     df = matched
@@ -282,6 +256,7 @@ class DataLoaderService:
 
         # Enrich local records with consistent local metadata and nutrition summaries
         for rec in records:
+            rec["nutrient_flags"] = nutrient_flags(rec)
             rec["is_local"] = True
             rec["source"] = "Local Indian Catalogue"
             rec["nutrition_summary"] = {
@@ -297,15 +272,13 @@ class DataLoaderService:
         return {"total": total, "products": records}
 
     def get_product_by_id(self, product_id: str):
-        if self.products_df is None:
-            return None
         matches = self.products_df[self.products_df["product_id"] == product_id]
         if matches.empty:
             return None
         return matches.iloc[0].replace({np.nan: None}).to_dict()
 
     def get_product_by_barcode(self, barcode: str):
-        if self.products_df is None or not barcode:
+        if not barcode:
             return None
         code_str = str(barcode).strip()
         matches = self.products_df[self.products_df["barcode"].astype(str).str.strip() == code_str]
@@ -319,12 +292,13 @@ class DataLoaderService:
         return matches.iloc[0].replace({np.nan: None}).to_dict()
 
     def get_audit_metrics(self):
-        quality = self.quality_report_df.to_dict(orient="records") if self.quality_report_df is not None else []
-        nutrition_flags = self.nutrition_review_df.replace({np.nan: None}).to_dict(orient="records") if self.nutrition_review_df is not None else []
-        serving_flags = self.serving_review_df.replace({np.nan: None}).to_dict(orient="records") if self.serving_review_df is not None else []
-        
+        quality = self.quality_report_df.to_dict(orient="records")
+        nutrition_flags = self.nutrition_review_df.replace({np.nan: None}).to_dict(orient="records")
+        serving_flags = self.serving_review_df.replace({np.nan: None}).to_dict(orient="records")
+
         return {
-            "total_products": len(self.products_df) if self.products_df is not None else 0,
+            "dataset": self.dataset_info(),
+            "total_products": len(self.products_df),
             "quality_summary": quality,
             "total_atwater_discrepancies": len(nutrition_flags),
             "atwater_discrepancies_sample": nutrition_flags[:25],

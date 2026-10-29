@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { 
-  Camera, X, Zap, ZapOff, RefreshCw, AlertTriangle, 
+  X, Zap, ZapOff, RefreshCw, AlertTriangle, 
   CheckCircle2, FlipHorizontal, Shield, Play, Pause, Keyboard
 } from 'lucide-react';
 
@@ -49,8 +49,8 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.14);
-    } catch (e) {
-      // AudioContext policy or unsupported
+    } catch {
+      // The confirmation beep is optional; browsers may block audio until the user interacts.
     }
   };
 
@@ -74,7 +74,9 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
               track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
             }
             track.stop();
-          } catch (te) {}
+          } catch (trackErr) {
+            console.warn('Error stopping camera track:', trackErr);
+          }
         });
         videoRef.current.srcObject = null;
       }
@@ -123,7 +125,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
       setIsLoading(false);
       setErrorType('https');
       setErrorMessage(
-        'Camera access requires a secure connection (HTTPS) or localhost. On mobile, please test via HTTPS or use USB port-forwarding.'
+        'The camera only works on a secure (https://) page. Open EATGOOD over https, or type the barcode instead.'
       );
       return;
     }
@@ -173,7 +175,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
       const controls = await reader.decodeFromConstraints(
         constraints,
         videoRef.current,
-        (result, error) => {
+        (result) => {
           if (result && !scanLockRef.current) {
             const rawText = result.getText();
             if (rawText && rawText.trim()) {
@@ -222,7 +224,9 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
               }
             }
           }
-        } catch (te) {}
+        } catch (capErr) {
+          console.warn('Could not read camera torch capability:', capErr);
+        }
       }, 500);
 
       setIsLoading(false);
@@ -231,20 +235,19 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
       setIsLoading(false);
       setIsScanning(false);
       const name = err.name || '';
-      const msg = err.message || '';
 
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setErrorType('permission');
-        setErrorMessage('Camera access was denied. Please allow camera permissions in your browser address bar.');
+        setErrorMessage('Camera access was blocked. Allow the camera for this site in your browser settings (usually the icon next to the address), then try again — or type the barcode instead.');
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
         setErrorType('not_found');
-        setErrorMessage('No camera found on this device. Please use manual barcode entry.');
+        setErrorMessage('No camera was found on this device. Type the barcode instead.');
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
         setErrorType('general');
-        setErrorMessage('Camera is currently in use by another application or tab.');
+        setErrorMessage('The camera is being used by another app or tab. Close it and try again.');
       } else {
         setErrorType('general');
-        setErrorMessage(`Camera initialization error: ${msg || 'Please retry or enter barcode manually.'}`);
+        setErrorMessage('The camera could not be started. Try again, or type the barcode instead.');
       }
     }
   }, [stopStream, onScan]);
@@ -259,12 +262,21 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
     startScanning(nextDevice.deviceId);
   };
 
+  // Keep the latest callbacks in refs so the effect only re-runs when scanning is toggled,
+  // and always releases the camera with the current stop function on unmount.
+  const startRef = useRef(startScanning);
+  const stopRef = useRef(stopStream);
+  useEffect(() => {
+    startRef.current = startScanning;
+    stopRef.current = stopStream;
+  }, [startScanning, stopStream]);
+
   useEffect(() => {
     if (isScanningActive) {
-      startScanning();
+      startRef.current();
     }
     return () => {
-      stopStream();
+      stopRef.current();
     };
   }, [isScanningActive]);
 
@@ -546,7 +558,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
             <RefreshCw size={32} className="spin" style={{ animation: 'spin 1s linear infinite', color: '#10b981' }} />
             <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Requesting camera permission & sensor...</div>
             <div style={{ fontSize: '0.78rem', color: '#9ca3af', maxWidth: 280 }}>
-              Prefers rear device camera. All scanning occurs offline in your browser.
+              Prefers rear device camera. The barcode is decoded in your browser; only the number is sent to look the product up.
             </div>
           </div>
         )}
