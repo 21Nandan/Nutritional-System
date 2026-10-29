@@ -157,3 +157,29 @@ def test_unhandled_errors_return_generic_message(monkeypatch):
     body = response.json()
     assert body["detail"]["error_code"] == "INTERNAL_ERROR"
     assert "secret" not in json.dumps(body)
+
+
+def test_local_static_route_serves_only_built_files(tmp_path, monkeypatch):
+    """The SPA route maps request paths to a startup allowlist; traversal falls back to index.html."""
+    import importlib
+
+    dist = tmp_path / "frontend" / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>index</html>")
+    (dist / "favicon.svg").write_text("<svg/>")
+    (tmp_path / "secret.txt").write_text("secret")
+    import backend.config as config
+    import backend.main as main
+
+    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(config, "IS_SERVERLESS", False)
+    reloaded = importlib.reload(main)
+    try:
+        c = TestClient(reloaded.app)
+        assert c.get("/favicon.svg").text == "<svg/>"
+        assert c.get("/catalogue").text == "<html>index</html>"
+        assert "secret" not in c.get("/../secret.txt").text
+        assert "secret" not in c.get("/%2e%2e/secret.txt").text
+    finally:
+        monkeypatch.undo()
+        importlib.reload(main)

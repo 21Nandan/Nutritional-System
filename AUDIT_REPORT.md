@@ -122,6 +122,11 @@ missing, 2 skipped), 75 % coverage, 67 ruff F-class errors, no ESLint.
 
 ## What remains risky
 
+- **Vercel deployments are failing because of a project setting, not the code.** Every deployment
+  since the original commit `f1faaf6` (before this work) failed within seconds. The Root Directory
+  appears to be set to `frontend/` (Vercel's PR metadata says "monorepo"). The repository-root build
+  succeeds locally with the Vercel CLI, and the assembled function serves the catalogue. Fix: clear
+  Root Directory in Vercel project settings and redeploy.
 - **Production is untested by me.** The PR's Vercel preview and the smoke workflow must pass before
   merging. The most likely deploy-time risks:
   - Python dependency detection with the new `pyproject.toml` (`requirements.txt` is still present,
