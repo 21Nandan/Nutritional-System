@@ -22,9 +22,10 @@ test('catalogue lists products with categories, scores and pagination', async ({
   await expect(page.locator('footer')).toContainText('Informational only, not medical advice');
 });
 
-test('a product without enough label data says so instead of showing a score', async ({ page }) => {
-  await page.goto('/catalogue?q=incomplete');
-  const card = page.locator('.product-catalogue .card').filter({ hasText: 'Incomplete Label Test' });
+test('a product missing a few key values is listed honestly; a severely incomplete one is not listed', async ({ page }) => {
+  await page.goto('/catalogue?q=label');
+  await expect(cards(page)).toHaveText(['Partial Label Test']);
+  const card = page.locator('.product-catalogue .card').filter({ hasText: 'Partial Label Test' });
   await expect(card.locator('.goal-meter')).toContainText('Not enough data');
   await expect(card.getByRole('img', { name: /Nutrition grade unavailable/ })).toBeVisible();
 });
@@ -70,7 +71,9 @@ test('nutrient filters wrap without overlapping and still filter', async ({ page
   expect(scrollWidth).toBeLessThanOrEqual(page.viewportSize().width);
   await page.locator('.nutrient-filter').filter({ hasText: 'Sodium' }).getByRole('button', { name: 'Low (≤140mg)' }).click();
   await expect(page).toHaveURL(/sodium=low/);
-  await expect(cards(page)).toHaveText(['Milk Chocolate Bar Test', 'Baked Oat Crackers Test', 'Orange Drink Test', 'Plain Yogurt Test']);
+  await expect(cards(page)).toHaveCount(4);
+  const lowSodium = await cards(page).allTextContents();
+  expect(lowSodium.sort()).toEqual(['Baked Oat Crackers Test', 'Milk Chocolate Bar Test', 'Orange Drink Test', 'Plain Yogurt Test']);
 });
 
 test('allergen in the profile overrides the score on the product page', async ({ page }) => {
@@ -260,4 +263,42 @@ test('assistant answers render as formatted text without markdown symbols', asyn
   await expect(answer.locator('.assistant-value').first()).toContainText('mg per 100 g');
   await expect(answer).not.toContainText('**');
   await expect(answer).toContainText('not clinical medical advice');
+});
+
+test('"Sold in India" appears only when the product data says so', async ({ page }) => {
+  await page.goto('/catalogue');
+  const card = (name) => page.locator('.product-catalogue .card').filter({ hasText: name });
+  await expect(card('Masala Bhujia Test').getByText('Sold in India')).toBeVisible();
+  await expect(card('Orange Drink Test').getByText('Sold in India')).toHaveCount(0);
+  await expect(card('Mystery Snack Test').getByText('Sold in India')).toHaveCount(0);
+});
+
+test('no source or community-contribution labels appear anywhere a product is shown', async ({ page }) => {
+  const forbidden = /community[\s-]contributed|^source:|data source|product database \(|user contributed/i;
+  const checkMain = async () => {
+    const text = await page.locator('main').innerText();
+    for (const line of text.split('\n')) expect(line.trim()).not.toMatch(forbidden);
+  };
+  await page.goto(`/product/${BHUJIA}`);
+  await expect(page.locator('.score-summary')).toBeVisible();
+  await checkMain();
+  await page.goto(`/product/${CHEESE_PUFFS}`);
+  await expect(page.getByText('Community Ratings')).toBeVisible();  // ratings and NOVA group are kept
+  await expect(page.getByText('Group 4')).toBeVisible();
+  await checkMain();
+  await page.goto('/catalogue');
+  await expect(cards(page).first()).toBeVisible();
+  await checkMain();
+  await page.goto(`/compare?ids=${BHUJIA},${OAT_CRACKERS}`);
+  await expect(page.locator('.compare-table')).toBeVisible();
+  await checkMain();
+  await page.goto('/scanner');
+  await page.getByRole('button', { name: 'Barcode Lookup' }).click();
+  await page.getByPlaceholder('Enter 8-13 digit barcode...').fill('2000000000015');
+  await page.getByRole('button', { name: 'Lookup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Masala Bhujia Test' })).toBeVisible();
+  await checkMain();
+  await page.goto('/profile');
+  await expect(page.getByText(/\d+ logged/)).toBeVisible();
+  await checkMain();
 });

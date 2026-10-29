@@ -205,7 +205,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                   3. User Responsibility for Checking Values
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Values typed in by hand and product data from Open Food Facts, a community database, can contain mistakes. Check nutrition values, serving sizes and ingredients against the pack before relying on an assessment.
+                  Values typed in by hand and product data from external databases can contain mistakes. Check nutrition values, serving sizes and ingredients against the pack before relying on an assessment.
                 </p>
               </div>
 

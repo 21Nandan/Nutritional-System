@@ -11,8 +11,15 @@ from backend.core.nutrition_scoring import (
     assess_personalized_suitability,
     run_full_product_assessment,
 )
-from backend.core.off_catalogue import CATEGORIES, MAX_RESULT_WINDOW, alternative_candidates, browse_catalogue
+from backend.core.off_catalogue import (
+    CATEGORIES,
+    MAX_RESULT_WINDOW,
+    SEARCH_POOL,
+    alternative_candidates,
+    browse_catalogue,
+)
 from backend.core.openfoodfacts import search_openfoodfacts_text
+from backend.core.product_quality import rank_products
 from backend.core.rate_limiter import enforce_rate_limit
 from backend.core.recommender import get_healthier_alternatives
 from backend.core.standards_registry import CALIBRATED_CATEGORIES, nutrient_flags
@@ -91,6 +98,8 @@ def list_products(
         "interpreted_intent": result["interpreted_intent"],
         "match_mode": result["match_mode"],
         "searched_pool": result.get("searched_pool"),
+        "pool_limited": result.get("pool_limited", False),
+        "total_is_estimate": result.get("total_is_estimate", False),
         "profile_source": profile["profile_source"],
     }
 
@@ -116,19 +125,23 @@ def search_open_food_facts(
     q: str = Query(..., min_length=2, max_length=100, description="Product name, brand or keywords"),
     page: int = Query(1, ge=1, le=50),
 ):
-    """Searches the Open Food Facts world database only. A failed search is an HTTP error, never an empty list."""
+    """Searches the Open Food Facts world database. The first SEARCH_POOL results are filtered and
+    ranked like the catalogue (product_quality.rank_products) and paged locally. A failed search is
+    an HTTP error, never an empty list."""
     enforce_rate_limit(request, "off_search")
-    result = search_openfoodfacts_text(q, limit=OFF_SEARCH_PAGE_SIZE, page=page)
+    result = search_openfoodfacts_text(q, limit=SEARCH_POOL, page=1)
     if result["status"] == "error":
         raise _off_error(result)
-    count = result["count"]
+    ranked, _ = rank_products(result["products"], q)
+    start = (page - 1) * OFF_SEARCH_PAGE_SIZE
     return {
         "query": q.strip(),
         "page": page,
         "page_size": OFF_SEARCH_PAGE_SIZE,
-        "count": count,
-        "has_more": count is not None and page * OFF_SEARCH_PAGE_SIZE < count,
-        "products": result["products"],
+        "count": len(ranked),
+        "has_more": start + OFF_SEARCH_PAGE_SIZE < len(ranked),
+        "pool_limited": (result.get("count") or 0) > SEARCH_POOL,
+        "products": ranked[start:start + OFF_SEARCH_PAGE_SIZE],
         "attribution": "Data from Open Food Facts (openfoodfacts.org), available under the Open Database Licence.",
     }
 

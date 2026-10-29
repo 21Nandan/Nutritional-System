@@ -98,22 +98,37 @@ def test_search_openfoodfacts_text_rejects_unexpected_body():
     assert result["error_code"] == "OFF_BAD_RESPONSE"
 
 
-def test_open_food_facts_search_endpoint_returns_a_page(monkeypatch):
+def test_open_food_facts_search_endpoint_ranks_filters_and_pages(monkeypatch):
+    """The product search ranks the first 100 results like the catalogue and pages them locally."""
     from backend.routes import catalogue
+    from backend.tests import catalogue_fixture as fx
 
+    base = fx.by_name("Masala Bhujia Test")
+    pool = [{**base, "product_name": f"Kurkure Flavour {n}", "brand": "Kurkure", "barcode": f"20000001{n:05d}"} for n in range(29)]
+    pool.insert(5, {**base, "product_name": "Kurkure", "brand": "Kurkure", "barcode": "2000000200001"})
+    pool.append({**base, "product_name": "Kurkure Broken", "barcode": "2000000200002", "sugars_g": None, "sodium_mg": None,
+                 "protein_g": None, "total_fat_g": None})  # 4 key values missing: not listed
+    pool.append(dict(pool[0]))  # duplicate barcode: merged
     calls = []
 
     def fake(term, limit, page):
         calls.append((term, limit, page))
-        return {"status": "ok", "count": 30, "products": [{"product_name": "Kurkure", "barcode": "8901491101837"}]}
+        return {"status": "ok", "count": 450, "products": pool}
 
     monkeypatch.setattr(catalogue, "search_openfoodfacts_text", fake)
-    data = client.get("/api/products/search/openfoodfacts?q=kurkure&page=1").json()
-    assert calls == [("kurkure", 24, 1)]
-    assert data["count"] == 30
-    assert data["has_more"] is True
-    assert data["products"][0]["barcode"] == "8901491101837"
-    assert "Open Food Facts" in data["attribution"]
+    first = client.get("/api/products/search/openfoodfacts?q=kurkure&page=1").json()
+    assert calls == [("kurkure", 100, 1)]
+    assert first["count"] == 30
+    assert first["pool_limited"] is True
+    assert first["has_more"] is True
+    assert len(first["products"]) == 24
+    assert first["products"][0]["product_name"] == "Kurkure"  # the exact name match ranks first
+    second = client.get("/api/products/search/openfoodfacts?q=kurkure&page=2").json()
+    assert len(second["products"]) == 6 and second["has_more"] is False
+    names = [p["product_name"] for p in first["products"] + second["products"]]
+    assert "Kurkure Broken" not in names
+    assert len(names) == len(set(names))
+    assert "Open Food Facts" in first["attribution"]
 
 
 def test_open_food_facts_search_endpoint_surfaces_failure_as_http_error(monkeypatch):

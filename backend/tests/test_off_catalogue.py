@@ -50,7 +50,7 @@ def test_unfinished_last_word_matches_word_starts(service):
     assert result["match_mode"] == "partial"
     assert [p["product_name"] for p in result["products"]] == ["Cadbury Dairy Milk"]
     assert service[0]["query"].startswith("cadbury ")
-    assert service[0]["limit"] == off_catalogue.PARTIAL_WORD_POOL
+    assert service[0]["limit"] == off_catalogue.SEARCH_POOL
 
 
 def test_a_single_partial_word_falls_back_to_word_starts(service):

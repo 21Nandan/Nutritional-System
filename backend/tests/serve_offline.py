@@ -8,14 +8,19 @@ Never used in production. Product lookups, catalogue pages and alternatives come
 tests/catalogue_fixture.py, exactly as in the backend tests.
 """
 
+import os
 import sys
+import tempfile
 
-import uvicorn
+# A fresh database per run, so lookups cached by earlier runs never mix into the test catalogue.
+os.environ["EATGOOD_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="eatgood-offline-"), "offline.db")
 
-from backend import products
-from backend.main import app
-from backend.routes import catalogue
-from backend.tests import catalogue_fixture as fx
+import uvicorn  # noqa: E402
+
+from backend import products  # noqa: E402
+from backend.main import app  # noqa: E402
+from backend.routes import catalogue  # noqa: E402
+from backend.tests import catalogue_fixture as fx  # noqa: E402
 
 products.fetch_product_from_openfoodfacts = fx.fake_fetch
 catalogue.browse_catalogue = fx.fake_browse

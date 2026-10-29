@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from backend.core.openfoodfacts import clean_search_text, search_openfoodfacts
+from backend.core.product_quality import rank_products
 from backend.core.semantic_search import CATEGORY_SYNONYMS, parse_semantic_intent
 
 # The catalogue's categories as search-service filters. A product found through one of these is
@@ -123,8 +124,9 @@ def _category_words(category: str) -> set[str]:
     return {w for syn in CATEGORY_SYNONYMS.get(category, []) for w in syn.split()}
 
 
-# How many products a partial-word search looks through (the search service has no prefix search).
-PARTIAL_WORD_POOL = 100
+# How many search-service results a text search ranks (the service has no prefix search, and ranking
+# by data quality needs the candidates together).
+SEARCH_POOL = 100
 # A last word shorter than this is treated as still being typed ("cadbury da").
 MIN_COMPLETE_WORD = 3
 _BARCODE = re.compile(r"^\d{8,14}$")
@@ -144,12 +146,16 @@ def browse_catalogue(
     limit: int = 30,
     page: int = 1,
 ) -> dict[str, Any]:
-    """One catalogue page.
+    """One catalogue page, filtered and ranked by product_quality.rank_products.
 
-    Text searches are ranked by relevance, plain browsing by popularity. A barcode is looked up
-    exactly. When the last word looks unfinished, or the full words find nothing, the complete
-    words are searched and results are kept if a word of their name or brand starts with the last
-    word, so "cadbury da" finds "Cadbury Dairy Milk".
+    - A barcode is looked up exactly and shown as found.
+    - Text searches look through the first SEARCH_POOL results from the search service, drop
+      ineligible records and duplicates, rank by relevance then data quality, and page locally.
+      When the last word looks unfinished, or the full words find nothing, the complete words are
+      searched and only products with a name or brand word starting with the last word are kept,
+      so "cadbury da" finds "Cadbury Dairy Milk".
+    - Plain browsing pages through the search service by popularity; each page is filtered and
+      ordered by data quality, so the total is an estimate.
     """
     words, filter_clause, interpreted = build_catalogue_query(text, category, india_only, nutrient_filters, has_image)
     if len(words) == 1 and _BARCODE.match(words[0]):
@@ -157,30 +163,43 @@ def browse_catalogue(
         result.update(interpreted_intent=None, match_mode="barcode")
         return result
 
-    sort = None if words else POPULAR_FIRST
-    prefix_search = len(words) > 1 and len(words[-1]) < MIN_COMPLETE_WORD
-    if not prefix_search:
-        result = search_openfoodfacts(compose_query(words, filter_clause), limit=limit, page=page, sort_by=sort)
-        no_match = result["status"] == "ok" and result.get("count") == 0
-        if not (words and no_match):
-            result.update(interpreted_intent=interpreted, match_mode="words")
-            return result
+    if not words:
+        result = search_openfoodfacts(filter_clause, limit=limit, page=page, sort_by=POPULAR_FIRST)
+        if result["status"] == "ok":
+            result["products"], removed = rank_products(result["products"])
+            result["removed"] = removed
+        result.update(interpreted_intent=interpreted, match_mode="browse", total_is_estimate=True)
+        return result
 
-    head, prefix = words[:-1], words[-1]
-    pool = search_openfoodfacts(
-        compose_query(head, filter_clause), limit=PARTIAL_WORD_POOL, page=1, sort_by=None if head else POPULAR_FIRST
-    )
-    if pool["status"] == "error":
-        return pool
-    matches = [p for p in pool["products"] if _starts_word(p, prefix)]
+    mode = "words"
+    pool = None
+    if not (len(words) > 1 and len(words[-1]) < MIN_COMPLETE_WORD):
+        pool = search_openfoodfacts(compose_query(words, filter_clause), limit=SEARCH_POOL, page=1)
+        if pool["status"] == "error":
+            return pool
+        if pool.get("count") == 0:
+            pool = None
+    if pool is None:
+        mode = "partial"
+        head, prefix = words[:-1], words[-1]
+        pool = search_openfoodfacts(
+            compose_query(head, filter_clause), limit=SEARCH_POOL, page=1, sort_by=None if head else POPULAR_FIRST
+        )
+        if pool["status"] == "error":
+            return pool
+        pool = {**pool, "products": [p for p in pool["products"] if _starts_word(p, prefix)]}
+
+    ranked, removed = rank_products(pool["products"], " ".join(words))
     start = (page - 1) * limit
     return {
         "status": "ok",
-        "products": matches[start:start + limit],
-        "count": len(matches),
+        "products": ranked[start:start + limit],
+        "count": len(ranked),
         "interpreted_intent": interpreted,
-        "match_mode": "partial",
+        "match_mode": mode,
         "searched_pool": len(pool["products"]),
+        "pool_limited": (pool.get("count") or 0) > SEARCH_POOL,
+        "removed": removed,
     }
 
 
@@ -194,8 +213,8 @@ def alternative_candidates(product: dict[str, Any], limit: int = 40) -> dict[str
     if result["status"] == "ok":
         own = str(product.get("barcode") or "")
         # The search filter is broader than the EATGOOD category (e.g. "salty snacks" includes
-        # crackers graded as bakery), so keep only products assigned the same category.
-        result["products"] = [
-            p for p in result["products"] if p.get("category") == category and str(p.get("barcode")) != own
-        ]
+        # crackers graded as bakery), so keep only products assigned the same category, and only
+        # records with usable data.
+        same = [p for p in result["products"] if p.get("category") == category and str(p.get("barcode")) != own]
+        result["products"], _ = rank_products(same)
     return result

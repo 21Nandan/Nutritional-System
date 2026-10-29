@@ -7,11 +7,13 @@ is never assigned to real products. None of these values describe a real product
 from typing import Any
 
 from backend.core.openfoodfacts import map_off_product_to_eatgood
+from backend.core.product_quality import rank_products
 from backend.core.standards_registry import nutrient_flags
 
 
-def _raw(code, name, brand, tags, nutriments, ingredients="", allergens=(), per=None):
+def _raw(code, name, brand, tags, nutriments, ingredients="", allergens=(), per=None, countries=("en:india",)):
     raw: dict[str, Any] = {
+        "countries_tags": list(countries),
         "code": code,
         "product_name": name,
         "brands": brand,
@@ -50,7 +52,7 @@ RAW_PRODUCTS = [
     _raw("2000000000060", "Glucose Biscuits Test", "Test Brand B", ["en:biscuits-and-cakes", "en:biscuits"],
          _n(450, 25, 300, 8, 7, 2, 14, 75), "Wheat flour, sugar, milk solids", ["en:gluten", "en:milk"]),
     _raw("2000000000077", "Orange Drink Test", "Test Brand E", ["en:beverages", "en:sweetened-beverages"],
-         _n(45, 11, 10, 0, 0, 0, 0, 11), "Water, sugar, orange concentrate", per="100ml"),
+         _n(45, 11, 10, 0, 0, 0, 0, 11), "Water, sugar, orange concentrate", per="100ml", countries=("en:france",)),
     _raw("2000000000084", "Instant Noodles Test", "Test Brand F", ["en:noodles", "en:instant-noodles"],
          _n(430, 2, 1200, 7, 9, 3, 16, 60), "Wheat flour, palm oil, salt, spices, flavour enhancers (INS 627, INS 631)", ["en:gluten"]),
     _raw("2000000000091", "Plain Yogurt Test", "Test Brand G", ["en:dairies", "en:yogurts"],
@@ -58,8 +60,12 @@ RAW_PRODUCTS = [
     _raw("2000000000107", "Corn Flakes Test", "Test Brand H", ["en:breakfast-cereals", "en:corn-flakes"],
          _n(380, 8, 600, 0.5, 7, 3, 1, 84), "Corn, sugar, salt"),
     _raw("2000000000114", "Mystery Snack Test", "Test Brand C", SNACKS,
-         _n(500, 5, 450, 5, 6, 2, 25, 60)),
+         _n(500, 5, 450, 5, 6, 2, 25, 60), countries=()),
+    # Severely incomplete: 6 of 7 key nutrition values missing. Never listed.
     _raw("2000000000121", "Incomplete Label Test", "Test Brand D", SNACKS, _n(kcal=480), "Rice, oil"),
+    # Missing 3 key values (sugars, sodium, saturated fat): listed, but it can't be graded or scored.
+    _raw("2000000000138", "Partial Label Test", "Test Brand D", SNACKS,
+         _n(kcal=470, protein=8, fat=20, carbs=62), "Rice flour, oil, spices"),
 ]
 
 
@@ -69,6 +75,9 @@ def _product(raw: dict) -> dict:
     product["is_local"] = False
     return product
 
+
+# Community ratings reported with one product, to check they are still shown.
+RAW_PRODUCTS[2].update(nutriscore_grade="d", nova_group=4)
 
 PRODUCTS = [_product(r) for r in RAW_PRODUCTS]
 BY_BARCODE = {p["barcode"]: p for p in PRODUCTS}
@@ -95,7 +104,8 @@ _LIMIT_FIELDS = {
 
 
 def fake_browse(text="", category="All", india_only=True, nutrient_filters=None, has_image=False, limit=30, page=1):
-    """Stands in for the Open Food Facts catalogue search: every word must be in the name or brand."""
+    """Stands in for the Open Food Facts catalogue search: every word must be in the name or brand.
+    The results then go through the real eligibility and ranking rules."""
     words = text.lower().split()
     items = [p for p in PRODUCTS if all(w in f"{p['product_name']} {p['brand']}".lower() for w in words)]
     if category not in ("All", ""):
@@ -104,6 +114,7 @@ def fake_browse(text="", category="All", india_only=True, nutrient_filters=None,
         if limit_value is not None:
             field, ok = _LIMIT_FIELDS[key]
             items = [p for p in items if ok(p.get(field), limit_value)]
+    items, _ = rank_products(items, text)
     start = (page - 1) * limit
     return {"status": "ok", "products": items[start:start + limit], "count": len(items),
             "interpreted_intent": None, "match_mode": "words"}
@@ -111,4 +122,5 @@ def fake_browse(text="", category="All", india_only=True, nutrient_filters=None,
 
 def fake_alternative_candidates(product: dict, limit: int = 40) -> dict:
     same = [p for p in PRODUCTS if p["category"] == product.get("category") and p["barcode"] != product.get("barcode")]
-    return {"status": "ok", "products": same[:limit], "count": len(same)}
+    same, _ = rank_products(same[:limit])
+    return {"status": "ok", "products": same, "count": len(same)}
