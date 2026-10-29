@@ -46,7 +46,8 @@ smoke: ## Post-deploy smoke test: make smoke URL=https://eatgood26.vercel.app
 
 check: lint typecheck test security build ## Everything CI runs, except e2e
 
-lock: ## Re-pin Python dependencies after editing pyproject.toml
+lock: ## Re-pin Python dependencies after editing pyproject.toml (uv.lock is what Vercel installs)
+	uv lock
 	uv pip compile pyproject.toml --python-version 3.12 -o requirements.txt
 	uv pip compile pyproject.toml --group dev --python-version 3.12 -o requirements-dev.txt
 

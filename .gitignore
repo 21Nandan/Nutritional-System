@@ -42,3 +42,7 @@ frontend/public/ocr/
 frontend/dist/
 test-results/
 playwright-report/
+.coverage
+build/
+*.egg-info/
+.vercel/
