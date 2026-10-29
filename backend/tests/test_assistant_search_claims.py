@@ -10,8 +10,7 @@ from fastapi.testclient import TestClient
 
 from backend.core.assistant import answer_product_question
 from backend.core.claims_detector import evaluate_claims
-from backend.core.data_loader import data_loader
-from backend.core.semantic_search import execute_semantic_search, parse_semantic_intent
+from backend.core.semantic_search import parse_semantic_intent
 from backend.main import app
 
 client = TestClient(app)
@@ -50,7 +49,7 @@ def test_assistant_low_sugar_and_high_protein_branches():
 
 def test_assistant_endpoint_uses_request_profile():
     header = {"X-Eatgood-Profile": quote(json.dumps({"allergens_to_avoid": "Milk"}))}
-    pid = data_loader.products_df[data_loader.products_df["allergens_declared"].fillna("").str.contains("Milk")].iloc[0]["product_id"]
+    pid = "OFF_2000000000039"  # test catalogue product declaring Milk
     res = client.post("/api/assistant/ask", json={"product_id": pid, "question": "Can I eat this with a dairy allergy?"}, headers=header)
     assert res.status_code == 200
     assert res.json()["grounded_metrics"]["personalized_score"] == 0
@@ -78,27 +77,7 @@ def test_semantic_intent(query, category, descriptions, allergens):
         assert a in intent["excluded_allergens"]
 
 
-def test_semantic_search_filters_and_explains():
-    res = execute_semantic_search("less salty snacks", data_loader.products_df, {"allergens_to_avoid": ""}, limit=10)
-    assert res["total"] > 0
-    for p in res["products"]:
-        assert p["category"] == "Snacks"
-        assert p["semantic_reason"]
-        assert "nutrient_flags" in p
-
-
-def test_semantic_search_category_that_does_not_exist_returns_nothing_not_everything():
-    df = data_loader.products_df[data_loader.products_df["category"] != "Packaged Beverages"]
-    res = execute_semantic_search("low sugar drinks", df, {"allergens_to_avoid": ""}, limit=10)
-    assert res["total"] == 0
-
-
-def test_semantic_search_excludes_user_allergens():
-    res = execute_semantic_search("high protein snacks", data_loader.products_df, {"allergens_to_avoid": "Milk"}, limit=50)
-    assert all("milk" not in str(p.get("allergens_declared") or "").lower() for p in res["products"])
-
-
-def test_catalogue_endpoint_routes_natural_language_to_semantic_search():
+def test_catalogue_endpoint_reports_the_interpreted_intent():
     res = client.get("/api/products?query=less%20salty%20snacks&limit=5").json()
     assert "interpreted_intent" in res
 

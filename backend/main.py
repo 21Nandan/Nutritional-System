@@ -17,7 +17,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import BASE_DIR, CORS_ORIGINS, IS_SERVERLESS
-from backend.core.data_loader import data_loader
 from backend.database import init_db
 from backend.routes import catalogue, meta, scan
 
@@ -25,12 +24,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("eatgood")
 
 init_db()
-logger.info(
-    "Catalogue loaded: %d products, dataset %s (%s)",
-    len(data_loader.products_df),
-    data_loader.manifest["dataset_version"],
-    data_loader.manifest["provenance"],
-)
 
 app = FastAPI(
     title="EATGOOD API",

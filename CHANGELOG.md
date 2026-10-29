@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Catalogue: products now come from Open Food Facts (sold in India by default, or all countries). The
+  852-product generated catalogue is quarantined in `data/quarantine/`, not deleted.
+- Search: several words, an unfinished last word ("cadbury da"), extra spaces and barcodes work;
+  clearing the search restores the list; the empty state appears only when nothing matches.
+- Nutrient filters no longer overlap; they wrap on smaller screens.
+- Comparison: restored. A stale or unavailable product is listed with a Remove option while the other
+  products are still compared; the selection is kept in the address and the session.
+- Scores: one consistent nutrition grade badge and Goal Match meter on product pages, catalogue cards,
+  comparisons and alternatives, with an expandable explanation of how both are calculated.
+- Product page: compact expandable additive boxes; the duplicate "Edit Values Now" button is removed.
+- Profile page: tidier layout, Configure Profile as the main action, collapsible Recent Assessments
+  and Saved Items.
+
 - Label Scanner: removed the photo (OCR) option. Added "Search products", which searches the Open
   Food Facts world database through a new paginated endpoint, with results updating as you type;
   failures are shown as errors. Text search now uses search.openfoodfacts.org, because the old

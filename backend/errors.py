@@ -8,7 +8,19 @@ from fastapi import HTTPException
 logger = logging.getLogger("eatgood.errors")
 
 
+# IDs of the former bundled catalogue (now quarantined). Links and saved selections may still use them.
+RETIRED_ID_PREFIX = "IND_PKG_"
+
+
 def product_not_found_error(product_id: str) -> HTTPException:
+    if product_id.startswith(RETIRED_ID_PREFIX):
+        return HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "PRODUCT_RETIRED",
+                "message": "This product was in the old built-in catalogue, which has been replaced. Remove it and choose a product from the catalogue.",
+            },
+        )
     return HTTPException(
         status_code=404,
         detail={"error_code": "PRODUCT_NOT_FOUND", "message": f"We couldn't find a product with the ID {product_id!r}."},

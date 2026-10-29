@@ -178,6 +178,14 @@ def map_off_category_to_eatgood(categories_str: str | None, categories_tags: lis
     return UNCATEGORISED
 
 
+def _specific_category_name(categories_tags: list | None) -> str:
+    """The most specific English category tag as words ("en:potato-crisps" -> "Potato crisps")."""
+    for tag in reversed(categories_tags or []):
+        if str(tag).startswith("en:"):
+            return str(tag)[3:].replace("-", " ").capitalize()
+    return "Packaged food"
+
+
 def clean_allergens_from_tags(tags: list[str] | None) -> str:
     """Formats Open Food Facts allergen tags (e.g. ['en:milk', 'en:soybeans']) into human-readable text."""
     if not tags:
@@ -446,7 +454,7 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
         "product_name": product_name,
         "brand": brand,
         "category": category,
-        "sub_category": "Community Sourced Packaging",
+        "sub_category": _specific_category_name(off_product.get("categories_tags")),
         "barcode": str(requested_barcode),
         "serving_size": serving_size,
         "serving_size_unit": serving_size_unit,
@@ -466,6 +474,7 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
         "allergens_declared": allergens,
         "additives": additives_text,
         "image_url": image_url,
+        "image_small_url": off_product.get("image_front_small_url") or image_url,
         "quantity": off_product.get("quantity"),
         "source_indicators": {
             "nutriscore_grade": nutriscore_grade,
@@ -537,7 +546,7 @@ def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None =
     }
 
 
-_OFF_QUERY_CACHE: dict[tuple[str, int, int], tuple[float, list[dict[str, Any]], int | None]] = {}
+_OFF_QUERY_CACHE: dict[tuple[str, int, int, str | None], tuple[float, list[dict[str, Any]], int | None]] = {}
 OFF_QUERY_CACHE_TTL = 300.0  # seconds
 
 
@@ -552,35 +561,46 @@ def _search_error(error_code: str, http_status: int) -> dict[str, Any]:
     }
 
 
-def search_openfoodfacts_text(
-    query: str, limit: int = 6, client: httpx.Client | None = None, page: int = 1
+# Characters with a meaning in the search service's query syntax. Removed from visitor text so a
+# search for "lay's (salted)" is plain words, never a malformed or altered query.
+_QUERY_SYNTAX_CHARS = re.compile(r'[+\-&|!(){}\[\]^"~*?:\\/<>=]')
+# Apostrophes are dropped rather than spaced: "lay's" is searched as "lays".
+_APOSTROPHES = re.compile(r"['\u2019]")
+
+
+def clean_search_text(text: str) -> str:
+    """Visitor text reduced to plain lower-case words (operators like AND/OR are lower-cased too)."""
+    return " ".join(_QUERY_SYNTAX_CHARS.sub(" ", _APOSTROPHES.sub("", str(text))).lower().split())
+
+
+def search_openfoodfacts(
+    query: str, limit: int = 24, page: int = 1, sort_by: str | None = None, client: httpx.Client | None = None
 ) -> dict[str, Any]:
     """
-    Text search on Open Food Facts, one page of `limit` results. Returns {"status": "ok"|"error",
-    "products": [...], "count": total matches or None, "error_code"?, "http_status"?, "message"?}.
-    An error is never reported as an empty result.
+    One page of Open Food Facts search results for a query in the search service's syntax
+    (plain words plus field filters such as countries_tags:"en:india"). Returns
+    {"status": "ok"|"error", "products": [...], "count": total matches or None,
+    "error_code"?, "http_status"?, "message"?}. An error is never reported as an empty result.
     """
-    clean_q = str(query).strip().lower()
-    if len(clean_q) < 2:
-        return {"status": "ok", "products": [], "count": 0}
-
     now = time.time()
-    cache_key = (clean_q, page, limit)
+    cache_key = (query, page, limit, sort_by)
     cached = _OFF_QUERY_CACHE.get(cache_key)
     if cached and now - cached[0] < OFF_QUERY_CACHE_TTL:
         return {"status": "ok", "products": cached[1], "count": cached[2]}
 
-    params = {
-        "q": clean_q,
+    params: dict[str, Any] = {
+        "q": query,
         "langs": "en",
         "page": page,
         "page_size": limit,
         "fields": OFF_REQUEST_FIELDS,
     }
+    if sort_by:
+        params["sort_by"] = sort_by
     try:
         response = _get_with_retry(client or get_client(), OFF_SEARCH_URL, params)
     except httpx.HTTPError as exc:
-        logger.warning("Open Food Facts search failed for %r: %r", clean_q, exc)
+        logger.warning("Open Food Facts search failed for %r: %r", query, exc)
         err = classify_exception(exc, "")
         return _search_error(err["error_code"], err["http_status"])
 
@@ -622,3 +642,13 @@ def search_openfoodfacts_text(
 
     _OFF_QUERY_CACHE[cache_key] = (now, mapped_products, count)
     return {"status": "ok", "products": mapped_products, "count": count}
+
+
+def search_openfoodfacts_text(
+    query: str, limit: int = 6, client: httpx.Client | None = None, page: int = 1
+) -> dict[str, Any]:
+    """Plain-text search (any product, any country). Short or empty text returns no results."""
+    clean_q = clean_search_text(query)
+    if len(clean_q) < 2:
+        return {"status": "ok", "products": [], "count": 0}
+    return search_openfoodfacts(clean_q, limit=limit, page=page, client=client)

@@ -1,9 +1,36 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { apiFetch } from '../api';
 import { clearHistory, loadHistory, loadSavedProducts, toggleSavedProduct } from '../storage';
-import { 
-  Bookmark, Clock, User, ScanLine, ChevronRight 
-} from 'lucide-react';
+import { Bookmark, Clock, User, ScanLine, ChevronRight, Settings } from 'lucide-react';
+import { Chevron, Collapse } from '../components/Expandable';
+import { GradeBadge } from '../components/ScoreDisplay';
+
+function splitList(value) {
+  return String(value || '').split(',').map((v) => v.trim()).filter(Boolean);
+}
+
+// A card whose heading opens and closes its content. The count and any extra actions sit
+// beside the heading button, so they stay usable while the section is collapsed.
+function CollapsibleSection({ icon: Icon, title, count, actions, children }) {
+  const id = useId();
+  const [open, setOpen] = useState(true);
+  return (
+    <section className="card profile-section">
+      <div className="profile-section-head">
+        <button type="button" className="profile-section-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen((v) => !v)}>
+          <Icon size={17} aria-hidden="true" />
+          <h3>{title}</h3>
+          <span className="profile-section-count">{count}</span>
+          <Chevron open={open} />
+        </button>
+        {actions}
+      </div>
+      <Collapse id={id} open={open}>
+        <div className="profile-section-body">{children}</div>
+      </Collapse>
+    </section>
+  );
+}
 
 export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustomAssessment, activeProfile, onOpenProfile, onRetakeOnboarding }) {
   // History and saved products are kept only in this browser.
@@ -39,262 +66,163 @@ export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustom
     }
   };
 
+  const goals = splitList(activeProfile?.goal || 'Balanced Choices');
+  const allergens = splitList(activeProfile?.allergens_to_avoid);
+
   return (
     <div className="dashboard-page">
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: '2.2rem', color: 'var(--color-primary)', marginBottom: 8 }}>
-          User Profile & Nutrition Overview
-        </h1>
-        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Manage your dietary preferences, track your product assessments, and view saved food items.
-        </p>
+      <div className="profile-page-head">
+        <h1>User Profile &amp; Nutrition Overview</h1>
+        <p>Your preferences, recent assessments and saved products. Everything here is stored only in this browser.</p>
       </div>
 
-      {/* Profile Overview Banner */}
-      <div className="card" style={{
-        background: 'linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface-alt) 100%)',
-        marginBottom: 24,
-        padding: 24
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-            <div style={{
-              width: 50,
-              height: 50,
-              borderRadius: '50%',
-              background: 'var(--color-primary)',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <User size={24} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: 0 }}>
-                  {activeProfile?.name || 'Guest User'}
-                </h3>
-                <span className="badge badge-verified" style={{ fontSize: '0.72rem' }}>
-                  {activeProfile?.dietary_preference || 'No preference'}
-                </span>
-                <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
-                  Activity: {activeProfile?.activity_level || 'Moderately active'}
-                </span>
-              </div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                Goal: <strong style={{ color: 'var(--color-primary)' }}>{activeProfile?.goal || 'Balanced Choices'}</strong>
-                <span style={{ marginLeft: 8, color: 'var(--color-text-muted)' }}>
-                  • Activity Level: <strong style={{ color: 'var(--color-primary)' }}>{activeProfile?.activity_level || 'Moderately active'}</strong>
-                </span>
-                {activeProfile?.allergens_to_avoid && (
-                  <span style={{ marginLeft: 8, color: '#c62828' }}>
-                    • Allergens: {activeProfile.allergens_to_avoid}
-                  </span>
-                )}
-              </div>
-            </div>
+      <section className="card profile-card" aria-label="Your profile">
+        <div className="profile-card-top">
+          <div className="profile-identity">
+            <span className="profile-avatar" aria-hidden="true"><User size={20} /></span>
+            <h2>{activeProfile?.name || 'Guest User'}</h2>
           </div>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn-secondary" onClick={onOpenProfile} style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
-              Configure Profile & Activity
+          <div className="profile-actions">
+            <button type="button" className="btn-primary btn-compact" onClick={onOpenProfile}>
+              <Settings size={15} aria-hidden="true" />
+              <span>Configure Profile &amp; Activity</span>
             </button>
             {onRetakeOnboarding && (
-              <button 
-                className="btn-secondary" 
-                onClick={onRetakeOnboarding} 
-                style={{ padding: '8px 14px', fontSize: '0.82rem', background: '#fff' }}
+              <button
+                type="button"
+                className="btn-secondary btn-compact"
+                onClick={onRetakeOnboarding}
                 title="Review terms of service and retake the initial onboarding setup"
               >
-                Review Terms & Setup
+                Review Terms &amp; Setup
               </button>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Grid: Recent History & Saved Products */}
-      <div className="dashboard-columns">
-        
-        {/* Recent Analysis History */}
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Clock size={18} color="var(--color-primary)" />
-              <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', margin: 0 }}>
-                Recent Assessments
-              </h3>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                {history.length} logged
-              </span>
-              {history.length > 0 && (
-                <button
-                  onClick={handleClearHistory}
-                  style={{
-                    fontSize: '0.72rem',
-                    color: '#c62828',
-                    background: '#ffebee',
-                    border: '1px solid #ffcdd2',
-                    padding: '3px 8px',
-                    borderRadius: 4,
-                    cursor: 'pointer'
-                  }}
-                  title="Clear all recent assessment history on this device"
-                >
-                  Clear History
-                </button>
-              )}
-            </div>
+        <dl className="profile-details">
+          <div>
+            <dt>Diet</dt>
+            <dd>{activeProfile?.dietary_preference || 'No preference'}</dd>
           </div>
+          <div>
+            <dt>Activity level</dt>
+            <dd>{activeProfile?.activity_level || 'Moderately active'}</dd>
+          </div>
+          <div>
+            <dt>Nutrition goals</dt>
+            <dd className="profile-chips">
+              {goals.map((g) => <span key={g} className="profile-chip">{g}</span>)}
+            </dd>
+          </div>
+          <div>
+            <dt>Allergens to avoid</dt>
+            <dd className="profile-chips">
+              {allergens.length > 0
+                ? allergens.map((a) => <span key={a} className="profile-chip profile-chip-allergen">{a}</span>)
+                : <span className="profile-muted">None set</span>}
+            </dd>
+          </div>
+        </dl>
+      </section>
 
+      <div className="dashboard-columns">
+        <CollapsibleSection
+          icon={Clock}
+          title="Recent Assessments"
+          count={`${history.length} logged`}
+          actions={history.length > 0 && (
+            <button
+              type="button"
+              className="profile-clear"
+              onClick={handleClearHistory}
+              title="Clear all recent assessment history on this device"
+            >
+              Clear History
+            </button>
+          )}
+        >
           {history.length === 0 ? (
-            <div style={{ padding: '36px 20px', textAlign: 'center', background: 'var(--color-surface-alt)', borderRadius: 10 }}>
-              <ScanLine size={32} color="var(--color-text-subtle)" style={{ margin: '0 auto 10px' }} />
-              <h4 style={{ fontSize: '1rem', marginBottom: 4 }}>No food analyses yet</h4>
-              <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 14 }}>
-                Analyze a product label or search the catalogue to populate your evaluation history.
-              </p>
-              <button 
-                className="btn-primary" 
-                onClick={() => setActivePage('scanner')}
-                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-              >
-                Scan Your First Food
+            <div className="profile-empty">
+              <ScanLine size={28} color="var(--color-text-subtle)" aria-hidden="true" />
+              <h4>No food analyses yet</h4>
+              <p>Search for a product or scan a barcode to start your history.</p>
+              <button type="button" className="btn-primary btn-compact" onClick={() => setActivePage('scanner')}>
+                Find a Product
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {history.map(item => (
-                <div
-                  key={`${item.product_id}-${item.timestamp}`}
-                  onClick={() => (item.product_id === 'CUSTOM_SCAN' ? null : onSelectProduct(item.product_id))}
-                  title={item.product_id === 'CUSTOM_SCAN' ? 'Label scans are not stored. Save a scan to reopen it.' : undefined}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 14px',
-                    borderRadius: 8,
-                    border: '1px solid var(--color-border)',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s'
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-subtle)' }}>
-                      {item.brand}
-                    </span>
-                    <h4 style={{ fontSize: '0.92rem', color: 'var(--color-primary)', margin: '2px 0 4px' }}>
-                      {item.product_name}
-                    </h4>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-                      {item.analysis_source} • {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'Recent'}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <span className={`grade-badge grade-${item.general_grade || 'NA'}`} style={{ width: 22, height: 22, fontSize: '0.75rem' }}>
-                        {item.general_grade || 'NA'}
+            <ul className="profile-list">
+              {history.map((item) => {
+                const isCustom = item.product_id === 'CUSTOM_SCAN';
+                return (
+                  <li key={`${item.product_id}-${item.timestamp}`}>
+                    <button
+                      type="button"
+                      className="profile-item"
+                      onClick={() => onSelectProduct(item.product_id)}
+                      disabled={isCustom}
+                      title={isCustom ? 'Entered values are not stored. Save an assessment to reopen it.' : undefined}
+                    >
+                      <span className="profile-item-text">
+                        <span className="profile-item-brand">{item.brand}</span>
+                        <span className="profile-item-name">{item.product_name}</span>
+                        <span className="profile-item-meta">
+                          {item.analysis_source} · {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'Recent'}
+                        </span>
                       </span>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: 2 }}>
-                        {item.personalized_score != null ? `${item.personalized_score}/100` : 'N/A'}
-                      </div>
-                    </div>
-                    <ChevronRight size={16} color="var(--color-text-subtle)" />
-                  </div>
-                </div>
-              ))}
-            </div>
+                      <span className="profile-item-scores">
+                        <GradeBadge grade={item.general_grade || 'N/A'} size="sm" showLabel={false} />
+                        <span className="profile-item-goal">
+                          {item.personalized_score != null ? <>{item.personalized_score}<small>/100</small></> : 'N/A'}
+                        </span>
+                      </span>
+                      {!isCustom && <ChevronRight size={16} color="var(--color-text-subtle)" aria-hidden="true" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </div>
+        </CollapsibleSection>
 
-        {/* Saved Favorites */}
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Bookmark size={18} color="var(--color-primary)" />
-              <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', margin: 0 }}>
-                Saved Products
-              </h3>
-            </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-              {savedProducts.length} saved
-            </span>
-          </div>
-
-          {openError && (
-            <p role="alert" style={{ color: '#c62828', fontSize: '0.82rem', marginBottom: 10 }}>{openError}</p>
-          )}
+        <CollapsibleSection icon={Bookmark} title="Saved Items" count={`${savedProducts.length} saved`}>
+          {openError && <p role="alert" className="profile-error">{openError}</p>}
           {savedProducts.length === 0 ? (
-            <div style={{ padding: '36px 20px', textAlign: 'center', background: 'var(--color-surface-alt)', borderRadius: 10 }}>
-              <Bookmark size={32} color="var(--color-text-subtle)" style={{ margin: '0 auto 10px' }} />
-              <h4 style={{ fontSize: '1rem', marginBottom: 4 }}>No saved products</h4>
-              <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 14 }}>
-                Bookmark food items from the catalogue or assessment view for quick future reference.
-              </p>
-              <button 
-                className="btn-secondary" 
-                onClick={() => setActivePage('catalogue')}
-                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-              >
+            <div className="profile-empty">
+              <Bookmark size={28} color="var(--color-text-subtle)" aria-hidden="true" />
+              <h4>No saved products</h4>
+              <p>Bookmark products from the catalogue or a product page to find them quickly later.</p>
+              <button type="button" className="btn-secondary btn-compact" onClick={() => setActivePage('catalogue')}>
                 Browse Catalogue
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {savedProducts.map(p => (
-                <div
-                  key={p.product_id}
-                  onClick={() => openSaved(p)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 14px',
-                    borderRadius: 8,
-                    border: '1px solid var(--color-border)',
-                    background: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>{p.brand}</span>
-                    <h4 style={{ fontSize: '0.92rem', color: 'var(--color-primary)', margin: '2px 0 2px' }}>
-                      {p.product_name}
-                    </h4>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-                      {p.category}
+            <ul className="profile-list">
+              {savedProducts.map((p) => (
+                <li key={p.product_id} className="profile-saved-row">
+                  <button type="button" className="profile-item" onClick={() => openSaved(p)}>
+                    <span className="profile-item-text">
+                      <span className="profile-item-brand">{p.brand}</span>
+                      <span className="profile-item-name">{p.product_name}</span>
+                      <span className="profile-item-meta">{p.category}</span>
                     </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveSaved(p.product_id);
-                      }}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 4,
-                        color: '#c62828'
-                      }}
-                      title="Remove from Saved"
-                    >
-                      <Bookmark size={16} fill="#c62828" />
-                    </button>
-                    <ChevronRight size={16} color="var(--color-text-subtle)" />
-                  </div>
-                </div>
+                    <ChevronRight size={16} color="var(--color-text-subtle)" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="profile-unsave"
+                    onClick={() => handleRemoveSaved(p.product_id)}
+                    aria-label={`Remove ${p.product_name} from saved items`}
+                    title="Remove from Saved"
+                  >
+                    <Bookmark size={16} fill="currentColor" aria-hidden="true" />
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
-        </div>
+        </CollapsibleSection>
       </div>
     </div>
   );

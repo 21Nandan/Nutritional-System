@@ -160,8 +160,12 @@ def test_unclassified_ambiguous_claim():
     assert res["primary_claim_type"] == "Unclassified or Ambiguous Claim"
 
 def test_api_full_product_assessment_includes_audited_claims():
-    """Integration check: GET /api/products/{product_id} returns structured claim analysis."""
-    response = client.get("/api/products/IND_PKG_415")
+    """Integration check: an assessment returns structured claim analysis."""
+    response = client.post("/api/products/assess", json={
+        "product_name": "Protein Crisps", "category": "Snacks", "measurement_basis": "per 100g",
+        "energy_kcal": 480, "sugars_g": 3, "sodium_mg": 500, "saturated_fat_g": 5, "protein_g": 8,
+        "marketing_claims": "High Protein, Low Fat",
+    })
     assert response.status_code == 200
     data = response.json()
     claims_analysis = data.get("marketing_claims_analysis") or data.get("assessment", {}).get("marketing_claims_analysis", [])

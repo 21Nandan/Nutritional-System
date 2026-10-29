@@ -1,22 +1,12 @@
 """
 EATGOOD — Automated Test Suite
-Verifies data loading, 3-layer assessment logic, allergen conflicts,
+Verifies the 3-layer assessment logic, allergen conflicts,
 missing data handling, recommendation rankings, and claim detection.
 """
 
 from backend.core.claims_detector import evaluate_claims
-from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import assess_general_nutrition, assess_personalized_suitability
 
-
-def test_data_loader_integrity():
-    assert data_loader.products_df is not None
-    assert len(data_loader.products_df) == 852, f"Expected 852 products, found {len(data_loader.products_df)}"
-
-    # Audit metrics check
-    audit = data_loader.get_audit_metrics()
-    assert audit["total_atwater_discrepancies"] == 78, f"Expected 78 Atwater anomalies, found {audit['total_atwater_discrepancies']}"
-    assert audit["total_macro_serving_discrepancies"] == 13, f"Expected 13 macro serving anomalies, found {audit['total_macro_serving_discrepancies']}"
 
 def test_layer1_calibrated_vs_uncalibrated():
     # Calibrated category: Snacks
@@ -174,17 +164,3 @@ def test_score_calculation_breakdown_and_scale():
     assert any("Reduce Sugar" in s["factor"] for s in breakdown["steps"])
     assert breakdown["steps"][-1]["type"] == "final"
     assert breakdown["steps"][-1]["running_total"] == res["personalized_score"]
-
-def test_product_catalogue_nutritional_filters():
-    """Verifies that search_products filters accurately by nutrient limits."""
-    # Test healthy sugar filter (<= 10g) in Breakfast Cereals
-    healthy_cereals = data_loader.search_products(category="Breakfast Cereals", max_sugars=10.0, max_sodium=400.0, max_sat_fat=4.0)
-    assert healthy_cereals["total"] == 55
-    for p in healthy_cereals["products"]:
-        assert p["sugars_g"] <= 10.0
-        assert p["sodium_mg"] <= 400.0
-        assert p["saturated_fat_g"] <= 4.0
-
-    # Test unfiltered count in Breakfast Cereals
-    all_cereals = data_loader.search_products(category="Breakfast Cereals")
-    assert all_cereals["total"] == 160

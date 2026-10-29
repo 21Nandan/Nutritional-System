@@ -4,6 +4,7 @@ import ProductImageFallback from '../components/ProductImageFallback';
 import { apiFetch } from '../api';
 import { loadSavedProducts, toggleSavedProduct } from '../storage';
 import { formatNutrient } from '../format';
+import { ScorePair } from '../components/ScoreDisplay';
 
 const PAGE_SIZES = [30, 60, 100];
 const FILTER_KEYS = ['sugar', 'sodium', 'satfat', 'fibre', 'protein'];
@@ -18,6 +19,7 @@ function readUrlState() {
     page: Math.max(0, Number(p.get('page') || 1) - 1),
     pageSize: PAGE_SIZES.includes(size) ? size : 30,
     photos: p.get('photos') === '1',
+    world: p.get('world') === '1',
     filters: Object.fromEntries(FILTER_KEYS.map((k) => [k, p.get(k) || 'all'])),
   };
 }
@@ -29,6 +31,7 @@ function writeUrlState(state) {
   if (state.page > 0) p.set('page', String(state.page + 1));
   if (state.pageSize !== 30) p.set('size', String(state.pageSize));
   if (state.photos) p.set('photos', '1');
+  if (state.world) p.set('world', '1');
   FILTER_KEYS.forEach((k) => {
     if (state.filters[k] !== 'all') p.set(k, state.filters[k]);
   });
@@ -74,6 +77,9 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
   const [savedIds, setSavedIds] = useState(() => loadSavedProducts().map((p) => p.product_id));
   const [pageSize, setPageSize] = useState(initial.pageSize);
   const [hasImageFilter, setHasImageFilter] = useState(initial.photos);
+  const [allCountries, setAllCountries] = useState(initial.world);
+  const [totalIsCapped, setTotalIsCapped] = useState(false);
+  const [partialSearch, setPartialSearch] = useState(null);
   const [semanticIntent, setSemanticIntent] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -135,15 +141,18 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
 
   useEffect(() => {
     writeUrlState({
-      query,
+      query: query.trim(),
       category: selectedCat,
       page,
       pageSize,
       photos: hasImageFilter,
+      world: allCountries,
       filters: { sugar: sugarFilter, sodium: sodiumFilter, satfat: satFatFilter, fibre: fibreFilter, protein: proteinFilter },
     });
 
-    const params = new URLSearchParams({ query, category: selectedCat, limit: pageSize, offset: page * pageSize });
+    const searchTerm = query.trim();
+    const params = new URLSearchParams({ query: searchTerm, category: selectedCat, limit: pageSize, offset: page * pageSize });
+    if (allCountries) params.append('india_only', 'false');
     if (hasImageFilter) params.append('has_image', 'true');
     if (sugarFilter === 'healthy') params.append('max_sugars', '10');
     else if (sugarFilter === 'low') params.append('max_sugars', '5');
@@ -164,7 +173,9 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
         .then((data) => {
           setProducts(data.products);
           setTotal(data.total);
+          setTotalIsCapped(data.total_is_capped);
           setSemanticIntent(data.interpreted_intent || null);
+          setPartialSearch(data.match_mode === 'partial' ? { term: searchTerm, pool: data.searched_pool } : null);
           setLoading(false);
         })
         .catch((err) => {
@@ -174,12 +185,12 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
           setTotal(0);
           setLoading(false);
         });
-    }, query ? 250 : 0);
+    }, searchTerm ? 400 : 0);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter, reloadToken]);
+  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter, allCountries, reloadToken]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
@@ -190,7 +201,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
           Indian Packaged Food Catalogue
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Browse products by category, search by name, brand, ingredient or barcode, and filter by nutrient limits.
+          Browse packaged foods sold in India, or search any food by name or brand, and filter by nutrient limits.
         </p>
       </div>
 
@@ -207,8 +218,9 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
         <div style={{ position: 'relative', marginBottom: 16 }}>
           <Search size={18} color="var(--color-text-subtle)" style={{ position: 'absolute', left: 14, top: 13 }} />
           <input
-            type="text"
-            placeholder="Search by product name, brand (e.g. Haldiram's, Lay's, Kellogg's), ingredient, or barcode..."
+            type="search"
+            aria-label="Search products"
+            placeholder="Search any food by name or brand (e.g. Maggi, Parle-G, Amul butter)..."
             value={query}
             onChange={e => { setQuery(e.target.value); setPage(0); }}
             style={{
@@ -268,6 +280,13 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
               </button>
             );
           })}
+        </div>
+
+        {/* Where the products are sold */}
+        <div className="catalogue-scope" role="group" aria-label="Where products are sold">
+          <span>SOLD IN:</span>
+          <button type="button" aria-pressed={!allCountries} onClick={() => { setAllCountries(false); setPage(0); }}>India</button>
+          <button type="button" aria-pressed={allCountries} onClick={() => { setAllCountries(true); setPage(0); }}>All countries</button>
         </div>
 
         {/* Filter Options Toolbar (Collapsible via arrow at the side) */}
@@ -430,6 +449,8 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
                   marginLeft: 4
                 }}
                 title={isFilterOpen ? "Collapse filter options" : "Open filter options"}
+                aria-expanded={isFilterOpen}
+                aria-controls="nutrient-filters"
               >
                 <span>{isFilterOpen ? 'Hide' : 'Open Filters'}</span>
                 <ChevronDown 
@@ -443,188 +464,38 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
             </div>
           </div>
 
-          {/* Filter Pills Grid (Collapsible) */}
+          {/* Nutrient filters (collapsible) */}
           {isFilterOpen && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 12,
-            background: 'var(--color-surface-alt)',
-            padding: '12px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--color-border)',
-            marginTop: 12
-          }}>
-            {/* Sugar Filter */}
-            <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
-                Sugar (per 100g)
-              </span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[
-                  { id: 'healthy', label: 'Healthy (≤10g)' },
-                  { id: 'low', label: 'Low (≤5g)' },
-                  { id: 'all', label: 'All' }
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => { setSugarFilter(opt.id); setPage(0); }}
-                    style={{
-                      flex: 1,
-                      padding: '5px 6px',
-                      fontSize: '0.72rem',
-                      fontWeight: sugarFilter === opt.id ? 800 : 500,
-                      borderRadius: 4,
-                      border: sugarFilter === opt.id ? '1px solid #2e7d32' : '1px solid var(--color-border)',
-                      background: sugarFilter === opt.id ? '#2e7d32' : '#fff',
-                      color: sugarFilter === opt.id ? '#fff' : 'var(--color-text-main)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            <div className="nutrient-filters" id="nutrient-filters">
+              {[
+                { key: 'sugar', title: 'Sugar (per 100g)', value: sugarFilter, set: setSugarFilter, options: [
+                  { id: 'healthy', label: 'Healthy (≤10g)' }, { id: 'low', label: 'Low (≤5g)' }, { id: 'all', label: 'All' }] },
+                { key: 'sodium', title: 'Sodium (per 100g)', value: sodiumFilter, set: setSodiumFilter, options: [
+                  { id: 'healthy', label: 'Healthy (≤400mg)' }, { id: 'low', label: 'Low (≤140mg)' }, { id: 'all', label: 'All' }] },
+                { key: 'satfat', title: 'Saturated Fat', value: satFatFilter, set: setSatFatFilter, options: [
+                  { id: 'healthy', label: 'Healthy (≤4g)' }, { id: 'low', label: 'Low (≤1.5g)' }, { id: 'all', label: 'All' }] },
+                { key: 'fibre', title: 'Dietary Fibre', value: fibreFilter, set: setFibreFilter, options: [
+                  { id: 'all', label: 'All' }, { id: 'good', label: 'Source (≥3g)' }, { id: 'high', label: 'High (≥6g)' }] },
+                { key: 'protein', title: 'Protein', value: proteinFilter, set: setProteinFilter, options: [
+                  { id: 'all', label: 'All' }, { id: 'good', label: 'Source (≥7g)' }, { id: 'high', label: 'High (≥12g)' }] },
+              ].map((group) => (
+                <fieldset key={group.key} className="nutrient-filter">
+                  <legend>{group.title}</legend>
+                  <div className="nutrient-filter-options">
+                    {group.options.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        aria-pressed={group.value === opt.id}
+                        onClick={() => { group.set(opt.id); setPage(0); }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
             </div>
-
-            {/* Sodium Filter */}
-            <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
-                Sodium (per 100g)
-              </span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[
-                  { id: 'healthy', label: 'Healthy (≤400mg)' },
-                  { id: 'low', label: 'Low (≤140mg)' },
-                  { id: 'all', label: 'All' }
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => { setSodiumFilter(opt.id); setPage(0); }}
-                    style={{
-                      flex: 1,
-                      padding: '5px 6px',
-                      fontSize: '0.72rem',
-                      fontWeight: sodiumFilter === opt.id ? 800 : 500,
-                      borderRadius: 4,
-                      border: sodiumFilter === opt.id ? '1px solid #2e7d32' : '1px solid var(--color-border)',
-                      background: sodiumFilter === opt.id ? '#2e7d32' : '#fff',
-                      color: sodiumFilter === opt.id ? '#fff' : 'var(--color-text-main)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Saturated Fat Filter */}
-            <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
-                Saturated Fat
-              </span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[
-                  { id: 'healthy', label: 'Healthy (≤4g)' },
-                  { id: 'low', label: 'Low (≤1.5g)' },
-                  { id: 'all', label: 'All' }
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => { setSatFatFilter(opt.id); setPage(0); }}
-                    style={{
-                      flex: 1,
-                      padding: '5px 6px',
-                      fontSize: '0.72rem',
-                      fontWeight: satFatFilter === opt.id ? 800 : 500,
-                      borderRadius: 4,
-                      border: satFatFilter === opt.id ? '1px solid #2e7d32' : '1px solid var(--color-border)',
-                      background: satFatFilter === opt.id ? '#2e7d32' : '#fff',
-                      color: satFatFilter === opt.id ? '#fff' : 'var(--color-text-main)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Dietary Fibre */}
-            <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
-                Dietary Fibre
-              </span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'good', label: 'Source (≥3g)' },
-                  { id: 'high', label: 'High (≥6g)' }
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => { setFibreFilter(opt.id); setPage(0); }}
-                    style={{
-                      flex: 1,
-                      padding: '5px 6px',
-                      fontSize: '0.72rem',
-                      fontWeight: fibreFilter === opt.id ? 800 : 500,
-                      borderRadius: 4,
-                      border: fibreFilter === opt.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                      background: fibreFilter === opt.id ? 'var(--color-primary)' : '#fff',
-                      color: fibreFilter === opt.id ? '#fff' : 'var(--color-text-main)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Protein */}
-            <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>
-                Protein
-              </span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'good', label: 'Source (≥7g)' },
-                  { id: 'high', label: 'High (≥12g)' }
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => { setProteinFilter(opt.id); setPage(0); }}
-                    style={{
-                      flex: 1,
-                      padding: '5px 6px',
-                      fontSize: '0.72rem',
-                      fontWeight: proteinFilter === opt.id ? 800 : 500,
-                      borderRadius: 4,
-                      border: proteinFilter === opt.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                      background: proteinFilter === opt.id ? 'var(--color-primary)' : '#fff',
-                      color: proteinFilter === opt.id ? '#fff' : 'var(--color-text-main)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
           )}
         </div>
 
@@ -664,13 +535,21 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
               ))}
             </div>
             <div style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-              {selectedCat === 'All' ? 'Indian Packaged Foods' : `${selectedCat}`}
+              {selectedCat === 'All' ? 'All categories' : `${selectedCat}`}
+              {allCountries ? ' • All countries' : ' • Sold in India'}
               {isFiltered ? ' • Filter Active' : ''}
               {hasImageFilter ? ' • Packaging Photos' : ''}
             </div>
           </div>
         </div>
       </div>
+
+      {partialSearch && !loading && !apiError && (
+        <p className="catalogue-note" role="status">
+          The last word of &ldquo;{partialSearch.term}&rdquo; looks unfinished, so these are products whose name or brand has a word
+          starting with it, from the first {partialSearch.pool} results. Type the full word to see every match.
+        </p>
+      )}
 
       <p className="catalogue-legend">
         <span style={{ color: '#b3261e', fontWeight: 700 }}>▲ Red value</span> = above the limit used for that
@@ -808,11 +687,9 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
                     <span>{prod.category}</span> • <span>{prod.sub_category}</span>
                   </div>
 
-                  {prod.semantic_reason && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', background: 'var(--color-accent-subtle)', padding: '4px 8px', borderRadius: 4, marginBottom: 10, fontWeight: 600 }}>
-                      ✨ {prod.semantic_reason}
-                    </div>
-                  )}
+                  <div style={{ marginBottom: 10 }}>
+                    <ScorePair grade={prod.general_grade} score={prod.personalized_score} allergenConflict={prod.has_allergen_conflict} />
+                  </div>
 
                   {/* Nutrition Highlights Grid */}
                   <div style={{
@@ -884,7 +761,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
             Previous
           </button>
           <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-            Page {page + 1} of {pageCount} · {total} products
+            Page {page + 1} of {pageCount.toLocaleString()} · {total.toLocaleString()}{totalIsCapped ? '+' : ''} products
           </span>
           <button
             className="btn-secondary"

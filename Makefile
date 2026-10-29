@@ -1,5 +1,5 @@
 # EATGOOD developer commands. Requires Python 3.12+, Node 22+ and uv (https://docs.astral.sh/uv/).
-.PHONY: setup dev api web build test lint typecheck security e2e smoke check lock data clean
+.PHONY: setup dev api web build test lint typecheck security e2e smoke check lock clean
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -36,9 +36,9 @@ security: ## Dependency and code security scans
 	$(VENV)/bin/pip-audit -r requirements.txt
 	cd frontend && npm audit --audit-level=high
 
-e2e: build ## End-to-end browser tests against a local server
+e2e: build ## End-to-end browser tests against a local server with the offline test catalogue
 	cd frontend && npx playwright install chromium
-	EATGOOD_RATE_LIMIT=false $(VENV)/bin/uvicorn backend.main:app --port 8000 & echo $$! > .e2e.pid; \
+	EATGOOD_RATE_LIMIT=false $(VENV)/bin/python -m backend.tests.serve_offline 8000 & echo $$! > .e2e.pid; \
 	sleep 3; cd frontend && npm run e2e; status=$$?; kill `cat ../.e2e.pid`; rm -f ../.e2e.pid; exit $$status
 
 smoke: ## Post-deploy smoke test: make smoke URL=https://eatgood26.vercel.app
@@ -51,8 +51,6 @@ lock: ## Re-pin Python dependencies after editing pyproject.toml (uv.lock is wha
 	uv pip compile pyproject.toml --python-version 3.12 -o requirements.txt
 	uv pip compile pyproject.toml --group dev --python-version 3.12 -o requirements-dev.txt
 
-data: ## Regenerate the synthetic demo catalogue (reproducible, seed 42)
-	$(PY) scripts/generate_initial_data.py
 
 clean:
 	rm -rf frontend/dist .pytest_cache .mypy_cache .ruff_cache .coverage data/eatgood_app.db

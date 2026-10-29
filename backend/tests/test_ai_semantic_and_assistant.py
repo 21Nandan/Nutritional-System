@@ -25,32 +25,10 @@ def test_semantic_intent_parser():
     assert "peanuts" in intent3["excluded_allergens"]
     assert "peanut" in intent3["forbidden_terms"]
 
-def test_semantic_search_api_endpoint():
-    res = client.get("/api/search/semantic?q=Less+salty+snacks+for+evening&limit=5")
-    assert res.status_code == 200
-    data = res.json()
-    assert "interpreted_intent" in data
-    assert data["interpreted_intent"]["category"] == "Snacks"
-    assert len(data["products"]) > 0
-    # Every returned product has semantic score and reason
-    first = data["products"][0]
-    assert "semantic_score" in first
-    assert "semantic_reason" in first
-
-def test_semantic_search_allergen_exclusion():
-    res = client.get("/api/search/semantic?q=Snacks+without+peanuts&limit=10")
-    assert res.status_code == 200
-    data = res.json()
-    for p in data["products"]:
-        ings = str(p.get("ingredients", "")).lower()
-        allgs = str(p.get("allergens_declared", "")).lower()
-        assert "peanut" not in ings
-        assert "peanut" not in allgs
-
 def test_grounded_assistant_diabetes_query():
-    # Cadbury Oreo IND_PKG_564 has high sugar
+    # Test catalogue: Glucose Biscuits Test has 25 g sugars per 100 g
     payload = {
-        "product_id": "IND_PKG_564",
+        "product_id": "OFF_2000000000060",
         "question": "Is this suitable for a diabetic?"
     }
     res = client.post("/api/assistant/ask", json=payload)
@@ -61,9 +39,9 @@ def test_grounded_assistant_diabetes_query():
     assert "clinical medical advice" in data["answer"].lower()
 
 def test_grounded_assistant_sodium_query():
-    # Haldiram Bhujia Sev IND_PKG_001
+    # Test catalogue: Masala Bhujia Test, sodium above the snack limit
     payload = {
-        "product_id": "IND_PKG_001",
+        "product_id": "OFF_2000000000015",
         "question": "Is this high in sodium for blood pressure?"
     }
     res = client.post("/api/assistant/ask", json=payload)

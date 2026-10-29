@@ -67,23 +67,20 @@ def test_normalize_upc_to_ean13():
     assert ean == "0012345678905"
     assert len(ean) == 13
 
-# ----------------- 2. Layer 1: Local EATGOOD Catalogue Barcode Lookup -----------------
+# ----------------- 2. Barcode lookup through Open Food Facts (test catalogue) -----------------
 
-def test_lookup_local_product_by_barcode():
-    """Verify barcode lookup matches a known product in the 852-item dataset."""
-    # Aashirvaad Superior MP Sharbati Whole Wheat Atta has barcode 8903585650756
-    res = client.get("/api/products/barcode/8903585650756")
+def test_lookup_product_by_barcode():
+    """A barcode Open Food Facts knows returns the product with its full assessment."""
+    res = client.get("/api/products/barcode/2000000000015")
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "found"
-    assert data["source"] == "local_database"
-    assert data["barcode"] == "8903585650756"
-    assert "product" in data
-    assert "assessment" in data
+    assert data["source"] == "openfoodfacts"
+    assert data["barcode"] == "2000000000015"
+    assert data["product"]["product_name"] == "Masala Bhujia Test"
     assert "layer1_general" in data["assessment"]
     assert "layer2_personalized" in data["assessment"]
     assert "layer3_allergens" in data["assessment"]
-    assert "alternatives" in data
 
 # ----------------- 3. Layer 2: Open Food Facts Integration (Mocked) -----------------
 
@@ -146,7 +143,7 @@ def test_lookup_openfoodfacts_not_found():
         detail = res.json()["detail"]
         assert detail["error_code"] == "OFF_PRODUCT_NOT_FOUND"
         assert detail["barcode"] == "9999999999999"
-        assert "isn't in our catalogue" in detail["message"]
+        assert "isn't in the product database" in detail["message"]
 
 # ----------------- 4. Layer 3: Product Contribution Flow -----------------
 
@@ -196,29 +193,15 @@ def test_user_product_contribution_and_retrieval():
     assert lookup_data["product"]["review_status"] == "pending_review"
     assert "not been reviewed" in lookup_data["message"]
 
-def test_duplicate_contribution_rejected_if_in_local_db():
-    """Verify attempting to contribute an existing catalogue barcode is rejected with 409."""
-    # 8903585650756 already exists in EATGOOD catalogue
-    payload = {
-        "barcode": "8903585650756",
-        "product_name": "Duplicate Attempt",
-        "category": "Snacks",
-        "serving_size": 100.0,
-        "energy_kcal": 200.0
-    }
-    res = client.post("/api/products/contribute", json=payload)
-    assert res.status_code == 409
-    assert res.json()["detail"]["error_code"] == "PRODUCT_EXISTS"
-
 # ----------------- 5. Healthier Alternatives -----------------
 
 def test_healthier_alternatives_endpoint():
     """Verify alternatives endpoint returns scored substitutes in the same category."""
-    # Haldiram's Bhujia Sev IND_PKG_001
-    res = client.get("/api/alternatives/IND_PKG_001")
+    res = client.get("/api/alternatives/OFF_2000000000015")
     assert res.status_code == 200
     data = res.json()
-    assert data["product_id"] == "IND_PKG_001"
+    assert data["product_id"] == "OFF_2000000000015"
+    assert all(alt["category"] == "Snacks" for alt in data["alternatives"])
     assert "alternatives" in data
     # Should find at least one healthier snack alternative with comparative advantages
     assert len(data["alternatives"]) > 0
@@ -425,17 +408,6 @@ def test_off_normalization_extracts_proteins_and_additives():
     assert normalized["source_indicators"]["nutriscore_grade"] == "E"
     assert normalized["source_indicators"]["nova_group"] == 4
 
-def test_products_search_endpoint_with_query_and_q():
-    """Verify GET /api/products/search?q={query} returns matched results."""
-    # Search by q
-    res_q = client.get("/api/products/search?q=lays&include_external=false")
-    assert res_q.status_code == 200
-    data_q = res_q.json()
-    assert "products" in data_q
-    assert data_q["total"] > 0
-    assert any("lay" in p["brand"].lower() or "lay" in p["product_name"].lower() for p in data_q["products"])
-
-
 def test_contribution_validation_rejects_bad_input():
     res = client.post("/api/products/contribute", json={"barcode": "abc", "product_name": "X"})
     assert res.status_code == 422
@@ -445,9 +417,9 @@ def test_contribution_validation_rejects_bad_input():
 
 def test_direct_barcode_lookup_on_product_endpoint():
     """Verify GET /api/products/{barcode} can resolve by numeric barcode."""
-    res = client.get("/api/products/8903585650756")
+    res = client.get("/api/products/2000000000015")
     assert res.status_code == 200
     data = res.json()
-    assert data["product_id"] == "IND_PKG_001"
-    assert data["barcode"] == "8903585650756"
+    assert data["product_id"] == "OFF_2000000000015"
+    assert data["barcode"] == "2000000000015"
 

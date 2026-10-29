@@ -1,41 +1,25 @@
 """
 EATGOOD — Healthier Alternatives Recommender Engine (Section 9)
-Recommends verified, goal-aligned alternatives within comparable product categories.
+Recommends goal-aligned alternatives from a list of same-category candidates.
 Strictly excludes allergen conflicts and explains comparative nutritional advantages.
 """
 
+from typing import Any
+
 import pandas as pd
 
-from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import assess_general_nutrition, assess_personalized_suitability
 
 
-def get_healthier_alternatives(current_product_or_id, user_profile: dict, limit: int = 4):
+def get_healthier_alternatives(
+    current_product: dict[str, Any], user_profile: dict, candidates: list[dict[str, Any]], limit: int = 4
+):
     """
-    Finds healthier alternative products in the same category that match the user's goals.
-    Accepts either a string product_id or a product dictionary.
-    Never recommends products with allergen conflicts.
+    Picks healthier alternatives for the current product from the given candidates (already
+    limited to its category). Never recommends products with allergen conflicts.
     Explains the comparative nutritional delta (e.g. -40% sugar, +3x fibre).
     """
-    if isinstance(current_product_or_id, dict):
-        current_product = current_product_or_id
-        current_product_id = current_product.get("product_id", "")
-    else:
-        current_product_id = str(current_product_or_id)
-        current_product = data_loader.get_product_by_id(current_product_id)
-
-    if not current_product:
-        return {"current_product": None, "alternatives": [], "message": "Product not found."}
-
     category = current_product.get("category")
-    df = data_loader.products_df
-
-    # Filter to same category, excluding self and redundant duplicate variants
-    candidates_df = df[(df["category"] == category) & (df["product_id"] != current_product_id)].copy()
-    candidates_df = candidates_df[~candidates_df["product_name"].str.contains(r'\(Variant\s*\d+\)', case=False, na=False)]
-
-    # Prefer verified data confidence status
-    candidates = candidates_df.replace({float('nan'): None}).to_dict(orient="records")
 
     goal = user_profile.get("goal", "Balanced Choices")
     curr_assessment = assess_personalized_suitability(current_product, user_profile)
@@ -77,14 +61,15 @@ def get_healthier_alternatives(current_product_or_id, user_profile: dict, limit:
                     advantages.append(f"{int(diff)}mg less sodium per 100g")
 
             # Fibre delta
-            if pd.notna(cand.get("dietary_fibre_g")):
-                curr_fib = current_product.get("dietary_fibre_g") or 0.0
+            # A value missing on either product is never treated as 0.
+            if pd.notna(cand.get("dietary_fibre_g")) and pd.notna(current_product.get("dietary_fibre_g")):
+                curr_fib = current_product["dietary_fibre_g"]
                 if cand["dietary_fibre_g"] > curr_fib + 2.0:
                     advantages.append(f"+{round(cand['dietary_fibre_g'] - curr_fib, 1)}g more dietary fibre")
 
             # Protein delta
-            if pd.notna(cand.get("protein_g")):
-                curr_prot = current_product.get("protein_g") or 0.0
+            if pd.notna(cand.get("protein_g")) and pd.notna(current_product.get("protein_g")):
+                curr_prot = current_product["protein_g"]
                 if cand["protein_g"] > curr_prot + 2.5:
                     advantages.append(f"+{round(cand['protein_g'] - curr_prot, 1)}g higher protein")
 

@@ -5,8 +5,8 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {
-      "includeFiles": "{backend/**,data/**}",
-      "excludeFiles": "{backend/tests/**,frontend/**,scripts/**,docs/**}",
+      "includeFiles": "backend/**",
+      "excludeFiles": "{backend/tests/**,frontend/**,data/**,docs/**}",
       "maxDuration": 15
     }
   },

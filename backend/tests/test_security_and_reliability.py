@@ -3,24 +3,21 @@ EATGOOD — Security, reliability and readiness checks.
 """
 
 import json
-import shutil
 import sqlite3
 from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.core.data_loader import CatalogueLoadError, DataLoaderService
 from backend.core.rate_limiter import rate_limiter
 from backend.main import app
 
 client = TestClient(app)
 
 
-def test_health_reports_loaded_catalogue():
+def test_health_reports_ok():
     data = client.get("/api/health").json()
     assert data["status"] == "ok"
-    assert data["products_count"] > 800
 
 
 def test_readiness_probe_ok():
@@ -28,7 +25,7 @@ def test_readiness_probe_ok():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ready"
-    assert data["checks"] == {"catalogue": "ok", "database": "ok"}
+    assert data["checks"] == {"database": "ok"}
 
 
 def test_readiness_returns_503_when_database_unreachable(monkeypatch):
@@ -41,29 +38,6 @@ def test_readiness_returns_503_when_database_unreachable(monkeypatch):
     response = client.get("/api/ready")
     assert response.status_code == 503
     assert response.json()["checks"]["database"] == "unreachable"
-
-
-def test_catalogue_loader_fails_fast_on_missing_file(tmp_path):
-    from backend.config import DATA_DIR
-
-    for name in ["dataset_manifest.json", "product_images.csv", "data_quality_report.csv",
-                 "nutrition_review.csv", "serving_size_review.csv"]:
-        shutil.copy(DATA_DIR / name, tmp_path / name)
-    with pytest.raises(CatalogueLoadError, match="products_cleaned.csv"):
-        DataLoaderService(tmp_path)
-
-
-def test_catalogue_loader_fails_fast_on_row_count_mismatch(tmp_path):
-    from backend.config import DATA_DIR
-
-    for name in ["product_images.csv", "data_quality_report.csv", "nutrition_review.csv",
-                 "serving_size_review.csv", "products_cleaned.csv"]:
-        shutil.copy(DATA_DIR / name, tmp_path / name)
-    manifest = json.loads((DATA_DIR / "dataset_manifest.json").read_text())
-    manifest["catalogue_rows"] = 999
-    (tmp_path / "dataset_manifest.json").write_text(json.dumps(manifest))
-    with pytest.raises(CatalogueLoadError, match="manifest declares 999"):
-        DataLoaderService(tmp_path)
 
 
 def test_security_headers_and_request_id():
@@ -96,6 +70,9 @@ def test_cors_rejects_unknown_origin():
         ("get", "/api/products/contributions"),
         ("post", "/api/analyze/ocr"),
         ("post", "/api/analyze/label-text"),
+        ("get", "/api/dataset"),
+        ("get", "/api/audit"),
+        ("get", "/api/search/semantic"),
     ],
 )
 def test_removed_cross_user_and_upload_endpoints_do_not_exist(method, path):
@@ -105,14 +82,14 @@ def test_removed_cross_user_and_upload_endpoints_do_not_exist(method, path):
 
 
 def test_invalid_profile_header_is_rejected_not_ignored():
-    response = client.get("/api/products/IND_PKG_001", headers={"X-Eatgood-Profile": "%7Bnot json"})
+    response = client.get("/api/products/OFF_2000000000015", headers={"X-Eatgood-Profile": "%7Bnot json"})
     assert response.status_code == 400
     assert response.json()["detail"]["error_code"] == "PROFILE_INVALID"
 
 
 def test_unknown_dietary_preference_is_rejected():
     header = quote(json.dumps({"dietary_preference": "Carnivore"}))
-    response = client.get("/api/products/IND_PKG_001", headers={"X-Eatgood-Profile": header})
+    response = client.get("/api/products/OFF_2000000000015", headers={"X-Eatgood-Profile": header})
     assert response.status_code == 400
 
 
@@ -150,7 +127,7 @@ def test_unhandled_errors_return_generic_message(monkeypatch):
         raise RuntimeError("secret internal detail")
 
     monkeypatch.setattr(catalogue, "run_full_product_assessment", boom)
-    response = TestClient(app, raise_server_exceptions=False).get("/api/products/IND_PKG_001")
+    response = TestClient(app, raise_server_exceptions=False).get("/api/products/OFF_2000000000015")
     assert response.status_code == 500
     body = response.json()
     assert body["detail"]["error_code"] == "INTERNAL_ERROR"

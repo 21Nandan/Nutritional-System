@@ -451,11 +451,15 @@ def test_catalogue_nutrient_flags_use_category_thresholds():
     assert nutrient_flags({"category": "Chocolates & Sweets", "sugars_g": 50}) == {}
 
 
-def test_catalogue_records_carry_flags():
-    from backend.core.data_loader import data_loader
+def test_catalogue_records_carry_flags_and_scores():
+    from fastapi.testclient import TestClient
 
-    rec = data_loader.search_products(category="Snacks", limit=1)["products"][0]
+    from backend.main import app
+
+    rec = TestClient(app).get("/api/products?category=Snacks&limit=1").json()["products"][0]
     assert set(rec["nutrient_flags"]) == {"sugars_g", "saturated_fat_g", "sodium_mg"}
+    assert rec["general_grade"] in {"A", "B", "C", "D", "E", "N/A", "Insufficient Data", "Data Contradiction"}
+    assert "personalized_score" in rec
 
 
 def test_unstated_measurement_basis_is_not_graded():
