@@ -166,7 +166,7 @@ export default function ProductSearch({ onSelectProduct }) {
             </button>
           )}
           <p style={{ marginTop: 12, fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-            Product data is community-contributed: check values against the pack.
+            Check values against the pack before relying on them.
           </p>
         </div>
       )}

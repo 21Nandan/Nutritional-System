@@ -120,7 +120,8 @@ OFF_REQUEST_FIELDS = (
     "ingredients_text,ingredients_text_en,ingredients,nutriments,nutrition_data_per,"
     "nutrition_data_prepared_per,serving_size,serving_quantity,quantity,allergens,"
     "allergens_tags,allergens_hierarchy,traces_tags,additives_tags,additives_original_tags,"
-    "nutriscore_grade,nutriscore_score,nova_group,data_quality_tags,completeness,states_tags,misc_tags"
+    "nutriscore_grade,nutriscore_score,nova_group,data_quality_tags,completeness,states_tags,misc_tags,"
+    "countries_tags"
 )
 
 
@@ -176,6 +177,12 @@ def map_off_category_to_eatgood(categories_str: str | None, categories_tags: lis
 
     # Unknown category: never guess. "Uncategorised" has no thresholds, so no grade is given.
     return UNCATEGORISED
+
+
+def _sold_in_india(countries_tags: list | None) -> bool | None:
+    if not countries_tags:
+        return None
+    return "en:india" in countries_tags
 
 
 def _specific_category_name(categories_tags: list | None) -> str:
@@ -475,6 +482,10 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
         "additives": additives_text,
         "image_url": image_url,
         "image_small_url": off_product.get("image_front_small_url") or image_url,
+        # Sold in India only on evidence: Open Food Facts lists India among the countries where the
+        # product is sold. None when the record has no country information (never guessed from the
+        # brand or the barcode prefix).
+        "sold_in_india": _sold_in_india(off_product.get("countries_tags")),
         "quantity": off_product.get("quantity"),
         "source_indicators": {
             "nutriscore_grade": nutriscore_grade,

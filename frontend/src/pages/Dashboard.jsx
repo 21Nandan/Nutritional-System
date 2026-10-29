@@ -168,7 +168,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustom
                         <span className="profile-item-brand">{item.brand}</span>
                         <span className="profile-item-name">{item.product_name}</span>
                         <span className="profile-item-meta">
-                          {item.analysis_source} · {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'Recent'}
+                          {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'Recent'}
                         </span>
                       </span>
                       <span className="profile-item-scores">

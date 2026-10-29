@@ -3,7 +3,7 @@ import { apiFetch } from '../api';
 import {
   Camera, FileText, AlertTriangle,
   Sparkles, ArrowRight, RefreshCw, Barcode, Search,
-  PlusCircle, ShieldCheck
+  PlusCircle
 } from 'lucide-react';
 import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
 import ProductSearch from '../components/ProductSearch';
@@ -254,27 +254,6 @@ export default function LabelScanner({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
                 <div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                    <span 
-                      style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        background: barcodeFoundResult.source === 'local_database' ? '#e8f5e9' : 
-                                    (barcodeFoundResult.source === 'user_contributed' ? '#fff3e0' : '#e1f5fe'),
-                        color: barcodeFoundResult.source === 'local_database' ? '#2e7d32' : 
-                               (barcodeFoundResult.source === 'user_contributed' ? '#e65100' : '#0288d1'),
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4
-                      }}
-                    >
-                      <ShieldCheck size={13} />
-                      {barcodeFoundResult.source === 'local_database' ? 'Local EATGOOD Catalogue' :
-                       barcodeFoundResult.source === 'user_contributed' ? 'User Contributed (Pending Review)' :
-                       'Product Database'}
-                    </span>
-
                     <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', background: '#f5f5f5', padding: '3px 8px', borderRadius: 4 }}>
                       {barcodeFoundResult.barcode_format || 'EAN-13'}: <strong>{barcodeFoundResult.barcode}</strong>
                     </span>

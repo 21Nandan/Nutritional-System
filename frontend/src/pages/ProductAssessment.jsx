@@ -251,7 +251,6 @@ export default function ProductAssessment({
     assessment?.data_source === 'User / OCR Input'
   );
 
-  const isCatalogueProduct = String(assessment?.product_id || '').startsWith('IND_PKG_');
 
   const openEditModal = () => {
     const raw = assessment?.raw_input || {};
@@ -497,11 +496,6 @@ export default function ProductAssessment({
                 <span style={{ fontSize: '0.82rem', color: 'var(--color-text-subtle)' }}>
                   {assessment.category} ({assessment.sub_category})
                 </span>
-                {!isCatalogueProduct && assessment.data_confidence_status && (
-                  <span className="badge badge-warning" style={{ fontSize: '0.7rem' }} title="How far you can rely on these values">
-                    {assessment.data_confidence_status}
-                  </span>
-                )}
               </div>
               
               <h1 style={{ fontSize: '2.1rem', color: 'var(--color-primary)', lineHeight: 1.2, marginBottom: 8 }}>
@@ -527,12 +521,6 @@ export default function ProductAssessment({
                 </span>
               </div>
 
-              {assessment.data_source && !isCatalogueProduct && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                  Source: <strong>{assessment.data_source}</strong>
-                  {assessment.retrieved_at && ` • Retrieved: ${new Date(assessment.retrieved_at).toLocaleDateString()}`}
-                </div>
-              )}
 
             </div>
           </div>
@@ -1512,12 +1500,7 @@ export default function ProductAssessment({
         <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>
           Assessment Data Transparency & Evidence
         </div>
-        {!isCatalogueProduct && (
-          <div>
-            Data Source: {assessment.transparency?.data_source} • Data Quality: {assessment.data_confidence_status}
-          </div>
-        )}
-        <div style={{ marginTop: 4 }}>
+        <div>
           {assessment.transparency?.assessment_disclaimer}
         </div>
       </div>
