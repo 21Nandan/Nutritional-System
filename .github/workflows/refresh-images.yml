@@ -1,8 +1,5 @@
 name: Refresh product images
 
-# Looks up current production Open Food Facts photo URLs for data/product_images.csv.
-# The refreshed CSV is printed in the log and uploaded as an artifact for review;
-# nothing is committed automatically.
 on:
   workflow_dispatch:
 
@@ -13,18 +10,31 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
       - run: pip install httpx
-      - run: python scripts/refresh_product_images.py
-      - name: Print refreshed CSV
+      - name: Probe Open Food Facts search capabilities (temporary)
+        shell: python
         run: |
-          echo "----- BEGIN product_images.csv -----"
-          cat data/product_images.csv
-          echo "----- END product_images.csv -----"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product_images
-          path: data/product_images.csv
+          import httpx, json
+          c = httpx.Client(headers={"User-Agent": "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)"}, timeout=25)
+          F = "code,product_name,brands,categories_tags,countries_tags,unique_scans_n,nutriments,image_front_small_url"
+          tests = {
+            "india_browse_popular": {"q": 'countries_tags:"en:india"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "india_snacks": {"q": 'countries_tags:"en:india" AND categories_tags:"en:snacks"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "india_text_maggi": {"q": 'maggi countries_tags:"en:india"', "page_size": 5, "fields": F},
+            "india_text_and": {"q": 'maggi AND countries_tags:"en:india"', "page_size": 5, "fields": F},
+            "empty_q": {"q": "", "page_size": 3, "fields": F},
+            "no_q_sort": {"sort_by": "-unique_scans_n", "page_size": 3, "fields": F},
+            "page_50": {"q": 'countries_tags:"en:india"', "sort_by": "-unique_scans_n", "page_size": 30, "page": 50, "fields": "code"},
+            "beverages_india": {"q": 'countries_tags:"en:india" AND categories_tags:"en:beverages"', "page_size": 3, "fields": F},
+          }
+          for name, params in tests.items():
+              try:
+                  r = c.get("https://search.openfoodfacts.org/search", params=params)
+                  body = r.json() if "json" in r.headers.get("content-type", "") else {}
+                  hits = body.get("hits") or []
+                  print("====", name, r.status_code, round(r.elapsed.total_seconds(), 2), "count", body.get("count"), "page_count", body.get("page_count"), "err", str(body.get("detail") or body.get("errors") or "")[:300])
+                  for h in hits[:5]:
+                      n = h.get("nutriments") or {}
+                      print("   ", h.get("code"), "|", h.get("product_name"), "|", h.get("brands"), "|", (h.get("categories_tags") or [])[-2:], "| india" if "en:india" in (h.get("countries_tags") or []) else "| -", "| scans", h.get("unique_scans_n"), "| kcal", n.get("energy-kcal_100g"), "| img", bool(h.get("image_front_small_url")))
+              except Exception as e:
+                  print("====", name, "EXC", repr(e))
