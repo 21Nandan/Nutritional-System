@@ -1,8 +1,5 @@
 name: Refresh product images
 
-# Looks up current production Open Food Facts photo URLs for data/product_images.csv.
-# The refreshed CSV is printed in the log and uploaded as an artifact for review;
-# nothing is committed automatically.
 on:
   workflow_dispatch:
 
@@ -13,18 +10,12 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
       - run: pip install httpx
-      - run: python scripts/refresh_product_images.py
-      - name: Print refreshed CSV
+      - name: Probe Open Food Facts product API (temporary)
+        shell: python
         run: |
-          echo "----- BEGIN product_images.csv -----"
-          cat data/product_images.csv
-          echo "----- END product_images.csv -----"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: product_images
-          path: data/product_images.csv
+          import httpx
+          c = httpx.Client(headers={"User-Agent": "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)"}, timeout=20)
+          for code in ["8901491103084", "8901491367219", "3850116007328"]:
+              r = c.get(f"https://world.openfoodfacts.org/api/v3/product/{code}", params={"fields": "code,product_name,brands,nutriments"})
+              print("====", code, r.status_code, r.elapsed.total_seconds(), r.text[:300])
