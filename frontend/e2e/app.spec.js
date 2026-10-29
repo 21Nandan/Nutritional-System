@@ -102,3 +102,32 @@ test('score calculation stays hidden until its arrow is clicked', async ({ page 
   await toggle.click();
   await expect(page.locator('#score-ledger table')).toBeVisible();
 });
+
+test('comparison highlights better values, explains the verdict and hides small differences', async ({ page }) => {
+  await page.goto('/compare?ids=IND_PKG_001,IND_PKG_002,IND_PKG_005');
+  await expect(page.getByRole('heading', { name: 'Verdict for your goal' })).toBeVisible();
+  await expect(page.locator('.compare-verdict')).toContainText('Goal Match');
+  const sodium = page.getByRole('row', { name: /^Sodium/ });
+  await expect(sodium.getByText('Lowest')).toHaveCount(1);
+  await expect(page.getByRole('row', { name: /^Energy/ }).getByText(/Lowest|Highest/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Differences only' }).click();
+  await expect(page.getByRole('button', { name: 'Differences only' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('row', { name: /^Energy/ })).toHaveCount(0);
+  await expect(page.getByRole('row', { name: /^Allergen Alerts/ })).toBeVisible();
+  await expect(page.getByText(/row.* with no meaningful difference hidden/)).toBeVisible();
+});
+
+test('comparing a food with a drink does not compare their nutrient values', async ({ page }) => {
+  await page.goto('/compare?ids=IND_PKG_001,IND_PKG_381');
+  await expect(page.getByText(/different bases .* so nutrient values are not compared/)).toBeVisible();
+  await expect(page.locator('.compare-table').getByText(/^(Lowest|Highest)$/)).toHaveCount(0);
+});
+
+test('assistant answers render as formatted text without markdown symbols', async ({ page }) => {
+  await page.goto('/product/IND_PKG_001');
+  await page.getByRole('button', { name: 'Is this high in sodium for blood pressure?' }).click();
+  const answer = page.locator('.assistant-answer');
+  await expect(answer.locator('.assistant-value').first()).toContainText('mg per 100 g');
+  await expect(answer).not.toContainText('**');
+  await expect(answer).toContainText('not clinical medical advice');
+});

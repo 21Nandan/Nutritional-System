@@ -12,7 +12,7 @@ from backend.core.openfoodfacts import search_openfoodfacts_text
 from backend.core.rate_limiter import enforce_rate_limit
 from backend.core.recommender import get_healthier_alternatives
 from backend.core.semantic_search import execute_semantic_search, parse_semantic_intent
-from backend.core.standards_registry import CALIBRATED_CATEGORIES
+from backend.core.standards_registry import CALIBRATED_CATEGORIES, nutrient_flags
 from backend.errors import off_unavailable_error, product_not_found_error
 from backend.products import OpenFoodFactsUnavailable, resolve_product
 from backend.profile import get_request_profile
@@ -242,6 +242,11 @@ def compare_products(
                 "personalized_score": assessment["layer2_personalized"]["personalized_score"],
                 "allergen_conflicts": assessment["layer2_personalized"]["allergen_conflicts"],
                 "has_allergen_conflict": assessment["layer2_personalized"]["has_critical_allergen_conflict"],
+                # Unknown allergen information must never read as "no alerts".
+                "allergen_status_unknown": assessment["layer3_allergens"]["allergen_status_unknown"],
+                "user_allergen_check_incomplete": assessment["layer3_allergens"]["user_allergen_check_incomplete"],
+                # Same category thresholds as the grade and the catalogue's red values.
+                "nutrient_flags": nutrient_flags(prod),
                 "ingredients": prod.get("ingredients"),
             }
         )

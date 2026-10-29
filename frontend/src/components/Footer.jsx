@@ -110,7 +110,7 @@ export default function Footer({ setActivePage }) {
             <a 
               href="#privacy" 
               onClick={(e) => { e.preventDefault(); openLegal('privacy'); }}
-              style={{ color: '#8da698', textDecoration: 'none', cursor: 'pointer' }}
+              className="footer-legal-link"
             >
               Privacy Policy
             </a>
@@ -118,7 +118,7 @@ export default function Footer({ setActivePage }) {
             <a 
               href="#terms" 
               onClick={(e) => { e.preventDefault(); openLegal('terms'); }}
-              style={{ color: '#8da698', textDecoration: 'none', cursor: 'pointer' }}
+              className="footer-legal-link"
             >
               Terms & Conditions
             </a>

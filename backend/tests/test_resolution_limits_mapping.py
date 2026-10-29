@@ -220,3 +220,29 @@ def test_off_salt_only_is_converted_and_kj_only_energy_is_converted():
 @pytest.mark.parametrize("categories", ["Chocolates", "Beef steak", "Watermelon"])
 def test_off_category_mapping_uses_whole_words(categories):
     assert map_off_category_to_eatgood(categories, []) != "Packaged Beverages"
+
+
+LAYS_TAGS = [
+    "en:plant-based-foods-and-beverages", "en:plant-based-foods", "en:snacks", "en:salty-snacks",
+    "en:appetizers", "en:chips-and-fries", "en:crisps", "en:potato-crisps",
+]
+
+
+def test_off_umbrella_foods_and_beverages_category_does_not_make_crisps_a_drink():
+    """Real Open Food Facts tags for Lay's Classic: the umbrella "...foods-and-beverages" tag comes first."""
+    assert map_off_category_to_eatgood(None, LAYS_TAGS) == "Snacks"
+    assert map_off_category_to_eatgood("Plant-based foods and beverages, Plant-based foods, Snacks, Crisps", []) == "Snacks"
+    product = map_off_product_to_eatgood("0060410025604", {
+        "code": "0060410025604", "product_name": "Lay's classic", "brands": "Lay's",
+        "categories_tags": LAYS_TAGS, "serving_size": "28 g", "nutriments": {"energy-kcal_100g": 536},
+    })
+    assert product["category"] == "Snacks"
+    assert product["measurement_basis"] == "per 100g"
+    assert product["serving_size_unit"] == "g"
+
+
+def test_off_most_specific_category_wins():
+    juice = ["en:plant-based-foods-and-beverages", "en:beverages", "en:plant-based-beverages",
+             "en:fruit-based-beverages", "en:juices-and-nectars", "en:fruit-juices"]
+    assert map_off_category_to_eatgood(None, juice) == "Packaged Beverages"
+    assert map_off_category_to_eatgood("Snacks, Sweet snacks, Biscuits and cakes, Biscuits", []) == "Biscuits & Bakery"

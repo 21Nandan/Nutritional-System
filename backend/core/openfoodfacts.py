@@ -127,6 +127,25 @@ OFF_REQUEST_FIELDS = (
 UNCATEGORISED = "Uncategorised"
 
 
+_CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("Packaged Beverages", ("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar")),
+    ("Breakfast Cereals", ("cereal", "muesli", "granola", "oats", "corn flakes", "porridge")),
+    ("Biscuits & Bakery", ("biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk")),
+    ("Chocolates & Sweets", ("chocolate", "candy", "candies", "sweet", "confectionery", "confectioneries", "toffee")),
+    ("Snacks", ("chip", "snack", "crisp", "namkeen", "popcorn", "nut", "makhana", "bhujia")),
+    ("Instant Foods", ("noodle", "instant", "ready to eat", "soup", "pasta", "ramen")),
+    ("Dairy", ("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "paneer", "ghee")),
+    ("Condiments & Spreads", ("sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip")),
+]
+
+
+def _category_for_entry(words: str) -> str | None:
+    for category, keywords in _CATEGORY_RULES:
+        if any(re.search(rf"\b{re.escape(k)}s?\b", words) for k in keywords):
+            return category
+    return None
+
+
 def map_off_category_to_eatgood(categories_str: str | None, categories_tags: list | None) -> str:
     """
     Maps Open Food Facts category strings into EATGOOD primary categories:
@@ -139,30 +158,21 @@ def map_off_category_to_eatgood(categories_str: str | None, categories_tags: lis
     - Condiments & Spreads
     - Biscuits & Bakery
     """
-    text = (categories_str or "").lower()
-    tags = " ".join(categories_tags or []).lower()
-    # Whole-word matching: "chocolates" must not match "cola", nor "steak" match "tea".
-    combined = re.sub(r"[^a-z]+", " ", f"{text} {tags}")
+    # Open Food Facts lists categories from general to specific, and files most plant-based foods
+    # (crisps included) under umbrella entries such as "Plant-based foods and beverages". Read the
+    # entries from most specific to least and skip the umbrellas, so "beverages" in an umbrella
+    # name never turns a snack into a drink.
+    entries = [e for e in (categories_str or "").split(",") if e.strip()]
+    entries += [t.split(":", 1)[-1] for t in (categories_tags or [])]
 
-    def has(*words: str) -> bool:
-        return any(re.search(rf"\b{re.escape(w)}s?\b", combined) for w in words)
-
-    if has("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar"):
-        return "Packaged Beverages"
-    if has("cereal", "muesli", "granola", "oats", "corn flakes", "porridge"):
-        return "Breakfast Cereals"
-    if has("biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk"):
-        return "Biscuits & Bakery"
-    if has("chocolate", "candy", "candies", "sweet", "confectionery", "confectioneries", "toffee"):
-        return "Chocolates & Sweets"
-    if has("chip", "snack", "crisp", "namkeen", "popcorn", "nut", "makhana", "bhujia"):
-        return "Snacks"
-    if has("noodle", "instant", "ready to eat", "soup", "pasta", "ramen"):
-        return "Instant Foods"
-    if has("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "paneer", "ghee"):
-        return "Dairy"
-    if has("sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip"):
-        return "Condiments & Spreads"
+    for entry in reversed(entries):
+        # Whole-word matching: "chocolates" must not match "cola", nor "steak" match "tea".
+        words = re.sub(r"[^a-z]+", " ", entry.lower()).strip()
+        if "food" in words and "beverage" in words:
+            continue
+        category = _category_for_entry(words)
+        if category:
+            return category
 
     # Unknown category: never guess. "Uncategorised" has no thresholds, so no grade is given.
     return UNCATEGORISED

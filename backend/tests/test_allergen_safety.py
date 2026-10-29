@@ -218,3 +218,12 @@ def test_every_group_name_is_matched_when_declared():
     for group in MAJOR_ALLERGENS:
         result = analyze_allergens("", f"Contains: {group}", [group])
         assert result["has_critical_conflict"], group
+
+
+def test_compare_reports_unknown_allergen_information_and_nutrient_flags():
+    """The comparison must be able to tell "no alerts" apart from "allergen information missing"."""
+    data = client.get("/api/compare?ids=IND_PKG_001,IND_PKG_002", headers=profile_header("Milk")).json()
+    for row in data["products_compared"]:
+        assert isinstance(row["allergen_status_unknown"], bool)
+        assert isinstance(row["user_allergen_check_incomplete"], bool)
+        assert set(row["nutrient_flags"]) <= {"sugars_g", "saturated_fat_g", "sodium_mg"}

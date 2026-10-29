@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Plus, ChevronRight, Check, AlertTriangle } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import { apiFetch } from '../api';
 import { basisLabel } from '../format';
+import {
+  COMPARE_METRICS, basisComparison, compareMetric, compareGrades, compareGoalMatch, allergenState, buildVerdict,
+} from '../compare';
 
 export default function ProductComparison({ initialProductIds = [], onSelectProduct, activeProfile }) {
   const [selectedIds, setSelectedIds] = useState(
@@ -70,7 +73,27 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
     }
   };
 
-  const products = comparedData?.products_compared || [];
+  const products = useMemo(() => comparedData?.products_compared || [], [comparedData]);
+  const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
+  const goal = comparedData?.user_goal || activeProfile?.goal || 'Balanced Choices';
+  const profileAllergens = (activeProfile?.allergens_to_avoid || '').trim();
+
+  const comparison = useMemo(() => {
+    if (products.length < 2) return null;
+    const basis = basisComparison(products);
+    return {
+      basis,
+      rows: COMPARE_METRICS.map((m) => compareMetric(m, products, basis.comparable)),
+      grades: compareGrades(products),
+      goalMatch: compareGoalMatch(products),
+      verdict: buildVerdict(products, goal, profileAllergens),
+    };
+  }, [products, goal, profileAllergens]);
+
+  const visibleRows = comparison
+    ? comparison.rows.filter((r) => !showDifferencesOnly || !comparison.basis.comparable || r.meaningful)
+    : [];
+  const hiddenCount = comparison ? comparison.rows.length - visibleRows.length : 0;
 
   return (
     <div className="product-comparison-page">
@@ -114,205 +137,182 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
           Select at least 2 items to compare.
         </div>
       ) : (
-        <div className="responsive-table-wrapper" style={{ background: '#fff', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-          <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-            <thead>
-              <tr style={{ background: 'var(--color-surface-alt)', borderBottom: '2px solid var(--color-border)' }}>
-                <th style={{ padding: '16px 20px', width: '220px', fontWeight: 800, color: 'var(--color-primary)' }}>
-                  Nutritional Metric
-                </th>
-                {products.map(p => (
-                  <th key={p.product_id} style={{ padding: '16px 20px', minWidth: '220px', verticalAlign: 'top' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <>
+          <CompareVerdict verdict={comparison.verdict} />
+
+          <div className="compare-toolbar">
+            <div className="compare-toggle" role="group" aria-label="Rows to show">
+              <button type="button" aria-pressed={!showDifferencesOnly} onClick={() => setShowDifferencesOnly(false)}>
+                All metrics
+              </button>
+              <button type="button" aria-pressed={showDifferencesOnly} onClick={() => setShowDifferencesOnly(true)}>
+                Differences only
+              </button>
+            </div>
+            <ul className="compare-legend" aria-label="Legend">
+              <li><span className="compare-best"><Check size={12} aria-hidden="true" /> Lowest / Highest</span> better value in this comparison</li>
+              <li><span className="compare-concern"><AlertTriangle size={12} aria-hidden="true" /> Above limit</span> over the category limit used for grades</li>
+            </ul>
+          </div>
+          {comparison.basis.reason && <p className="compare-note" role="note">{comparison.basis.reason}</p>}
+          {showDifferencesOnly && comparison.basis.comparable && (
+            <p className="compare-note" role="status">
+              {hiddenCount === 0
+                ? 'Every nutrient differs meaningfully, so all rows are shown.'
+                : `${hiddenCount} nutrient ${hiddenCount === 1 ? 'row' : 'rows'} with no meaningful difference hidden.`}
+            </p>
+          )}
+
+          <div className="responsive-table-wrapper compare-table-wrapper">
+            <table className="compare-table" style={{ minWidth: 200 + products.length * 170 }}>
+              <caption className="sr-only">Nutrition comparison of {products.length} products for your goal, {goal}</caption>
+              <thead>
+                <tr>
+                  <th scope="col" className="compare-label-col">Nutritional Metric</th>
+                  {products.map(p => (
+                    <th key={p.product_id} scope="col">
+                      <div className="compare-product-head">
                         {(p.image_small_url || p.image_url) && (
                           <img
                             src={p.image_small_url || p.image_url}
-                            alt={p.product_name}
+                            alt=""
                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                            style={{
-                              width: 44,
-                              height: 44,
-                              objectFit: 'contain',
-                              borderRadius: 6,
-                              background: '#f8f9fa',
-                              border: '1px solid var(--color-border)',
-                              padding: 2,
-                              flexShrink: 0
-                            }}
                           />
                         )}
-                        <div>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
-                            {p.brand}
-                          </span>
-                          <h4 style={{ fontSize: '1rem', color: 'var(--color-primary)', margin: '2px 0 6px' }}>
-                            {p.product_name}
-                          </h4>
-                          <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
-                            {p.category}
-                          </span>
-                          <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                            Values {basisLabel(p.measurement_basis)}
-                          </span>
+                        <div style={{ minWidth: 0 }}>
+                          <span className="compare-brand">{p.brand}</span>
+                          <span className="compare-name">{p.product_name}</span>
+                          <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>{p.category}</span>
+                          <span className="compare-basis">Values {basisLabel(p.measurement_basis)}</span>
                         </div>
+                        <button
+                          type="button"
+                          className="compare-remove"
+                          onClick={() => removeProduct(p.product_id)}
+                          aria-label={`Remove ${p.product_name} from comparison`}
+                          title="Remove"
+                        >
+                          <X size={16} aria-hidden="true" />
+                        </button>
                       </div>
-                      <button 
-                        onClick={() => removeProduct(p.product_id)} 
-                        style={{ color: 'var(--color-text-subtle)', padding: 4 }}
-                        title="Remove"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row" className="compare-label-col">
+                    General Nutrition Grade
+                    <span className="compare-help">A (best) to E, against limits for the product&apos;s category</span>
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {/* Row 1: General Grade */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>General Nutrition Grade</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <span className={`grade-badge grade-${p.general_grade || 'NA'}`} style={{ width: 28, height: 28, fontSize: '1.1rem' }}>
-                      {p.general_grade || 'NA'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-
-              {/* Row 2: Personalized Goal Match */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)', background: 'var(--color-accent-subtle)' }}>
-                <td style={{ ...tdLabelStyle, color: 'var(--color-primary)' }}>
-                  Goal Match ({activeProfile?.goal || 'Balanced'})
-                </td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 800, color: p.has_allergen_conflict ? '#c62828' : 'var(--color-primary)' }}>
-                      {p.personalized_score != null ? `${p.personalized_score}/100` : 'N/A'}
-                    </div>
-                    {p.personalized_score == null && (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', fontWeight: 600 }}>
-                        Incomplete Data
+                  {comparison.grades.cells.map((cell, i) => (
+                    <td key={products[i].product_id}>
+                      <span className="compare-cell">
+                        <span className={`grade-badge grade-${cell.grade === 'N/A' ? 'NA' : cell.grade}`} style={{ width: 28, height: 28, fontSize: '1.1rem' }}>
+                          {cell.grade}
+                        </span>
+                        {cell.isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> Best grade</span>}
                       </span>
-                    )}
-                    {p.has_allergen_conflict && (
-                      <span style={{ fontSize: '0.7rem', color: '#c62828', fontWeight: 700 }}>
-                        Allergen Warning Overrides Score
+                    </td>
+                  ))}
+                </tr>
+                {comparison.grades.note && (
+                  <tr className="compare-note-row">
+                    <td colSpan={products.length + 1}>{comparison.grades.note}</td>
+                  </tr>
+                )}
+
+                <tr className="compare-goal-row">
+                  <th scope="row" className="compare-label-col">
+                    Goal Match ({goal})
+                    <span className="compare-help">1–100 fit with your goal; an allergen from your profile sets it to 0</span>
+                  </th>
+                  {products.map((p, i) => (
+                    <td key={p.product_id}>
+                      <span className="compare-cell">
+                        <span className="compare-score" style={{ color: p.has_allergen_conflict ? '#c62828' : 'var(--color-primary)' }}>
+                          {p.personalized_score != null ? `${p.personalized_score}/100` : 'N/A'}
+                        </span>
+                        {comparison.goalMatch.cells[i].isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> Higher match</span>}
                       </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
+                      {p.personalized_score == null && <span className="compare-sub">Incomplete data</span>}
+                      {p.has_allergen_conflict && <span className="compare-sub" style={{ color: '#c62828', fontWeight: 700 }}>Allergen warning overrides score</span>}
+                    </td>
+                  ))}
+                </tr>
 
-              {/* Row 3: Energy */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Energy (kcal per 100g)</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <strong>{p.energy_kcal != null ? `${p.energy_kcal} kcal` : 'Missing'}</strong>
-                  </td>
+                {visibleRows.map(({ metric, cells }) => (
+                  <tr key={metric.key}>
+                    <th scope="row" className="compare-label-col">
+                      {metric.label}
+                      {metric.note && <span className="compare-help">{metric.note}</span>}
+                    </th>
+                    {cells.map((cell, i) => (
+                      <td key={products[i].product_id}>
+                        <span className="compare-cell">
+                          <span className={cell.isConcern ? 'compare-value is-concern' : cell.isBest ? 'compare-value is-best' : cell.missing ? 'compare-value is-missing' : 'compare-value'}>
+                            {cell.display}
+                          </span>
+                          {cell.isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> {cell.bestLabel}</span>}
+                          {cell.isConcern && (
+                            <span className="compare-concern" title={`Above the ${cell.concernLimit} limit for this category`}>
+                              <AlertTriangle size={12} aria-hidden="true" /> Above limit
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
 
-              {/* Row 4: Total Sugars */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Total Sugars</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <span style={{ color: p.sugars_g > 15 ? '#c62828' : 'inherit', fontWeight: p.sugars_g > 15 ? 700 : 500 }}>
-                      {p.sugars_g != null ? `${p.sugars_g}g` : 'Missing'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
+                <tr>
+                  <th scope="row" className="compare-label-col">Allergen Alerts</th>
+                  {products.map(p => {
+                    const state = allergenState(p, profileAllergens);
+                    return (
+                      <td key={p.product_id} className="compare-allergen">
+                        {state === 'conflict' && (
+                          <span style={{ color: '#c62828', fontWeight: 700 }}>
+                            <AlertTriangle size={13} aria-hidden="true" /> Contains your allergen: {p.allergen_conflicts?.map(c => c.allergen).join(', ')}
+                          </span>
+                        )}
+                        {state === 'unknown' && (
+                          <span className="compare-concern-text">
+                            <AlertTriangle size={13} aria-hidden="true" /> Allergen information not stated: check the pack
+                          </span>
+                        )}
+                        {state === 'none-found' && (
+                          <span style={{ color: 'var(--color-success)' }}>
+                            <Check size={13} aria-hidden="true" /> None of your allergens found in the label text
+                          </span>
+                        )}
+                        {state === 'no-profile-allergens' && (
+                          <span style={{ color: 'var(--color-text-muted)' }}>No allergens set in your profile</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
 
-              {/* Row 5: Sodium */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Sodium</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <span style={{ color: p.sodium_mg > 600 ? '#e65100' : 'inherit', fontWeight: p.sodium_mg > 600 ? 700 : 500 }}>
-                      {p.sodium_mg != null ? `${Math.round(p.sodium_mg)}mg` : 'Missing'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-
-              {/* Row 6: Protein */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Protein</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <span style={{ color: p.protein_g >= 10 ? '#2e7d32' : 'inherit', fontWeight: p.protein_g >= 10 ? 700 : 500 }}>
-                      {p.protein_g != null ? `${p.protein_g}g` : 'Missing'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-
-              {/* Row 7: Saturated Fat */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Saturated Fat</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <span style={{ color: p.saturated_fat_g > 5 ? '#e65100' : 'inherit' }}>
-                      {p.saturated_fat_g != null ? `${p.saturated_fat_g}g` : 'Missing'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-
-              {/* Row 8: Dietary Fibre */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Dietary Fibre</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    <span style={{ color: p.dietary_fibre_g >= 6 ? '#2e7d32' : 'inherit', fontWeight: p.dietary_fibre_g >= 6 ? 700 : 500 }}>
-                      {p.dietary_fibre_g != null ? `${p.dietary_fibre_g}g` : 'Missing'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-
-              {/* Row 9: Allergen Warnings */}
-              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                <td style={tdLabelStyle}>Allergen Alerts</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={tdValStyle}>
-                    {p.has_allergen_conflict ? (
-                      <span style={{ color: '#c62828', fontWeight: 700, fontSize: '0.78rem' }}>
-                        ⚠️ Conflict: {p.allergen_conflicts?.map(c => c.allergen).join(', ')}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#2e7d32', fontSize: '0.78rem' }}>
-                        ✓ No allergen alerts
-                      </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
-
-              {/* Action Row */}
-              <tr>
-                <td style={tdLabelStyle}>Full Assessment</td>
-                {products.map(p => (
-                  <td key={p.product_id} style={{ padding: '16px 20px' }}>
-                    <button
-                      className="btn-primary"
-                      style={{ padding: '6px 14px', fontSize: '0.8rem', width: '100%', justifyContent: 'center' }}
-                      onClick={() => onSelectProduct(p.product_id)}
-                    >
-                      <span>View Details</span>
-                      <ChevronRight size={14} />
-                    </button>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                <tr>
+                  <th scope="row" className="compare-label-col">Full Assessment</th>
+                  {products.map(p => (
+                    <td key={p.product_id}>
+                      <button
+                        className="btn-primary"
+                        style={{ padding: '6px 14px', fontSize: '0.8rem', width: '100%', justifyContent: 'center' }}
+                        onClick={() => onSelectProduct(p.product_id)}
+                      >
+                        <span>View Details</span>
+                        <ChevronRight size={14} aria-hidden="true" />
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Add Product Modal */}
@@ -321,7 +321,7 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
           <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Add Product to Comparison</h3>
-              <button onClick={() => setShowSearchModal(false)}><X size={18} /></button>
+              <button type="button" onClick={() => setShowSearchModal(false)} aria-label="Close"><X size={18} aria-hidden="true" /></button>
             </div>
             <input
               type="text"
@@ -341,10 +341,15 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {searchError && <p role="alert" style={{ color: '#c62828', fontSize: '0.85rem' }}>{searchError}</p>}
               {searchResults.map(p => (
-                <div 
+                <button
+                  type="button"
                   key={p.product_id}
                   onClick={() => addProductToCompare(p.product_id)}
                   style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    font: 'inherit',
+                    color: 'inherit',
                     padding: '10px 12px',
                     borderRadius: 6,
                     border: '1px solid var(--color-border)',
@@ -359,8 +364,8 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
                     <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>{p.brand}</span>
                     <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{p.product_name}</div>
                   </div>
-                  <Plus size={16} color="var(--color-accent)" />
-                </div>
+                  <Plus size={16} color="var(--color-accent)" aria-hidden="true" />
+                </button>
               ))}
             </div>
           </div>
@@ -370,14 +375,22 @@ export default function ProductComparison({ initialProductIds = [], onSelectProd
   );
 }
 
-const tdLabelStyle = {
-  padding: '14px 20px',
-  fontWeight: 700,
-  color: 'var(--color-text-muted)',
-  fontSize: '0.85rem'
-};
-
-const tdValStyle = {
-  padding: '14px 20px',
-  fontSize: '0.88rem'
-};
+function CompareVerdict({ verdict }) {
+  const { headline, advantages, tradeoffs, subject, comparedWith, tie, notes } = verdict;
+  return (
+    <section className="compare-verdict" aria-labelledby="compare-verdict-title">
+      <h2 id="compare-verdict-title">Verdict for your goal</h2>
+      <p className="compare-verdict-headline">{headline}</p>
+      {subject && comparedWith && (advantages.length > 0 || tradeoffs.length > 0) && (
+        <p>
+          {tie ? `${subject.product_name} has ` : 'It has '}
+          {advantages.length > 0 ? advantages.join(', ') : 'no clear nutrient advantage'}
+          {tradeoffs.length > 0 && <>, but {tradeoffs.join(', ')}</>}
+          {` compared with ${comparedWith.product_name}.`}
+        </p>
+      )}
+      {notes.map((n) => <p key={n} className="compare-verdict-note">{n}</p>)}
+      <p className="compare-verdict-note">Goal Match reflects your selected goal, not overall healthiness. Always read the pack.</p>
+    </section>
+  );
+}
