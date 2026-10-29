@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, AlertTriangle, CheckCircle2, Bookmark, 
-  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, Sliders, RefreshCw, Camera
+  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, Sliders, RefreshCw
 } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
@@ -96,6 +96,7 @@ export default function ProductAssessment({
   const [alternatives, setAlternatives] = useState([]);
   const [isSaved, setIsSaved] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showScoreLedger, setShowScoreLedger] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [showDetailedL1, setShowDetailedL1] = useState(false);
   const [expandedClaimIdx, setExpandedClaimIdx] = useState({});
@@ -247,6 +248,8 @@ export default function ProductAssessment({
     assessment?.data_confidence_status === 'User-Verified Custom Data' ||
     assessment?.data_source === 'User / OCR Input'
   );
+
+  const isCatalogueProduct = String(assessment?.product_id || '').startsWith('IND_PKG_');
 
   const openEditModal = () => {
     const raw = assessment?.raw_input || {};
@@ -510,9 +513,11 @@ export default function ProductAssessment({
                 <span style={{ fontSize: '0.82rem', color: 'var(--color-text-subtle)' }}>
                   {assessment.category} ({assessment.sub_category})
                 </span>
-                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }} title="How far you can rely on these values">
-                  {assessment.data_confidence_status}
-                </span>
+                {!isCatalogueProduct && assessment.data_confidence_status && (
+                  <span className="badge badge-warning" style={{ fontSize: '0.7rem' }} title="How far you can rely on these values">
+                    {assessment.data_confidence_status}
+                  </span>
+                )}
               </div>
               
               <h1 style={{ fontSize: '2.1rem', color: 'var(--color-primary)', lineHeight: 1.2, marginBottom: 8 }}>
@@ -538,7 +543,7 @@ export default function ProductAssessment({
                 </span>
               </div>
 
-              {assessment.data_source && (
+              {assessment.data_source && !isCatalogueProduct && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
                   Source: <strong>{assessment.data_source}</strong>
                   {assessment.retrieved_at && ` • Retrieved: ${new Date(assessment.retrieved_at).toLocaleDateString()}`}
@@ -1005,10 +1010,10 @@ export default function ProductAssessment({
         </div>
       </div>
 
-      {/* Step-by-Step Transparent Score Calculation Ledger (1–100 Scale) */}
+      {/* Step-by-Step Transparent Score Calculation Ledger (1–100 Scale), collapsed until opened */}
       {l2.calculation_breakdown && l2.calculation_breakdown.steps && (
         <div className="card" style={{ marginBottom: 24, padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: showScoreLedger ? 16 : 0 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <Scale size={20} color="var(--color-primary)" />
@@ -1020,14 +1025,27 @@ export default function ProductAssessment({
                 Transparent mathematical ledger evaluated for active profile: <strong>{l2.user_goal}</strong> (Base: 70 pts).
               </p>
             </div>
+            <button
+              type="button"
+              className="btn-secondary btn-compact"
+              onClick={() => setShowScoreLedger(prev => !prev)}
+              aria-expanded={showScoreLedger}
+              aria-controls="score-ledger"
+              aria-label={showScoreLedger ? 'Hide score calculation' : 'Show score calculation'}
+              style={{ padding: 8, minWidth: 44, minHeight: 44, justifyContent: 'center', flexShrink: 0 }}
+            >
+              {showScoreLedger ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+          </div>
 
-            {/* Scale Gauge Legend */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-alt)', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>Score Scale:</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#c62828' }}>1 (Unhealthy)</span>
-              <ArrowRight size={13} color="var(--color-text-subtle)" />
-              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#2e7d32' }}>100 (Healthiest)</span>
-            </div>
+          {showScoreLedger && (
+          <div id="score-ledger">
+          {/* Scale Gauge Legend */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-alt)', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border)', marginBottom: 14 }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>Score Scale:</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#c62828' }}>1 (Unhealthy)</span>
+            <ArrowRight size={13} color="var(--color-text-subtle)" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#2e7d32' }}>100 (Healthiest)</span>
           </div>
 
           {/* Steps Table */}
@@ -1110,6 +1128,8 @@ export default function ProductAssessment({
               Personalized Nutrition Score: <span style={{ color: l2.color === 'red' ? '#c62828' : (l2.color === 'green' ? '#2e7d32' : '#e65100') }}>{l2.personalized_score} / 100</span> ({l2.suitability_badge})
             </div>
           </div>
+          </div>
+          )}
         </div>
       )}
 
@@ -1201,83 +1221,6 @@ export default function ProductAssessment({
           ))}
         </div>
       </div>
-
-      {/* Packaging Photo Evidence Gallery (When Available from Open Food Facts) */}
-      {(assessment.image_url || assessment.image_ingredients_url || assessment.image_nutrition_url) && (
-        <div className="card" style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Camera size={18} color="var(--color-primary)" />
-              <h3 style={{ fontSize: '1.2rem', color: 'var(--color-primary)', margin: 0 }}>
-                Packaging Photo Evidence
-              </h3>
-            </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)', background: 'var(--color-surface-alt)', padding: '3px 8px', borderRadius: 6 }}>
-              Open Food Facts (ODbL License)
-            </span>
-          </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 16
-          }}>
-            {assessment.image_url && (
-              <div style={{ background: '#f8f9fa', border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Front of Pack
-                </span>
-                <a href={assessment.image_url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assessment.image_url}
-                    alt="Front of Pack"
-                    style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-                  />
-                </a>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'block', marginTop: 6 }}>
-                  Click to view full photo ↗
-                </span>
-              </div>
-            )}
-
-            {assessment.image_ingredients_url && (
-              <div style={{ background: '#f8f9fa', border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Ingredients Label
-                </span>
-                <a href={assessment.image_ingredients_url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assessment.image_ingredients_url}
-                    alt="Ingredients Label"
-                    style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-                  />
-                </a>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'block', marginTop: 6 }}>
-                  Click to view full photo ↗
-                </span>
-              </div>
-            )}
-
-            {assessment.image_nutrition_url && (
-              <div style={{ background: '#f8f9fa', border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Nutrition Facts Table
-                </span>
-                <a href={assessment.image_nutrition_url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assessment.image_nutrition_url}
-                    alt="Nutrition Table"
-                    style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-                  />
-                </a>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'block', marginTop: 6 }}>
-                  Click to view full photo ↗
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Layer 3: Ingredients & Allergen Analysis */}
       <div className="card" style={{ marginBottom: 24 }}>
@@ -1730,9 +1673,11 @@ export default function ProductAssessment({
         <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>
           Assessment Data Transparency & Evidence
         </div>
-        <div>
-          Data Source: {assessment.transparency?.data_source} • Data Quality: {assessment.data_confidence_status}
-        </div>
+        {!isCatalogueProduct && (
+          <div>
+            Data Source: {assessment.transparency?.data_source} • Data Quality: {assessment.data_confidence_status}
+          </div>
+        )}
         <div style={{ marginTop: 4 }}>
           {assessment.transparency?.assessment_disclaimer}
         </div>

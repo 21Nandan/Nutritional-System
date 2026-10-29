@@ -58,12 +58,6 @@ class ProductContributionRequest(NutritionFields):
     submission_notes: str = Field(default="", max_length=1000)
 
 
-class LabelTextRequest(BaseModel):
-    raw_text: str = Field(min_length=1)
-    ocr_confidence: float = Field(ge=0, le=1)
-    engine: str = Field(max_length=80)
-
-
 class AssistantQuery(BaseModel):
     product_id: str = Field(min_length=1, max_length=64)
     question: str = Field(min_length=1, max_length=500)

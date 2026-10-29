@@ -95,10 +95,11 @@ def test_cors_rejects_unknown_origin():
         ("get", "/api/scans/recent"),
         ("get", "/api/products/contributions"),
         ("post", "/api/analyze/ocr"),
+        ("post", "/api/analyze/label-text"),
     ],
 )
 def test_removed_cross_user_and_upload_endpoints_do_not_exist(method, path):
-    """These endpoints exposed or deleted other visitors' data, or accepted image uploads."""
+    """These endpoints exposed or deleted other visitors' data, or accepted label photos or label text."""
     response = getattr(client, method)(path)
     assert response.status_code in (404, 405)
 
@@ -115,12 +116,9 @@ def test_unknown_dietary_preference_is_rejected():
     assert response.status_code == 400
 
 
-def test_label_text_size_limit():
-    response = client.post(
-        "/api/analyze/label-text", json={"raw_text": "x" * 20001, "ocr_confidence": 0.5, "engine": "test"}
-    )
-    assert response.status_code == 413
-    assert response.json()["detail"]["error_code"] == "OCR_TEXT_TOO_LONG"
+def test_open_food_facts_search_query_length_is_bounded():
+    assert client.get("/api/products/search/openfoodfacts?q=x").status_code == 422
+    assert client.get("/api/products/search/openfoodfacts?q=" + "x" * 101).status_code == 422
 
 
 def test_sliding_window_rate_limiter_blocks_after_limit():

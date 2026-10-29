@@ -96,6 +96,14 @@ tests in the repository.
     mismatches were removed and show a placeholder (docs/DATA.md).
     Correctness is unverified.
 
+## Changes after the audit (2026-10-29, at the owner's request)
+
+- Label photo reading (OCR) removed; the scanner offers Open Food Facts product search, barcode lookup
+  and manual entry. Items 5 and the OCR parts of items 2–3 no longer apply.
+- The "About the data" page, the footer/landing demo-data notices and the per-product "Synthetic" badge
+  were removed from the website. **Risk:** catalogue products show randomly generated nutrition values
+  with no on-screen notice. Provenance remains in `docs/DATA.md`, the data files and `/api/dataset`.
+
 ## What changed (high level)
 
 - Backend split into `routes/`, `products.py`, `profile.py`, `schemas.py` (Pydantic for every body)

@@ -68,8 +68,6 @@ CORS_ORIGINS: list[str] = (
 if "*" in CORS_ORIGINS:
     raise RuntimeError("EATGOOD_CORS_ORIGINS must list explicit origins; '*' is not allowed.")
 
-# OCR now runs in the browser; the server only parses text. Cap the text size it accepts.
-MAX_OCR_TEXT_CHARS = _env_int("EATGOOD_MAX_OCR_TEXT_CHARS", 20000)
 
 # Open Food Facts API v3
 OFF_BASE_URL = os.environ.get("OFF_BASE_URL", "https://world.openfoodfacts.org/api/v3/product")
@@ -82,6 +80,6 @@ OFF_CACHE_TTL_HOURS = _env_int("OFF_CACHE_TTL_HOURS", 168)
 
 # Rate limiting (requests per minute per client IP, per server instance)
 RATE_LIMIT_ENABLED = _env_bool("EATGOOD_RATE_LIMIT", True)
-RATE_LIMIT_OCR_RPM = _env_int("RATE_LIMIT_OCR_RPM", 20)
+RATE_LIMIT_OFF_SEARCH_RPM = _env_int("RATE_LIMIT_OFF_SEARCH_RPM", 20)
 RATE_LIMIT_OFF_RPM = _env_int("RATE_LIMIT_OFF_RPM", 45)
 RATE_LIMIT_CONTRIB_RPM = _env_int("RATE_LIMIT_CONTRIB_RPM", 30)

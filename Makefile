@@ -55,4 +55,4 @@ data: ## Regenerate the synthetic demo catalogue (reproducible, seed 42)
 	$(PY) scripts/generate_initial_data.py
 
 clean:
-	rm -rf frontend/dist frontend/public/ocr .pytest_cache .mypy_cache .ruff_cache .coverage data/eatgood_app.db
+	rm -rf frontend/dist .pytest_cache .mypy_cache .ruff_cache .coverage data/eatgood_app.db

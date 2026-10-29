@@ -14,6 +14,7 @@ test('deployment is healthy, ready and serving the catalogue', async ({ request 
   expect(withImage, 'at least one product has an image').toBeTruthy();
   const image = await request.get(withImage.image_small_url || withImage.image_url);
   expect(image.status()).toBe(200);
-  const ocrModel = await request.head('/ocr/v7/lang/eng.traineddata.gz');
-  expect(ocrModel.status()).toBe(200);
+  const search = await request.get('/api/products/search/openfoodfacts?q=maggi');
+  expect(search.status(), await search.text()).toBe(200);
+  expect((await search.json()).products.length).toBeGreaterThan(0);
 });

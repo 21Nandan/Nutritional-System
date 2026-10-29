@@ -3,12 +3,13 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.core.assistant import answer_product_question
 from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import run_full_product_assessment
 from backend.core.openfoodfacts import search_openfoodfacts_text
+from backend.core.rate_limiter import enforce_rate_limit
 from backend.core.recommender import get_healthier_alternatives
 from backend.core.semantic_search import execute_semantic_search, parse_semantic_intent
 from backend.core.standards_registry import CALIBRATED_CATEGORIES
@@ -117,6 +118,36 @@ def search_products(
         if external["status"] != "error"
         else {"error_code": external["error_code"], "message": external["message"]},
         "products": merged[:limit],
+    }
+
+
+OFF_SEARCH_PAGE_SIZE = 24
+
+
+@router.get("/products/search/openfoodfacts")
+def search_open_food_facts(
+    request: Request,
+    q: str = Query(..., min_length=2, max_length=100, description="Product name, brand or keywords"),
+    page: int = Query(1, ge=1, le=50),
+):
+    """Searches the Open Food Facts world database only. A failed search is an HTTP error, never an empty list."""
+    enforce_rate_limit(request, "off_search")
+    result = search_openfoodfacts_text(q, limit=OFF_SEARCH_PAGE_SIZE, page=page)
+    if result["status"] == "error":
+        logger.warning("Open Food Facts search unavailable: %s", result["error_code"])
+        raise HTTPException(
+            status_code=result["http_status"],
+            detail={"error_code": result["error_code"], "message": result["message"]},
+        )
+    count = result["count"]
+    return {
+        "query": q.strip(),
+        "page": page,
+        "page_size": OFF_SEARCH_PAGE_SIZE,
+        "count": count,
+        "has_more": count is not None and page * OFF_SEARCH_PAGE_SIZE < count,
+        "products": result["products"],
+        "attribution": "Data from Open Food Facts (openfoodfacts.org), available under the Open Database Licence.",
     }
 
 

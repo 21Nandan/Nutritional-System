@@ -55,7 +55,6 @@ export default function Footer({ setActivePage }) {
           <div className="footer-col">
             <h4>Standards & Data</h4>
             <ul>
-              <li><a href="#audit" onClick={(e) => { e.preventDefault(); setActivePage('audit'); }}>About the data</a></li>
               <li>
                 <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener noreferrer">
                   Open Food Facts (ODbL) ↗
@@ -87,7 +86,7 @@ export default function Footer({ setActivePage }) {
           <h4>Important Disclaimer</h4>
           <p style={{ color: '#8da698', fontSize: '0.8rem', lineHeight: 1.5, background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
             Informational only, not medical advice. EATGOOD is not affiliated with or endorsed by WHO or FSSAI and does not
-            certify regulatory compliance. The catalogue uses demo nutrition data; always read the actual pack. Consult a
+            certify regulatory compliance. Always read the actual pack. Consult a
             registered dietitian or doctor for medical needs. Product data from Open Food Facts is available under the
             Open Database License (ODbL).
           </p>

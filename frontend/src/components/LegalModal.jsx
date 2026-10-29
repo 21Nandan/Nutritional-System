@@ -127,7 +127,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
               <div style={{ background: '#f1f8e9', padding: 14, borderRadius: 8, border: '1px solid #c8e6c9', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <CheckCircle2 size={18} color="#2e7d32" style={{ flexShrink: 0, marginTop: 2 }} />
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#1b5e20' }}>
-                  <strong>In short:</strong> your profile, saved products and history are stored only in this browser. Label photos are read on your device and never uploaded. EATGOOD has no accounts and stores nothing that identifies you.
+                  <strong>In short:</strong> your profile, saved products and history are stored only in this browser. EATGOOD has no accounts and stores nothing that identifies you.
                 </p>
               </div>
 
@@ -136,7 +136,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                   1. What stays on your device
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Your profile (name, goals, diet, allergens, age group, activity level), saved products and assessment history are kept in this browser&apos;s local storage. Clearing site data or using another browser removes them. Label photos are processed by a text reader that runs inside your browser.
+                  Your profile (name, goals, diet, allergens, age group, activity level), saved products and assessment history are kept in this browser&apos;s local storage. Clearing site data or using another browser removes them.
                 </p>
               </div>
               <div>
@@ -144,7 +144,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                   2. What is sent to the EATGOOD server
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  To compute results, your browser sends: your goal, dietary preference and allergens (with each request, not stored); product IDs, barcodes and search terms; the text recognised from a label photo; and any values you type in. The server runs on Vercel. It keeps short-lived technical logs (time, page path, status) without search terms or profile data, and a cache of Open Food Facts lookups.
+                  To compute results, your browser sends: your goal, dietary preference and allergens (with each request, not stored); product IDs, barcodes and search terms; and any values you type in. The server runs on Vercel. It keeps short-lived technical logs (time, page path, status) without search terms or profile data, and a cache of Open Food Facts lookups.
                 </p>
               </div>
               <div>
@@ -202,10 +202,10 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
 
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>
-                  3. User Responsibility for OCR Verification
+                  3. User Responsibility for Checking Values
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Optical Character Recognition extractions from smartphone photos are sensitive to lighting, glare, and curved surfaces. Users are required to inspect and confirm extracted nutritional values, serving sizes, and ingredients before relying on the assessment output. EATGOOD provides an editable verification step specifically for this purpose.
+                  Values typed in by hand and product data from Open Food Facts, a community database, can contain mistakes. Check nutrition values, serving sizes and ingredients against the pack before relying on an assessment.
                 </p>
               </div>
 

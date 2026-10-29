@@ -31,7 +31,7 @@ Requirements: Python 3.12+, Node 22+, [uv](https://docs.astral.sh/uv/), make.
 
 ```bash
 make setup     # Python venv + npm install
-make build     # build the frontend (also copies the OCR assets)
+make build     # build the frontend
 make api       # http://127.0.0.1:8000 serves the API and the built frontend
 ```
 
@@ -59,8 +59,7 @@ No secrets are required.
 | Profile: name, age group, activity | nowhere (browser only) | in your browser |
 | Profile: goal, diet, allergens | EATGOOD API, with each request | no |
 | Saved products and history | nowhere | in your browser |
-| Label photo | nowhere: read in your browser | no |
-| Text read from the photo, values you type | EATGOOD API | no |
+| Values you type | EATGOOD API | no |
 | Barcodes and search terms | EATGOOD API, which may ask Open Food Facts | Open Food Facts results are cached |
 | Contributed products | EATGOOD API | yes, shown as unreviewed to others (per server instance on Vercel) |
 | Page views | Vercel Web Analytics (anonymous, no cookies) | by Vercel |
@@ -74,13 +73,13 @@ No secrets are required.
 | `GET /api/dataset` | dataset version, provenance and counts |
 | `GET /api/products` | catalogue: `query`, `category`, nutrient filters, `limit` (≤ 100), `offset` |
 | `GET /api/products/search?q=` | catalogue first, then Open Food Facts; external errors are reported |
+| `GET /api/products/search/openfoodfacts?q=&page=` | Open Food Facts world database only, 24 per page; a failed search is an HTTP error |
 | `GET /api/products/categories` | categories |
 | `GET /api/products/{id}` | full assessment (catalogue ID, `OFF_<barcode>`, `USER_SUB_<barcode>` or barcode) |
 | `GET /api/products/barcode/{code}` | barcode lookup with assessment and alternatives |
 | `GET /api/alternatives/{id}` | healthier alternatives without the user's allergens |
 | `GET /api/compare?ids=a,b` | 2–4 products side by side |
-| `POST /api/products/assess` | assess values you entered or confirmed |
-| `POST /api/analyze/label-text` | parse text from a label photo; values must be confirmed |
+| `POST /api/products/assess` | assess values you entered |
 | `POST /api/products/contribute` | add a missing product (unreviewed) |
 | `POST /api/assistant/ask` | rule-based answers about a product |
 | `GET /api/standards`, `GET /api/audit` | thresholds and data-quality report |
@@ -93,7 +92,7 @@ Personalised endpoints read the optional `X-Eatgood-Profile` header (URI-encoded
 
 ```bash
 make check     # ruff, mypy, pytest with coverage, bandit, pip-audit, npm audit, frontend lint and build
-make e2e       # Playwright: catalogue, search, allergen override, compare, profile, label scan (desktop + mobile)
+make e2e       # Playwright: catalogue, search, allergen override, compare, profile, product search, score breakdown (desktop + mobile)
 make smoke URL=https://eatgood26.vercel.app   # post-deploy smoke test
 ```
 
@@ -106,7 +105,7 @@ Vercel builds the frontend (`frontend/dist`) and serves the FastAPI app from `ap
 Python function, with the `data/` files bundled (`vercel.json`). Security headers (CSP,
 Permissions-Policy that allows the camera only for this site, HSTS) are set in `vercel.json`. After
 each deployment, `.github/workflows/smoke.yml` checks health, readiness, product count, an image and
-the OCR model.
+an Open Food Facts search.
 
 ### macOS: "CERTIFICATE_VERIFY_FAILED" on barcode lookups
 
@@ -134,5 +133,4 @@ under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/license
 photos under CC BY-SA. Thresholds are informed by the WHO Nutrient Profile Model for the South-East
 Asia Region (2017), WHO guidance on sugar-sweetened beverages, the FSSAI draft Indian Nutrition Rating
 and the Codex nutrition labelling guidelines. These organisations have not reviewed or endorsed
-EATGOOD. Label reading uses [tesseract.js](https://github.com/naptha/tesseract.js) (Apache 2.0) and
-barcode decoding uses [ZXing](https://github.com/zxing-js/library) (Apache 2.0).
+EATGOOD. Barcode decoding uses [ZXing](https://github.com/zxing-js/library) (Apache 2.0).

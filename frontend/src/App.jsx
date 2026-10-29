@@ -9,18 +9,16 @@ import LabelScanner from './pages/LabelScanner';
 import ProductAssessment from './pages/ProductAssessment';
 import ProductComparison from './pages/ProductComparison';
 import Dashboard from './pages/Dashboard';
-import DataAuditPage from './pages/DataAuditPage';
 import { DEFAULT_PROFILE, completeOnboarding, isOnboardingComplete, loadProfile, readSession, saveProfile, writeSession } from './storage';
 
 const PAGE_TITLES = {
   landing: 'EATGOOD — Understand Indian packaged food labels',
   catalogue: 'Catalogue — EATGOOD',
-  scanner: 'Scan a label — EATGOOD',
+  scanner: 'Search or scan a product — EATGOOD',
   assessment: 'Product assessment — EATGOOD',
   compare: 'Compare products — EATGOOD',
   profile: 'Your profile — EATGOOD',
-  dashboard: 'Your profile — EATGOOD',
-  audit: 'Data quality — EATGOOD'
+  dashboard: 'Your profile — EATGOOD'
 };
 
 // URL Route Parser (supports real URL paths, search params, and hash fallback)
@@ -60,7 +58,7 @@ const getRouteFromLocation = () => {
   }
 
   // 4. Standard valid paths
-  const validPages = ['catalogue', 'scanner', 'compare', 'profile', 'dashboard', 'audit'];
+  const validPages = ['catalogue', 'scanner', 'compare', 'profile', 'dashboard'];
   if (validPages.includes(path)) {
     return { page: path === 'dashboard' ? 'profile' : path };
   }
@@ -125,7 +123,7 @@ export default function App() {
       marketing_claims: ''
   });
 
-  const [scannerMode, setScannerMode] = useState('upload');
+  const [scannerMode, setScannerMode] = useState('search');
 
   // Navigate function that synchronizes URL, document title, and browser history
   const navigateTo = useCallback((page, params = {}, replace = false) => {
@@ -141,8 +139,6 @@ export default function App() {
       url = (ids && ids.length) ? `/compare?ids=${ids.join(',')}` : '/compare';
     } else if (page === 'profile' || page === 'dashboard') {
       url = '/profile';
-    } else if (page === 'audit') {
-      url = '/audit';
     } else if (page === 'assessment') {
       const pid = params.productId !== undefined ? params.productId : selectedProductId;
       url = pid ? `/product/${pid}` : '/assessment';
@@ -321,9 +317,6 @@ export default function App() {
           />
         )}
 
-        {activePage === 'audit' && (
-          <DataAuditPage />
-        )}
       </main>
 
       <Footer setActivePage={(page) => navigateTo(page)} />

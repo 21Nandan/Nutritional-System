@@ -104,7 +104,7 @@ def test_rate_limiter_cleans_idle_keys():
     [
         ("EATGOOD_ENV", "staging", "EATGOOD_ENV"),
         ("EATGOOD_RATE_LIMIT", "maybe", "true/false"),
-        ("RATE_LIMIT_OCR_RPM", "lots", "integer"),
+        ("RATE_LIMIT_OFF_SEARCH_RPM", "lots", "integer"),
         ("OFF_TIMEOUT_SECONDS", "slow", "number"),
         ("EATGOOD_CORS_ORIGINS", "*", "explicit origins"),
     ],

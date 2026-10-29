@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Label Scanner: removed the photo (OCR) option. Added "Search products", which searches the Open
+  Food Facts world database through a new paginated endpoint; failures are shown as errors.
+- Product page: the score calculation table is collapsed until you open it; the packaging photo
+  section was removed.
+- Removed the "About the data" page and the demo-data notices from the website (provenance is still
+  documented in docs/DATA.md and in the data files).
+- Phone layout: stacked profile columns, compact scanner tabs, shorter catalogue cards, search field
+  and icon buttons no longer squashed.
+
 ## 1.1.0 (unreleased)
 
 Safety and honesty overhaul after an audit of the code written by a previous AI tool

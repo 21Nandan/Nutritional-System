@@ -742,7 +742,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
               >
                 <div>
                   {/* Product Packaging Image Container */}
-                  <div style={{
+                  <div className="catalogue-card-image" style={{
                     width: '100%',
                     height: 140,
                     borderRadius: 8,

@@ -525,30 +525,46 @@ def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None =
     }
 
 
-_OFF_QUERY_CACHE: dict[str, Any] = {}
+_OFF_QUERY_CACHE: dict[tuple[str, int, int], tuple[float, list[dict[str, Any]], int | None]] = {}
 OFF_QUERY_CACHE_TTL = 300.0  # seconds
 
 
-def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client | None = None) -> dict[str, Any]:
+def _search_error(error_code: str, http_status: int) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "products": [],
+        "count": None,
+        "error_code": error_code,
+        "http_status": http_status,
+        "message": ERROR_MESSAGES[error_code],
+    }
+
+
+def search_openfoodfacts_text(
+    query: str, limit: int = 6, client: httpx.Client | None = None, page: int = 1
+) -> dict[str, Any]:
     """
-    Text search on Open Food Facts. Returns {"status": "ok"|"error", "products": [...],
-    "error_code"?, "message"?}. An error is never reported as an empty result.
+    Text search on Open Food Facts, one page of `limit` results. Returns {"status": "ok"|"error",
+    "products": [...], "count": total matches or None, "error_code"?, "http_status"?, "message"?}.
+    An error is never reported as an empty result.
     """
     clean_q = str(query).strip().lower()
     if len(clean_q) < 2:
-        return {"status": "ok", "products": []}
+        return {"status": "ok", "products": [], "count": 0}
 
     now = time.time()
-    cached = _OFF_QUERY_CACHE.get(clean_q)
+    cache_key = (clean_q, page, limit)
+    cached = _OFF_QUERY_CACHE.get(cache_key)
     if cached and now - cached[0] < OFF_QUERY_CACHE_TTL:
-        return {"status": "ok", "products": cached[1][:limit]}
+        return {"status": "ok", "products": cached[1], "count": cached[2]}
 
     params = {
         "search_terms": clean_q,
         "search_simple": "1",
         "action": "process",
         "json": "1",
-        "page_size": max(limit, 8),
+        "page": page,
+        "page_size": limit,
         "fields": OFF_REQUEST_FIELDS,
     }
     try:
@@ -556,17 +572,18 @@ def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client |
     except httpx.HTTPError as exc:
         logger.warning("Open Food Facts search failed for %r: %r", clean_q, exc)
         err = classify_exception(exc, "")
-        return {"status": "error", "products": [], "error_code": err["error_code"], "message": err["message"]}
+        return _search_error(err["error_code"], err["http_status"])
 
     if response.status_code == 429:
-        return {"status": "error", "products": [], "error_code": "OFF_RATE_LIMITED", "message": ERROR_MESSAGES["OFF_RATE_LIMITED"]}
+        return _search_error("OFF_RATE_LIMITED", 429)
     if response.status_code != 200:
-        code = "OFF_UPSTREAM_ERROR" if response.status_code >= 500 else "OFF_BAD_RESPONSE"
-        return {"status": "error", "products": [], "error_code": code, "message": ERROR_MESSAGES[code]}
+        return _search_error("OFF_UPSTREAM_ERROR" if response.status_code >= 500 else "OFF_BAD_RESPONSE", 502)
     try:
-        raw_list = response.json().get("products", [])
-    except ValueError:
-        return {"status": "error", "products": [], "error_code": "OFF_BAD_RESPONSE", "message": ERROR_MESSAGES["OFF_BAD_RESPONSE"]}
+        body = response.json()
+        raw_list = body.get("products", [])
+        count = int(body["count"]) if body.get("count") is not None else None
+    except (ValueError, TypeError, AttributeError):
+        return _search_error("OFF_BAD_RESPONSE", 502)
 
     mapped_products = []
     for raw in raw_list:
@@ -590,5 +607,5 @@ def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client |
         if len(mapped_products) >= limit:
             break
 
-    _OFF_QUERY_CACHE[clean_q] = (now, mapped_products)
-    return {"status": "ok", "products": mapped_products}
+    _OFF_QUERY_CACHE[cache_key] = (now, mapped_products, count)
+    return {"status": "ok", "products": mapped_products, "count": count}
