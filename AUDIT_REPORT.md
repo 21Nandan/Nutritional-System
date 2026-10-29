@@ -91,7 +91,9 @@ tests in the repository.
 14. 75 synthetic products have sugars greater than carbohydrates, and the stored report says 13
     serving anomalies where the data shows 12 (`docs/DATA.md`). These products show "Data
     Contradiction" instead of a grade.
-15. Product photos: 38, matched by name only, and 37 of them on Open Food Facts' staging image host.
+15. Product photos: 37 of the original 38 pointed at Open Food Facts' password-protected staging host, so
+    none loaded. **Fixed:** 26 now use production links and have names checked against the catalogue; 12
+    mismatches were removed and show a placeholder (docs/DATA.md).
     Correctness is unverified.
 
 ## What changed (high level)

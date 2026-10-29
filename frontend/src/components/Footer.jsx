@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { HeartHandshake } from 'lucide-react';
 import logoImg from '../assets/logo.png';
 import LegalModal from './LegalModal';
 
@@ -36,13 +35,9 @@ export default function Footer({ setActivePage }) {
             />
             <h3 style={{ color: '#fff', fontSize: '1.2rem', margin: 0 }}>EATGOOD</h3>
           </div>
-          <p style={{ color: '#b0c9bb', lineHeight: 1.6, fontSize: '0.85rem', marginBottom: 16 }}>
+          <p style={{ color: '#b0c9bb', lineHeight: 1.6, fontSize: '0.85rem', marginBottom: 0 }}>
             Helps you read Indian packaged food labels: a nutrition grade, a personal fit score, allergen checks and plain explanations.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#82c733', fontSize: '0.78rem', fontWeight: 600 }}>
-            <HeartHandshake size={15} />
-            <span>Open-source student project</span>
-          </div>
         </div>
 
         {/* Explore & Standards & Data: displayed side-by-side on mobile */}
