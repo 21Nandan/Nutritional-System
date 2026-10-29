@@ -5,7 +5,7 @@ test('catalogue loads 30 products with categories and real pagination', async ({
   await expect(page.locator('.product-catalogue .card h3')).toHaveCount(30);
   await expect(page.getByRole('button', { name: 'Snacks', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Catalogue pages' })).toContainText('Page 1 of');
-  await expect(page.getByRole('note', { name: 'About this information' })).toContainText('not medical advice');
+  await expect(page.locator('footer')).toContainText('Informational only, not medical advice');
 });
 
 test('category filter is kept in the URL across reloads', async ({ page }) => {

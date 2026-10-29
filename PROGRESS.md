@@ -5,7 +5,7 @@
 | 0 Understand | Done | docs/history/PROJECT_MAP_PHASE0.md |
 | 1 P0 breakage | Done in code; **live site unverified** | cross-user leaks, allergen paths, fail-fast loading, browser OCR, plain error codes; live check blocked by network |
 | 2 Build/config | Done | one dependency source, pinned locks, uv.toml merged, Python ≥ 3.12, explicit Vercel install/build; npm `cache-dir` warning source unverified (likely a Vercel env var) |
-| 3 Docs/claims | Done | README rewritten, docs/ folder, LICENSE, attribution, disclaimer banner, claims removed |
+| 3 Docs/claims | Done | README rewritten, docs/ folder, LICENSE, attribution, footer disclaimer, claims removed |
 | 4 Data/images | Audited; labelled; no deletions | docs/DATA.md; image correctness needs a manual check with network access |
 | 5 Nutrition logic | Partly done | basis bug fixed, allergens fixed, per-100 ml handled, flags from one source; thresholds marked unverified (docs/THRESHOLDS.md) |
 | 6 Consumer UI | Partly done | pagination, URL filters, legend, line clamp, alt/lazy images, camera messages, titles; **Layer 1 simplification, Lighthouse and the 5-width visual check not done** |

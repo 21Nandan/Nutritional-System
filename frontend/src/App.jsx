@@ -10,7 +10,6 @@ import ProductAssessment from './pages/ProductAssessment';
 import ProductComparison from './pages/ProductComparison';
 import Dashboard from './pages/Dashboard';
 import DataAuditPage from './pages/DataAuditPage';
-import DemoDataBanner from './components/DemoDataBanner';
 import { DEFAULT_PROFILE, completeOnboarding, isOnboardingComplete, loadProfile, readSession, saveProfile, writeSession } from './storage';
 
 const PAGE_TITLES = {
@@ -255,8 +254,6 @@ export default function App() {
         activeProfile={activeProfile}
         onOpenProfile={() => setIsProfileModalOpen(true)}
       />
-
-      <DemoDataBanner onOpenAudit={() => navigateTo('audit')} />
 
       <main className="main-content">
         {activePage === 'landing' && (

@@ -686,31 +686,6 @@ textarea:focus-visible {
   }
 }
 
-/* Always-visible information banner (demo data + not medical advice) */
-.demo-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--color-warning-bg);
-  border-bottom: 1px solid #ffe0b2;
-  color: #7a3300;
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-.demo-banner svg { flex-shrink: 0; margin-top: 2px; }
-.demo-banner p { max-width: 1200px; }
-.demo-banner-link {
-  background: none;
-  border: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  font-weight: 700;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
