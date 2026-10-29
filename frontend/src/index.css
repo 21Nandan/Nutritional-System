@@ -1334,6 +1334,20 @@ textarea:focus-visible {
   overflow: hidden;
 }
 .compare-grade-reason { flex-basis: 100%; }
+.grade-method-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-alt);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+.grade-method-notice svg { flex-shrink: 0; margin-top: 2px; }
 
 .score-summary {
   display: grid;

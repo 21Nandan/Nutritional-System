@@ -173,8 +173,8 @@ def test_supported_categories_grading():
 
 
 def test_unsupported_categories_explicit_refusal():
-    """Verifies that uncalibrated categories (Chocolates & Sweets, Condiments, unknown) are rejected with clear reasons."""
-    # Chocolates & Sweets
+    """Uncalibrated categories (Condiments, unknown) are rejected with clear reasons. Chocolates & Sweets
+    are graded with EATGOOD's own method instead, labelled as not an official grade."""
     choc = {
         "category": "Chocolates & Sweets",
         "energy_kcal": 530,
@@ -183,9 +183,10 @@ def test_unsupported_categories_explicit_refusal():
         "sodium_mg": 85.0
     }
     res_choc = assess_general_nutrition(choc)
-    assert res_choc["status"] == "Uncalibrated Category"
-    assert res_choc["grade"] == "N/A"
-    assert "not currently calibrated" in res_choc["explanation"]
+    assert res_choc["status"] == "Calibrated"
+    assert res_choc["grade"] == "E"
+    assert res_choc["methodology_name"].startswith("EATGOOD Confectionery Method")
+    assert res_choc["method_notice"]
 
     # Condiments & Spreads
     ketchup = {
@@ -448,7 +449,9 @@ def test_catalogue_nutrient_flags_use_category_thresholds():
     assert ok["sodium_mg"]["level"] == "ok"
     beverage = nutrient_flags({"category": "Packaged Beverages", "sugars_g": 6, "sodium_mg": 10, "saturated_fat_g": 0})
     assert beverage["sugars_g"]["basis"] == "per 100ml"
-    assert nutrient_flags({"category": "Chocolates & Sweets", "sugars_g": 50}) == {}
+    assert nutrient_flags({"category": "Condiments & Spreads", "sugars_g": 50}) == {}
+    sweets = nutrient_flags({"category": "Chocolates & Sweets", "sugars_g": 50, "sodium_mg": 80, "saturated_fat_g": 2})
+    assert sweets["sugars_g"]["level"] == "high" and sweets["saturated_fat_g"]["level"] == "ok"
 
 
 def test_catalogue_records_carry_flags_and_scores():

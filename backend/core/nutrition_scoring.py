@@ -81,6 +81,12 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     """Layer 1 grade (see _assess_general_nutrition), with grade_reason saying why a product has no grade."""
     result = _assess_general_nutrition(product_data)
     result["grade_reason"] = grade_unavailable_reason(result)
+    spec = get_category_spec(normalize_category(product_data.get("category", ""))) or {}
+    own_method = spec.get("method_type") == "EATGOOD" and result["status"] == "Calibrated"
+    # Grades from EATGOOD's own methods say so wherever they are shown.
+    result["is_eatgood_method"] = own_method
+    result["method_notice"] = spec.get("method_notice") if own_method else None
+    result["grade_note"] = "EATGOOD's own method, not an official grade" if own_method else None
     return result
 
 
@@ -388,7 +394,11 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
         "standards_version": spec["standards_version"],
         "reference_basis": format_reference_basis(target_basis),
         "category_calibrated": spec["canonical_name"],
-        "explanation": f"Assessed against {len(standards_applied)} authoritative benchmarks under {spec['methodology_name']}.",
+        "explanation": (
+            f"Graded with {spec['methodology_name']}. {spec.get('method_notice', '')}".strip()
+            if spec.get("method_type") == "EATGOOD"
+            else f"Assessed against {len(standards_applied)} authoritative benchmarks under {spec['methodology_name']}."
+        ),
         "strengths": strengths,
         "concerns": concerns,
         "key_contributing_nutrients": key_nutrients,

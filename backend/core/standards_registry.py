@@ -606,20 +606,43 @@ CATEGORY_CALIBRATION_SPECS: dict[str, dict[str, Any]] = {
             "FSSAI Draft INR Schedule 3 (Dairy Products & Analogues)"
         ]
     },
+    # EATGOOD's own method. No official body publishes A–E limits for confectionery (the WHO SEARO
+    # model simply excludes it from marketing to children), so these limits are EATGOOD's choice.
+    # Reference points: the UK front-of-pack "high" cut-offs per 100 g (sugars 22.5 g, saturated fat
+    # 5 g, salt 1.5 g = sodium 600 mg). Products are scored with the same points, formula and grade
+    # bands as every other category, so a grade follows each product's own values.
     "Chocolates & Sweets": {
-        "status": "Unsupported",
+        "status": "Calibrated",
+        "method_type": "EATGOOD",
         "canonical_name": "Chocolates & Sweets",
-        "methodology_name": None,
-        "standards_version": "WHO SEARO Category 5 (Confectionery)",
-        "regulatory_category": "Category 5: Confectionery and Sweet Treats",
+        "methodology_name": "EATGOOD Confectionery Method (EATGOOD's own method, not an official WHO or FSSAI grade)",
+        "standards_version": "EATGOOD-CONFECTIONERY-2026.1",
+        "regulatory_category": "EATGOOD category: Chocolate and Sugar Confectionery",
         "reference_basis": "per 100g",
-        "mandatory_fields": ["energy_kcal", "sugars_g", "saturated_fat_g"],
-        "unsupported_reason": (
-            "An overall grade is unavailable because confectionery is not currently calibrated under statutory front-of-pack grading systems."
+        "mandatory_fields": ["energy_kcal", "sugars_g", "saturated_fat_g", "sodium_mg"],
+        "optional_fields": ["dietary_fibre_g", "protein_g", "trans_fat_g", "added_sugars_g"],
+        "thresholds": {
+            "sugars_g": 22.5,
+            "saturated_fat_g": 5.0,
+            "sodium_mg": 600.0,
+            "trans_fat_g": 0.1
+        },
+        "positive_benchmarks": {
+            "fibre_high_g": 6.0,
+            "fibre_source_g": 3.0,
+            "protein_high_g": 10.0,
+            "protein_source_g": 6.0
+        },
+        "method_notice": (
+            "This grade uses EATGOOD's own method for chocolates and sweets. It is not an official WHO or FSSAI "
+            "grade: no official body grades confectionery A–E."
         ),
         "source_citations": [
-            "WHO Regional Office for South-East Asia Nutrient Profile Model (ISBN 978-92-9022-544-7, Section Category 5)"
-        ]
+            "EATGOOD Confectionery Method: EATGOOD's own limits, not an official grade",
+            "Reference points: UK Department of Health / Food Standards Agency front-of-pack guidance (2016), "
+            "'high' per 100 g: total sugars > 22.5 g, saturated fat > 5 g, salt > 1.5 g (sodium > 600 mg)"
+        ],
+        "source_check": "EATGOOD's own method; reference cut-offs not yet re-checked against the guidance document",
     },
     "Condiments & Spreads": {
         "status": "Unsupported",

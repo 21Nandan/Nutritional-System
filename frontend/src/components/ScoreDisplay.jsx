@@ -49,8 +49,11 @@ export function GoalMatchMeter({ score, allergenConflict = false, size = 'md' })
 }
 
 // Compact pair for cards and tables: grade on the left, Goal Match on the right.
-export function ScorePair({ grade, score, allergenConflict = false, gradeReason = null }) {
-  const ungradedReason = !gradeInfo(grade).graded && gradeReason;
+// gradeNote: a label for grades from EATGOOD's own methods (not an official grade).
+export function ScorePair({ grade, score, allergenConflict = false, gradeReason = null, gradeNote = null }) {
+  const graded = gradeInfo(grade).graded;
+  const ungradedReason = !graded && gradeReason;
+  const note = graded && gradeNote;
   return (
     <div className="score-pair">
       <div className="score-pair-item">
@@ -62,6 +65,7 @@ export function ScorePair({ grade, score, allergenConflict = false, gradeReason 
         <GoalMatchMeter score={score} allergenConflict={allergenConflict} size="sm" />
       </div>
       {ungradedReason && <p className="score-pair-reason">{ungradedReason}</p>}
+      {note && <p className="score-pair-reason">{note}</p>}
     </div>
   );
 }

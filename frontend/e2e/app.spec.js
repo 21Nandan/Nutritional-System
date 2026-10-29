@@ -31,10 +31,13 @@ test('a product missing a few key values is listed honestly; a severely incomple
   await expect(card.locator('.score-pair-reason')).toHaveText('Not graded: Total Sugars, Saturated Fat, Sodium not stated on the label.');
 });
 
-test('a product with no grading method says why on its card', async ({ page }) => {
+test('chocolates are graded with EATGOOD\'s own method and say so on the card and product page', async ({ page }) => {
   await page.goto('/catalogue?q=chocolate');
   const card = page.locator('.product-catalogue .card').filter({ hasText: 'Milk Chocolate Bar Test' });
-  await expect(card.locator('.score-pair-reason')).toContainText('no validated grading method for Chocolates & Sweets');
+  await expect(card.getByRole('img', { name: /Nutrition grade E/ })).toBeVisible();
+  await expect(card.locator('.score-pair-reason')).toHaveText("EATGOOD's own method, not an official grade");
+  await card.getByRole('button', { name: /View Assessment/ }).click();
+  await expect(page.locator('.grade-method-notice')).toContainText('not an official WHO or FSSAI grade');
 });
 
 test('category filter is kept in the URL across reloads', async ({ page }) => {

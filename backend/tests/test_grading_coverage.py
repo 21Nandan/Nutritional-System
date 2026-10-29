@@ -190,7 +190,10 @@ def test_listings_carry_the_reason_for_a_missing_grade():
         "Not graded: Total Sugars, Saturated Fat, Sodium not stated on the label."
     )
     assert items["Masala Bhujia Test"]["grade_reason"] is None
-    assert items["Milk Chocolate Bar Test"]["grade_reason"].startswith("Not graded: no validated grading method")
+    assert items["Masala Bhujia Test"]["grade_note"] is None
+    chocolate = items["Milk Chocolate Bar Test"]  # graded with EATGOOD's own method, and labelled
+    assert (chocolate["general_grade"], chocolate["grade_reason"]) == ("E", None)
+    assert chocolate["grade_note"] == "EATGOOD's own method, not an official grade"
 
 
 # ---------- Open Food Facts records that used to show no grade ----------
