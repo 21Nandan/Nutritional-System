@@ -6,11 +6,11 @@ No invented thresholds. Every reference is cited and verifiable.
 Distinguishes voluntary front-of-pack nutrition profiling from mandatory statutory labeling.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 STANDARDS_REGISTRY_VERSION = "2026.2"
 
-STANDARDS_REGISTRY: List[Dict[str, Any]] = [
+STANDARDS_REGISTRY: list[dict[str, Any]] = [
     # -------------------------------------------------------------
     # 1. WHO SEARO (2017) Category 3: Biscuits, Cakes and Sweet Baked Goods
     # -------------------------------------------------------------
@@ -448,7 +448,7 @@ STANDARDS_REGISTRY: List[Dict[str, Any]] = [
 # Maps product categories to documented profiling standards, mandatory
 # fields, reference bases, and explicit status justifications.
 # -------------------------------------------------------------------
-CATEGORY_CALIBRATION_SPECS: Dict[str, Dict[str, Any]] = {
+CATEGORY_CALIBRATION_SPECS: dict[str, dict[str, Any]] = {
     "Biscuits & Bakery": {
         "status": "Calibrated",
         "canonical_name": "Biscuits & Bakery",
@@ -693,7 +693,7 @@ CATEGORY_ALIASES = {
     "ketchup": "Condiments & Spreads"
 }
 
-def normalize_category(category: Optional[str]) -> str:
+def normalize_category(category: str | None) -> str:
     """Normalizes category aliases to the canonical calibrated category name."""
     if not category:
         return ""
@@ -706,12 +706,12 @@ def normalize_category(category: Optional[str]) -> str:
             return canonical
     return clean
 
-def get_category_spec(category: str) -> Optional[Dict[str, Any]]:
+def get_category_spec(category: str) -> dict[str, Any] | None:
     """Retrieves the official calibration specification for a category."""
     canonical = normalize_category(category)
     return CATEGORY_CALIBRATION_SPECS.get(canonical)
 
-def get_applicable_standards(category: str) -> List[Dict[str, Any]]:
+def get_applicable_standards(category: str) -> list[dict[str, Any]]:
     """Returns active standards applicable to a given product category."""
     canonical = normalize_category(category)
     standards = []

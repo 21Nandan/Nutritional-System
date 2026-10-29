@@ -12,8 +12,8 @@ Guarantees:
 - Medical disclaimer included on clinical queries
 """
 
-import re
-from typing import Dict, Any, Optional
+from typing import Any
+
 import pandas as pd
 
 from backend.core.nutrition_scoring import run_full_product_assessment
@@ -21,10 +21,10 @@ from backend.core.nutrition_scoring import run_full_product_assessment
 DISCLAIMER_MEDICAL = "Note: EATGOOD provides nutritional assessments based on declared packaging facts and published benchmarks. This is not individualized clinical medical advice."
 
 def answer_product_question(
-    product: Dict[str, Any],
+    product: dict[str, Any],
     question: str,
-    user_profile: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    user_profile: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Evaluates a user query against verified product facts and deterministic scoring layers.
     Returns a structured, transparent, factual answer with cited metrics.
@@ -47,7 +47,7 @@ def answer_product_question(
     p_name = product.get("product_name", "this product")
     brand = product.get("brand", "Unknown")
     cat = product.get("category", "General Food")
-    basis = product.get("measurement_basis", "per 100g")
+    product.get("measurement_basis", "per 100g")
 
     # Extract verified nutrients
     kcal = product.get("energy_kcal")
@@ -55,7 +55,7 @@ def answer_product_question(
     sodium = product.get("sodium_mg")
     protein = product.get("protein_g")
     fibre = product.get("dietary_fibre_g")
-    sat_fat = product.get("saturated_fat_g")
+    product.get("saturated_fat_g")
     ings = product.get("ingredients") or "Not declared on packaging"
     declared_allgs = product.get("allergens_declared") or "None declared"
 

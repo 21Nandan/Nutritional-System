@@ -12,27 +12,21 @@ Decoupling Guarantee:
 - Missing critical data produce explicit refusal states ('Insufficient Data'), never silent zeroes.
 """
 
-from typing import Dict, Any, List, Optional
-import math
+from typing import Any
+
 import pandas as pd
 
-from backend.core.standards_registry import (
-    CALIBRATED_CATEGORIES,
-    CATEGORY_CALIBRATION_SPECS,
-    normalize_category,
-    get_category_spec,
-    get_applicable_standards
-)
-from backend.core.nutrition_validator import (
-    validate_and_normalize_nutrition,
-    FIELD_FRIENDLY_NAMES,
-    parse_float_safe
-)
-from backend.core.allergen_engine import analyze_allergens, analyze_additives
+from backend.core.allergen_engine import analyze_additives, analyze_allergens
 from backend.core.claims_detector import evaluate_claims
+from backend.core.nutrition_validator import FIELD_FRIENDLY_NAMES, parse_float_safe, validate_and_normalize_nutrition
+from backend.core.standards_registry import (
+    get_applicable_standards,
+    get_category_spec,
+    normalize_category,
+)
 
 
-def format_reference_basis(basis: Optional[str]) -> str:
+def format_reference_basis(basis: str | None) -> str:
     """Formats raw reference basis strings like 'per100g' or 'per 100g' into consumer-readable labels."""
     if not basis:
         return "Per 100 g"
@@ -46,7 +40,7 @@ def format_reference_basis(basis: Optional[str]) -> str:
     return str(basis).strip()
 
 
-def assess_general_nutrition(product_data: Dict[str, Any]) -> Dict[str, Any]:
+def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     """
     Layer 1: General Nutritional Assessment
     Computes an evidence-based statutory nutrition grade for calibrated categories:
@@ -56,7 +50,7 @@ def assess_general_nutrition(product_data: Dict[str, Any]) -> Dict[str, Any]:
     - Packaged Beverages (WHO SSB 2020 / FSSAI INR 2022 Liquid Foods)
     - Instant Foods (WHO SEARO 2017 Cat 6 / FSSAI INR 2022 Solid Foods)
     - Dairy (WHO SEARO 2017 Cat 2 / FSSAI INR 2022 Dairy Products)
-    
+
     Refuses grading for uncalibrated/unsupported categories or when critical data are missing.
     """
     raw_category = product_data.get("category", "")
@@ -94,7 +88,7 @@ def assess_general_nutrition(product_data: Dict[str, Any]) -> Dict[str, Any]:
     # 2. Input Validation, Reference Basis Verification & Contradiction Detection
     mandatory_fields = spec.get("mandatory_fields", ["energy_kcal", "sugars_g", "saturated_fat_g", "sodium_mg"])
     target_basis = spec.get("reference_basis", "per 100g")
-    
+
     validation = validate_and_normalize_nutrition(
         product_data,
         mandatory_fields=mandatory_fields,
@@ -164,10 +158,10 @@ def assess_general_nutrition(product_data: Dict[str, Any]) -> Dict[str, Any]:
     sat_thresh = thresholds.get("saturated_fat_g", 4.0)
     sodium_thresh = thresholds.get("sodium_mg", 300.0)
 
-    strengths: List[str] = []
-    concerns: List[str] = []
-    key_nutrients: Dict[str, Any] = {}
-    intermediate_calc: List[Dict[str, Any]] = []
+    strengths: list[str] = []
+    concerns: list[str] = []
+    key_nutrients: dict[str, Any] = {}
+    intermediate_calc: list[dict[str, Any]] = []
 
     penalty_points = 0
     bonus_points = 0
@@ -366,7 +360,7 @@ def assess_general_nutrition(product_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def assess_personalized_suitability(product_data: Dict[str, Any], user_profile: Dict[str, Any]) -> Dict[str, Any]:
+def assess_personalized_suitability(product_data: dict[str, Any], user_profile: dict[str, Any]) -> dict[str, Any]:
     """
     Layer 2: Personalized Suitability Assessment
     Tailors the evaluation specifically to the active user's goals and preferences.
@@ -473,6 +467,7 @@ def assess_personalized_suitability(product_data: Dict[str, Any], user_profile: 
             ],
             "allergen_conflicts": allergen_assessment["user_conflicts"],
             "has_critical_allergen_conflict": True,
+            "allergen_check_incomplete": allergen_assessment["user_allergen_check_incomplete"],
             "preference_conflict": pref_conflict,
             "preference_reason": pref_reason
         }
@@ -480,15 +475,15 @@ def assess_personalized_suitability(product_data: Dict[str, Any], user_profile: 
     # 2. Incomplete / Missing Nutritional Data Verification
     critical_nutrients = ["energy_kcal", "sugars_g", "sodium_mg", "saturated_fat_g"]
     missing_critical = [
-        f for f in critical_nutrients 
+        f for f in critical_nutrients
         if pd.isna(product_data.get(f)) or product_data.get(f) is None or str(product_data.get(f)).strip() == ""
     ]
-    
+
     # Incomplete if sugars and sodium are both missing, or 2 or more critical fields are omitted
     has_insufficient_data = (
-        len(missing_critical) >= 2 or 
+        len(missing_critical) >= 2 or
         (
-            (pd.isna(product_data.get("sugars_g")) or str(product_data.get("sugars_g")).strip() == "") and 
+            (pd.isna(product_data.get("sugars_g")) or str(product_data.get("sugars_g")).strip() == "") and
             (pd.isna(product_data.get("sodium_mg")) or str(product_data.get("sodium_mg")).strip() == "")
         )
     )
@@ -513,6 +508,7 @@ def assess_personalized_suitability(product_data: Dict[str, Any], user_profile: 
             ],
             "allergen_conflicts": allergen_assessment["user_conflicts"],
             "has_critical_allergen_conflict": False,
+            "allergen_check_incomplete": allergen_assessment["user_allergen_check_incomplete"],
             "preference_conflict": pref_conflict,
             "preference_reason": pref_reason
         }
@@ -1124,12 +1120,13 @@ def assess_personalized_suitability(product_data: Dict[str, Any], user_profile: 
         "goal_concerns": goal_concerns,
         "allergen_conflicts": allergen_assessment["user_conflicts"],
         "has_critical_allergen_conflict": False,
+        "allergen_check_incomplete": allergen_assessment["user_allergen_check_incomplete"],
         "preference_conflict": pref_conflict,
         "preference_reason": pref_reason
     }
 
 
-def run_full_product_assessment(product_data: Dict[str, Any], user_profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def run_full_product_assessment(product_data: dict[str, Any], user_profile: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Executes the complete 3-layer food assessment pipeline for a product.
     Independent Layers:
@@ -1175,8 +1172,8 @@ def run_full_product_assessment(product_data: Dict[str, Any], user_profile: Opti
         "serving_size": product_data.get("serving_size"),
         "serving_size_unit": product_data.get("serving_size_unit"),
         "measurement_basis": product_data.get("measurement_basis"),
-        "data_confidence_status": product_data.get("data_confidence_status", "Verified"),
-        "data_source": product_data.get("data_source", "Label Scan / Retail Packaging Audit"),
+        "data_confidence_status": product_data.get("data_confidence_status", "Unknown"),
+        "data_source": product_data.get("data_source", "Unknown"),
         "openfoodfacts_attribution": product_data.get("openfoodfacts_attribution"),
         "source_indicators": product_data.get("source_indicators"),
         "retrieved_at": product_data.get("retrieved_at"),
@@ -1194,13 +1191,20 @@ def run_full_product_assessment(product_data: Dict[str, Any], user_profile: Opti
             "dietary_fibre_g": product_data.get("dietary_fibre_g"),
         },
         "ingredients": product_data.get("ingredients"),
+        # Safety first: when the product conflicts with the user's allergens, this flag tells every
+        # screen to show the allergen warning instead of (and above) any grade or score.
+        "safety_override": {
+            "allergen_conflict": layer2["has_critical_allergen_conflict"],
+            "allergens": [c["allergen"] for c in layer2["allergen_conflicts"]],
+            "allergen_check_incomplete": layer2["allergen_check_incomplete"],
+        },
         "layer1_general": layer1,
         "layer2_personalized": layer2,
         "layer3_allergens": layer3_allergens,
         "layer3_additives": layer3_additives,
         "marketing_claims_analysis": marketing_eval,
         "transparency": {
-            "data_source": product_data.get("data_source", "Label Scan / Retail Packaging Audit"),
+            "data_source": product_data.get("data_source", "Unknown"),
             "methodology_name": layer1.get("methodology_name"),
             "standards_version": layer1.get("standards_version"),
             "standards_applied": layer1.get("standards_applied", []),

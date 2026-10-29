@@ -10,15 +10,10 @@ Verifies:
 7. Missing data handling and regulatory provenance.
 """
 
-import pytest
 from fastapi.testclient import TestClient
+
+from backend.core.claims_detector import evaluate_single_claim
 from backend.main import app
-from backend.core.claims_detector import (
-    evaluate_claims,
-    evaluate_single_claim,
-    classify_claim_taxonomy,
-    normalize_claim_text
-)
 
 client = TestClient(app)
 

@@ -11,25 +11,13 @@ Comprehensive regression suite validating:
 - Oreo variant deterministic evaluation (Grade E, Goal Match 40–48/100, no 'Category Not Yet Calibrated' error)
 """
 
-import pytest
-from backend.core.standards_registry import (
-    STANDARDS_REGISTRY,
-    CALIBRATED_CATEGORIES,
-    CATEGORY_CALIBRATION_SPECS,
-    normalize_category,
-    get_category_spec,
-    get_applicable_standards
-)
-from backend.core.nutrition_validator import (
-    validate_and_normalize_nutrition,
-    parse_float_safe
-)
 from backend.core.nutrition_scoring import (
     assess_general_nutrition,
     assess_personalized_suitability,
-    run_full_product_assessment
+    run_full_product_assessment,
 )
-from backend.core.data_loader import data_loader
+from backend.core.nutrition_validator import validate_and_normalize_nutrition
+from backend.core.standards_registry import CALIBRATED_CATEGORIES, CATEGORY_CALIBRATION_SPECS, STANDARDS_REGISTRY
 
 
 def test_standards_registry_completeness():

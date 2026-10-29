@@ -1,18 +1,31 @@
 #!/usr/bin/env python3
 """
-EATGOOD — Initial Dataset & Audit Artifacts Generator (Calibrated)
-Generates the authentic 852-product Indian packaged food dataset,
-calibrated to strictly match the project development history:
-- Exactly 78 products with Atwater calorie discrepancies.
-- Exactly 13 products with macro sum > stated serving size.
-- 100 simulated users.
-- 1,500 simulated training pairs.
+EATGOOD — Synthetic demo catalogue generator.
+
+THIS DATA IS SYNTHETIC. Product names and brands are real, but every nutrient value,
+ingredient list, allergen declaration and barcode is produced by a seeded random
+number generator (random.seed(42)). None of it was read from a real label.
+
+The generator deliberately injects 78 Atwater calorie discrepancies and 13
+"macros exceed serving size" records so the data-quality pages have something to show.
+
+Outputs (all under data/):
+- raw/packaged_foods_india.csv   generated records
+- products_cleaned.csv           raw + data_confidence_status labels (served by the app)
+- nutrition_review.csv           the injected calorie discrepancies
+- serving_size_review.csv        the injected serving-size discrepancies
+- data_quality_report.csv        summary counts
+- dataset_manifest.json          version, provenance and row count checked at app startup
 """
 
+import json
 import os
 import random
+
 import numpy as np
 import pandas as pd
+
+DATASET_VERSION = "synthetic-2026.10-v2"
 
 random.seed(42)
 np.random.seed(42)
@@ -148,7 +161,7 @@ INGREDIENT_POOL = {
 }
 
 ALLERGEN_OPTIONS = [
-    "Milk, Soy", "Gluten (Wheat)", "Peanuts, Soy", "Milk, Gluten (Wheat)", 
+    "Milk, Soy", "Gluten (Wheat)", "Peanuts, Soy", "Milk, Gluten (Wheat)",
     "Milk, Tree Nuts (Almonds, Cashews)", "None declared", "Soy", "Gluten, Milk, Soy",
     "Peanuts", "Tree Nuts (Hazelnuts, Almonds), Milk, Soy", "Milk", ""
 ]
@@ -174,11 +187,11 @@ for cat, count in target_counts.items():
         brand_name = brand_item[0]
         prod_names = brand_item[1]
         p_name_base = prod_names[(i // len(brands_data)) % len(prod_names)]
-        
+
         repeat_idx = i // (len(brands_data) * len(prod_names))
         var_suffix = f" (Variant {repeat_idx + 1})" if repeat_idx > 0 else ""
         full_product_name = f"{brand_name} {p_name_base}{var_suffix}"
-        
+
         # Serving size defaults
         # To avoid unintentional macro-sum > serving size, we set stated serving sizes to 100g or 200ml for normal records,
         # or scale macro values proportionately if serving is smaller.
@@ -186,7 +199,7 @@ for cat, count in target_counts.items():
         srv_size = 100
         srv_unit = "g"
         basis = "per 100g"
-        
+
         if cat == "Snacks":
             sub_cat = "Namkeen" if any(w in p_name_base for w in ["Bhujia", "Sev", "Dal", "Mix", "Bhelpuri"]) else "Chips & Crisps"
             carbs = round(random.uniform(45, 60), 1)
@@ -199,7 +212,7 @@ for cat, count in target_counts.items():
             cholesterol = round(random.uniform(0, 4), 1)
             sodium = round(random.uniform(450, 950), 1)
             fibre = round(random.uniform(2.5, 7.5), 1)
-            
+
         elif cat == "Breakfast Cereals":
             sub_cat = "Muesli & Granola" if "Muesli" in p_name_base else ("Oats" if "Oats" in p_name_base else "Flakes")
             carbs = round(random.uniform(65, 80), 1)
@@ -212,7 +225,7 @@ for cat, count in target_counts.items():
             cholesterol = 0.0
             sodium = round(random.uniform(30, 450), 1)
             fibre = round(random.uniform(4.0, 11.0), 1)
-            
+
         elif cat == "Packaged Beverages":
             sub_cat = "Fruit Juice" if "Juice" in p_name_base or "Nectar" in p_name_base else ("Dairy Beverage" if "Milk" in p_name_base or "Shake" in p_name_base else "Carbonated Soft Drink")
             srv_size = 100
@@ -248,7 +261,7 @@ for cat, count in target_counts.items():
                     fat = 0.0
                     sodium = 14.0
                     fibre = 0.0
-                    
+
         elif cat == "Biscuits & Bakery":
             sub_cat = "Cookies" if "Cookies" in p_name_base or "Treat" in p_name_base else "Crackers & Biscuits"
             carbs = round(random.uniform(62, 72), 1)
@@ -261,7 +274,7 @@ for cat, count in target_counts.items():
             cholesterol = round(random.uniform(0, 10), 1)
             sodium = round(random.uniform(200, 480), 1)
             fibre = round(random.uniform(1.5, 5.0), 1)
-            
+
         elif cat == "Chocolates & Sweets":
             sub_cat = "Traditional Sweets" if any(w in p_name_base for w in ["Jamun", "Rasgulla", "Papdi", "Barfi", "Laddu"]) else "Chocolates"
             carbs = round(random.uniform(52, 65), 1)
@@ -274,7 +287,7 @@ for cat, count in target_counts.items():
             cholesterol = round(random.uniform(5, 20), 1)
             sodium = round(random.uniform(40, 160), 1)
             fibre = round(random.uniform(1.0, 5.0), 1)
-            
+
         elif cat == "Instant Foods":
             sub_cat = "Instant Noodles" if "Noodles" in p_name_base else ("Instant Soup" if "Soup" in p_name_base else "Ready to Eat")
             carbs = round(random.uniform(56, 66), 1)
@@ -287,7 +300,7 @@ for cat, count in target_counts.items():
             cholesterol = 0.0
             sodium = round(random.uniform(980, 1350), 1)
             fibre = round(random.uniform(2.0, 4.0), 1)
-            
+
         elif cat == "Dairy":
             sub_cat = "Butter & Spreads" if "Butter" in p_name_base else ("Paneer & Cheese" if "Paneer" in p_name_base or "Cheese" in p_name_base else "Curd & Yogurt")
             if "Butter" in p_name_base:
@@ -323,7 +336,7 @@ for cat, count in target_counts.items():
                 cholesterol = round(random.uniform(10, 20), 1)
                 sodium = round(random.uniform(35, 70), 1)
                 fibre = 0.0
-                
+
         else: # Condiments & Spreads
             sub_cat = "Sauces & Ketchup" if "Ketchup" in p_name_base or "Sauce" in p_name_base else ("Peanut Butter & Spreads" if "Peanut" in p_name_base or "Nutella" in p_name_base else "Jams & Honey")
             if "Peanut" in p_name_base:
@@ -359,10 +372,10 @@ for cat, count in target_counts.items():
                 cholesterol = 0.0
                 sodium = 910.0
                 fibre = 1.0
-                
+
         # Calculate standard calories consistently using Atwater formula (4*c + 4*p + 9*f)
         energy = round(4 * carbs + 4 * protein + 9 * fat, 1)
-        
+
         ing_list = random.choice(INGREDIENT_POOL[cat])
         additives_found = []
         for token in ing_list.split():
@@ -372,7 +385,7 @@ for cat, count in target_counts.items():
                     additives_found.append(clean_ins)
         additives_str = ", ".join(sorted(list(set(additives_found)))) if additives_found else "None detected"
         allergens = random.choice(ALLERGEN_OPTIONS)
-        
+
         claims = []
         if protein >= 10.0:
             claims.append("High Protein")
@@ -387,11 +400,11 @@ for cat, count in target_counts.items():
         if fat <= 3.0 and cat != "Dairy":
             claims.append("Low Fat")
         claims_str = ", ".join(claims[:3]) if claims else random.choice(["", "Crispy & Crunchy", "Authentic Indian Taste"])
-        
+
         barcode = f"890{random.randint(1000000000, 9999999999)}"
         p_id = f"IND_PKG_{prod_id_counter:03d}"
         prod_id_counter += 1
-        
+
         prod_dict = {
             "product_id": p_id,
             "product_name": full_product_name,
@@ -417,7 +430,7 @@ for cat, count in target_counts.items():
             "allergens_declared": allergens,
             "marketing_claims": claims_str,
             "barcode": barcode,
-            "data_source": "Label Scan / Retail Packaging Audit 2026"
+            "data_source": "Synthetic demo record (scripts/generate_initial_data.py, seed 42)"
         }
         all_products_raw.append(prod_dict)
 
@@ -507,7 +520,6 @@ for idx in range(215, 230):
 # Save raw dataset and data/products.csv
 raw_path = os.path.join(RAW_DIR, "packaged_foods_india.csv")
 df_raw.to_csv(raw_path, index=False)
-df_raw.to_csv(os.path.join(DATA_DIR, "products.csv"), index=False)
 print(f"Saved {raw_path}")
 
 # Save Nutrition Review & Consistency Review (78 records)
@@ -527,7 +539,6 @@ nutrition_review_cols = [
 ]
 df_nutrition_review = df_atwater_flagged[nutrition_review_cols]
 df_nutrition_review.to_csv(os.path.join(DATA_DIR, "nutrition_review.csv"), index=False)
-df_nutrition_review.to_csv(os.path.join(DATA_DIR, "nutrition_consistency_review.csv"), index=False)
 print(f"Saved nutrition review reports ({len(df_nutrition_review)} records).")
 
 # Save Serving Size Review & Flagged Products Inspection (13 records)
@@ -544,7 +555,6 @@ serving_review_cols = [
 ]
 df_serving_review = df_serving_flagged[serving_review_cols]
 df_serving_review.to_csv(os.path.join(DATA_DIR, "serving_size_review.csv"), index=False)
-df_serving_review.to_csv(os.path.join(DATA_DIR, "flagged_products_inspection.csv"), index=False)
 print(f"Saved serving size review reports ({len(df_serving_review)} records).")
 
 # Overall Data Quality Report
@@ -565,150 +575,25 @@ print("Saved data quality report.")
 
 # Products Cleaned
 df_cleaned = df_raw.copy()
-df_cleaned["data_confidence_status"] = "Verified"
-df_cleaned.loc[large_diff_mask, "data_confidence_status"] = "Source Verification Required (Calorie Anomaly)"
-df_cleaned.loc[macro_greater_mask, "data_confidence_status"] = "Discrepancy (Macros > Serving Size)"
-df_cleaned.loc[df_cleaned["measurement_basis"] == "unspecified", "data_confidence_status"] = "Unspecified Measurement Basis"
+df_cleaned["data_confidence_status"] = "Synthetic (not from a real label)"
+df_cleaned.loc[large_diff_mask, "data_confidence_status"] = "Synthetic: injected calorie anomaly"
+df_cleaned.loc[macro_greater_mask, "data_confidence_status"] = "Synthetic: injected serving-size discrepancy"
+df_cleaned.loc[df_cleaned["measurement_basis"] == "unspecified", "data_confidence_status"] = "Synthetic: unspecified measurement basis"
 df_cleaned.to_csv(os.path.join(DATA_DIR, "products_cleaned.csv"), index=False)
 
-# Products Standardized (deliberately leaving ambiguous records blank!)
-df_standardized = df_cleaned.copy()
-std_cols = ["std_energy_kcal_100g", "std_carbs_100g", "std_sugars_100g", "std_protein_100g", "std_fat_100g", "std_sat_fat_100g", "std_sodium_100g", "std_fibre_100g"]
-for col in std_cols:
-    df_standardized[col] = np.nan
+print("Saved products_cleaned.csv.")
 
-for idx, row in df_standardized.iterrows():
-    basis = row["measurement_basis"]
-    status = row["data_confidence_status"]
-    if basis == "unspecified" or "Discrepancy" in status:
-        df_standardized.at[idx, "standardization_note"] = "Standardization halted: measurement basis ambiguous or serving size contradictory."
-        continue
-    if basis in ["per 100g", "per 100ml"]:
-        df_standardized.at[idx, "std_energy_kcal_100g"] = row["energy_kcal"]
-        df_standardized.at[idx, "std_carbs_100g"] = row["carbohydrates_g"]
-        df_standardized.at[idx, "std_sugars_100g"] = row["sugars_g"]
-        df_standardized.at[idx, "std_protein_100g"] = row["protein_g"]
-        df_standardized.at[idx, "std_fat_100g"] = row["total_fat_g"]
-        df_standardized.at[idx, "std_sat_fat_100g"] = row["saturated_fat_g"]
-        df_standardized.at[idx, "std_sodium_100g"] = row["sodium_mg"]
-        df_standardized.at[idx, "std_fibre_100g"] = row["dietary_fibre_g"]
-        df_standardized.at[idx, "standardization_note"] = "Verified per 100g/100ml basis."
-
-df_standardized.to_csv(os.path.join(DATA_DIR, "products_standardized.csv"), index=False)
-print("Saved products_standardized.csv.")
-
-# Users & Personalization examples
-user_goals = ["Reduce Sugar", "Reduce Sodium", "Increase Fibre", "Increase Protein", "Balanced Choices"]
-dietary_prefs = ["No preference", "Vegetarian", "Vegan", "Lactose avoidance"]
-allergen_choices = [
-    [], ["Milk"], ["Soy"], ["Gluten"], ["Peanuts"], ["Milk", "Gluten"],
-    ["Peanuts", "Soy"], ["Tree Nuts"], ["Milk", "Peanuts"]
-]
-
-users_list = []
-for uid in range(1, 101):
-    u_id = f"USR_{uid:03d}"
-    goal = user_goals[uid % len(user_goals)]
-    pref = dietary_prefs[(uid // len(user_goals)) % len(dietary_prefs)]
-    allgs = allergen_choices[uid % len(allergen_choices)]
-    age_group = random.choice(["18-24", "25-34", "35-44", "45-59", "60+"])
-    activity = random.choice(["Sedentary", "Lightly active", "Moderately active", "Very active"])
-    users_list.append({
-        "user_id": u_id,
-        "name": f"User {uid}",
-        "goal": goal,
-        "dietary_preference": pref,
-        "allergens_to_avoid": ", ".join(allgs) if allgs else "None",
-        "age_group": age_group,
-        "activity_level": activity,
-        "notes": "Simulated profile for personalization engine evaluation"
-    })
-
-df_users = pd.DataFrame(users_list)
-df_users.to_csv(os.path.join(DATA_DIR, "users.csv"), index=False)
-print(f"Saved users.csv ({len(df_users)} users).")
-
-pairs = []
-rep_products = df_raw.iloc[:150].to_dict(orient="records")
-for i in range(1500):
-    user = users_list[i % len(users_list)]
-    prod = rep_products[(i * 7) % len(rep_products)]
-    
-    allg_conflict = False
-    prod_allgs = prod["allergens_declared"].lower()
-    for user_allg in user["allergens_to_avoid"].split(", "):
-        if user_allg and user_allg.lower() != "none":
-            if user_allg.lower() in prod_allgs or (user_allg.lower() == "gluten" and "wheat" in prod_allgs):
-                allg_conflict = True
-                break
-                
-    pref_conflict = False
-    if user["dietary_preference"] == "Vegan":
-        if prod["category"] == "Dairy" or any(w in prod["ingredients"].lower() for w in ["milk", "butter", "honey", "whey", "cheese"]):
-            pref_conflict = True
-    elif user["dietary_preference"] == "Lactose avoidance":
-        if prod["category"] == "Dairy" or any(w in prod["ingredients"].lower() for w in ["milk", "cheese", "butter", "whey", "lactose"]):
-            pref_conflict = True
-            
-    score = 65.0
-    if user["goal"] == "Reduce Sugar":
-        if prod["sugars_g"] < 5.0:
-            score += 25
-        elif prod["sugars_g"] > 20.0:
-            score -= 35
-    elif user["goal"] == "Reduce Sodium":
-        if prod["sodium_mg"] < 300:
-            score += 25
-        elif prod["sodium_mg"] > 800:
-            score -= 35
-    elif user["goal"] == "Increase Fibre":
-        if prod["dietary_fibre_g"] >= 6.0:
-            score += 30
-        elif prod["dietary_fibre_g"] < 2.0:
-            score -= 20
-    elif user["goal"] == "Increase Protein":
-        if prod["protein_g"] >= 10.0:
-            score += 30
-        elif prod["protein_g"] < 4.0:
-            score -= 20
-    else:
-        if prod["sugars_g"] < 10.0 and prod["sodium_mg"] < 500 and prod["protein_g"] > 6.0:
-            score += 25
-        if prod["saturated_fat_g"] > 8.0:
-            score -= 20
-            
-    if allg_conflict:
-        score = 0.0
-        label = 0
-    elif pref_conflict:
-        score = min(score, 20.0)
-        label = 0
-    else:
-        score = max(5.0, min(98.0, score))
-        label = 1 if score >= 60 else 0
-        
-    pairs.append({
-        "pair_id": f"PAIR_{i+1:04d}",
-        "user_id": user["user_id"],
-        "user_goal": user["goal"],
-        "dietary_preference": user["dietary_preference"],
-        "allergens_to_avoid": user["allergens_to_avoid"],
-        "product_id": prod["product_id"],
-        "product_name": prod["product_name"],
-        "category": prod["category"],
-        "energy_kcal": prod["energy_kcal"],
-        "sugars_g": prod["sugars_g"],
-        "sodium_mg": prod["sodium_mg"],
-        "protein_g": prod["protein_g"],
-        "dietary_fibre_g": prod["dietary_fibre_g"],
-        "saturated_fat_g": prod["saturated_fat_g"],
-        "allergen_conflict": int(allg_conflict),
-        "preference_conflict": int(pref_conflict),
-        "simulated_suitability_score": round(score, 1),
-        "is_suitable_label": label
-    })
-
-df_pairs = pd.DataFrame(pairs)
-df_pairs.to_csv(os.path.join(DATA_DIR, "personalization_examples.csv"), index=False)
-print(f"Saved personalization_examples.csv ({len(df_pairs)} pairs).")
-print("Data calibration complete!")
+manifest = {
+    "dataset_version": DATASET_VERSION,
+    "provenance": "synthetic",
+    "provenance_note": (
+        "Demo data. Product names and brands are real; nutrient values, ingredients, allergens "
+        "and barcodes are randomly generated and do not describe the real products."
+    ),
+    "generator": "scripts/generate_initial_data.py (random.seed(42))",
+    "catalogue_rows": int(len(df_cleaned)),
+}
+with open(os.path.join(DATA_DIR, "dataset_manifest.json"), "w", encoding="utf-8") as f:
+    json.dump(manifest, f, indent=2)
+    f.write("\n")
+print("Saved dataset_manifest.json.")

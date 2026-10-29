@@ -1,40 +1,114 @@
 """
-EATGOOD — Open Food Facts API v3 Integration Service
-Connects to the official Open Food Facts product-by-barcode API v3.
-Adheres to Open Food Facts API Documentation & Terms of Service:
-- Reference: https://openfoodfacts.github.io/openfoodfacts-server/api/
-- Exact barcode match verification (rejects mismatched product returns).
-- Meaningful User-Agent string.
-- Targeted field selection.
-- Clear ODbL attribution.
-- Resilient network timeout and rate limit handling.
-- Comprehensive nutritional normalization without silent zero-fills.
+EATGOOD — Open Food Facts API v3 client.
+Reference: https://openfoodfacts.github.io/openfoodfacts-server/api/
+
+- One pooled HTTPS client with strict certificate verification against the certifi
+  CA bundle (or SSL_CERT_FILE when set). Verification is never disabled.
+- One retry with backoff for timeouts, connection resets and 5xx responses.
+- Every failure is returned with a distinct error_code and a plain-language message;
+  technical details are only logged.
+- Products are mapped without zero-filling missing nutrients, with ODbL attribution.
 """
 
 import logging
+import os
 import re
 import ssl
+import threading
+import time
 from datetime import datetime
-from typing import Dict, Any, Optional, List
-import httpx
+from typing import Any
+
 import certifi
+import httpx
+
+from backend.config import OFF_BASE_URL, OFF_TIMEOUT_SECONDS, OFF_USER_AGENT
 
 logger = logging.getLogger("eatgood.openfoodfacts")
 
-OPENFOODFACTS_BASE_URL = "https://world.openfoodfacts.org/api/v3/product"
-DEFAULT_USER_AGENT = "EATGOOD-NutritionScanner/1.0 (local-desktop; dev@eatgood.local)"
-REQUEST_TIMEOUT_SECONDS = 8.0
+OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+RETRY_BACKOFF_SECONDS = 0.5
 
-def get_httpx_ssl_context() -> ssl.SSLContext:
-    """Creates an SSL context strictly enforcing certificate verification against certifi CA bundle."""
-    return ssl.create_default_context(cafile=certifi.where())
+_client: httpx.Client | None = None
+_client_lock = threading.Lock()
 
-def get_httpx_client(timeout: float) -> httpx.Client:
-    """
-    Instantiates an HTTPX client strictly enforcing certificate verification
-    against Mozilla's trusted CA bundle via certifi.
-    """
-    return httpx.Client(verify=get_httpx_ssl_context(), timeout=timeout)
+
+def build_ssl_context() -> ssl.SSLContext:
+    """Strict TLS verification against certifi's CA bundle, or SSL_CERT_FILE if the host sets one."""
+    return ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or certifi.where())
+
+
+def get_client() -> httpx.Client:
+    global _client
+    with _client_lock:
+        if _client is None:
+            _client = httpx.Client(
+                verify=build_ssl_context(),
+                timeout=OFF_TIMEOUT_SECONDS,
+                headers={"User-Agent": OFF_USER_AGENT},
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+            )
+        return _client
+
+
+def _is_tls_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, ssl.SSLError):
+            return True
+        current = current.__cause__ or current.__context__
+    return "certificate verify failed" in str(exc).lower()
+
+
+def _get_with_retry(client: httpx.Client, url: str, params: dict) -> httpx.Response:
+    """GET with a single retry on timeouts, connection errors (not TLS) and 5xx responses."""
+    for attempt in (1, 2):
+        try:
+            response = client.get(url, params=params)
+        except httpx.TimeoutException:
+            if attempt == 2:
+                raise
+        except httpx.TransportError as exc:
+            if attempt == 2 or _is_tls_error(exc):
+                raise
+        else:
+            if response.status_code < 500 or attempt == 2:
+                return response
+        time.sleep(RETRY_BACKOFF_SECONDS)
+    raise AssertionError("unreachable")
+
+
+ERROR_MESSAGES = {
+    "OFF_TIMEOUT": "Open Food Facts took too long to answer. Please try again in a moment, or enter the nutrition facts manually.",
+    "OFF_TLS_ERROR": "We couldn't open a secure connection to Open Food Facts. Please try again later, or enter the nutrition facts manually.",
+    "OFF_NETWORK_ERROR": "We couldn't reach Open Food Facts right now. Check your connection and try again, or enter the nutrition facts manually.",
+    "OFF_RATE_LIMITED": "Open Food Facts is receiving too many requests. Please wait a minute and try again.",
+    "OFF_UPSTREAM_ERROR": "Open Food Facts is having problems right now. Please try again later, or enter the nutrition facts manually.",
+    "OFF_BAD_RESPONSE": "Open Food Facts sent an answer we couldn't understand. Please try again later, or enter the nutrition facts manually.",
+    "OFF_BARCODE_MISMATCH": "Open Food Facts returned a different product for this barcode, so we did not use it.",
+}
+
+
+def _error(error_code: str, http_status: int, barcode: str, technical_detail: str) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "error_code": error_code,
+        "http_status": http_status,
+        "product": None,
+        "barcode": barcode,
+        "source": "openfoodfacts",
+        "message": ERROR_MESSAGES[error_code],
+        "technical_detail": technical_detail,
+    }
+
+
+def classify_exception(exc: Exception, barcode: str) -> dict[str, Any]:
+    if isinstance(exc, httpx.TimeoutException):
+        return _error("OFF_TIMEOUT", 504, barcode, repr(exc))
+    if _is_tls_error(exc):
+        return _error("OFF_TLS_ERROR", 502, barcode, repr(exc))
+    return _error("OFF_NETWORK_ERROR", 502, barcode, repr(exc))
+
 
 # Documented field selection parameter for Open Food Facts API v3
 OFF_REQUEST_FIELDS = (
@@ -47,7 +121,7 @@ OFF_REQUEST_FIELDS = (
 )
 
 
-def map_off_category_to_eatgood(categories_str: Optional[str], categories_tags: Optional[list]) -> str:
+def map_off_category_to_eatgood(categories_str: str | None, categories_tags: list | None) -> str:
     """
     Maps Open Food Facts category strings into EATGOOD primary categories:
     - Snacks
@@ -84,7 +158,7 @@ def map_off_category_to_eatgood(categories_str: Optional[str], categories_tags: 
     return "Snacks"
 
 
-def clean_allergens_from_tags(tags: Optional[List[str]]) -> str:
+def clean_allergens_from_tags(tags: list[str] | None) -> str:
     """Formats Open Food Facts allergen tags (e.g. ['en:milk', 'en:soybeans']) into human-readable text."""
     if not tags:
         return ""
@@ -96,7 +170,7 @@ def clean_allergens_from_tags(tags: Optional[List[str]]) -> str:
     return ", ".join(cleaned)
 
 
-def format_additives_from_tags(tags: Optional[List[str]]) -> str:
+def format_additives_from_tags(tags: list[str] | None) -> str:
     """Converts European E-numbers (e.g. 'en:e150d', 'en:e322') into statutory INS format ('INS 150d, INS 322')."""
     if not tags:
         return ""
@@ -110,7 +184,7 @@ def format_additives_from_tags(tags: Optional[List[str]]) -> str:
     return ", ".join(ins_list)
 
 
-def map_off_product_to_eatgood(requested_barcode: str, off_product: Dict[str, Any]) -> Dict[str, Any]:
+def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, Any]) -> dict[str, Any]:
     """
     Transforms raw Open Food Facts API v3 product payload into
     EATGOOD's standardized product schema.
@@ -197,7 +271,7 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: Dict[str, An
                 pass
 
     # Safe float parser checking multiple key variants without silent zero fills
-    def _get_float_val(keys: List[str]) -> Optional[float]:
+    def _get_float_val(keys: list[str]) -> float | None:
         for k in keys:
             v = nutriments.get(k)
             if v is not None:
@@ -383,201 +457,79 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: Dict[str, An
     }
 
 
-def fetch_product_from_openfoodfacts(
-    barcode: str,
-    client: Optional[httpx.Client] = None
-) -> Dict[str, Any]:
+def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None = None) -> dict[str, Any]:
     """
-    Queries Open Food Facts API v3 for a single barcode.
-    Verifies exact product identity match on code.
-    Returns:
-        status: 'success' | 'not_found' | 'error'
-        product: Optional[dict]
-        message: str
-        barcode: str
+    Looks up one barcode on Open Food Facts API v3.
+    Returns a dict with status 'success' | 'not_found' | 'error'. Errors carry error_code,
+    http_status, a plain-language message and a technical_detail for logs only.
     """
     clean_barcode = str(barcode).strip()
-    url = f"{OPENFOODFACTS_BASE_URL}/{clean_barcode}.json"
-    headers = {"User-Agent": DEFAULT_USER_AGENT}
-    params = {"fields": OFF_REQUEST_FIELDS}
+    url = f"{OFF_BASE_URL}/{clean_barcode}.json"
+    try:
+        response = _get_with_retry(client or get_client(), url, {"fields": OFF_REQUEST_FIELDS})
+    except httpx.HTTPError as exc:
+        logger.warning("Open Food Facts lookup failed for %s: %r", clean_barcode, exc)
+        return classify_exception(exc, clean_barcode)
 
-    close_client = False
-    if client is None:
-        client = get_httpx_client(REQUEST_TIMEOUT_SECONDS)
-        close_client = True
+    not_found = {
+        "status": "not_found",
+        "error_code": "OFF_PRODUCT_NOT_FOUND",
+        "http_status": 404,
+        "product": None,
+        "barcode": clean_barcode,
+        "source": "openfoodfacts",
+        "message": f"Barcode {clean_barcode} is not in Open Food Facts yet. You can add it, or enter the nutrition facts manually.",
+    }
+    if response.status_code == 404:
+        return not_found
+    if response.status_code == 429:
+        return _error("OFF_RATE_LIMITED", 429, clean_barcode, "HTTP 429")
+    if response.status_code >= 500:
+        return _error("OFF_UPSTREAM_ERROR", 502, clean_barcode, f"HTTP {response.status_code}")
+    if response.status_code != 200:
+        return _error("OFF_BAD_RESPONSE", 502, clean_barcode, f"HTTP {response.status_code}")
 
     try:
-        response = client.get(url, headers=headers, params=params)
+        data = response.json()
+    except ValueError:
+        return _error("OFF_BAD_RESPONSE", 502, clean_barcode, "Response body is not JSON")
 
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "success" and "product" in data:
-                raw_prod = data["product"]
-                returned_code = str(raw_prod.get("code") or data.get("code") or "").strip()
+    if data.get("status") in ("failure",) or data.get("result", {}).get("id") == "product_not_found":
+        return not_found
+    if data.get("status") not in ("success", "success_with_warnings") or "product" not in data:
+        return _error("OFF_BAD_RESPONSE", 502, clean_barcode, f"Unexpected status {data.get('status')!r}")
 
-                # Exact barcode match verification (protects against accidental variant mismatches)
-                if returned_code and returned_code.lstrip("0") != clean_barcode.lstrip("0"):
-                    logger.warning(
-                        f"Barcode identity mismatch: requested {clean_barcode}, received {returned_code}"
-                    )
-                    return {
-                        "status": "error",
-                        "error_code": "OFF_BARCODE_MISMATCH",
-                        "http_status": 422,
-                        "product": None,
-                        "barcode": clean_barcode,
-                        "source": "openfoodfacts",
-                        "message": f"External API returned product code '{returned_code}' which does not match requested '{clean_barcode}'.",
-                        "technical_detail": f"Requested {clean_barcode}, received {returned_code}"
-                    }
+    raw_prod = data["product"]
+    returned_code = str(raw_prod.get("code") or data.get("code") or "").strip()
+    if returned_code and returned_code.lstrip("0") != clean_barcode.lstrip("0"):
+        return _error("OFF_BARCODE_MISMATCH", 422, clean_barcode, f"Requested {clean_barcode}, received {returned_code}")
 
-                standardized = map_off_product_to_eatgood(clean_barcode, raw_prod)
-                return {
-                    "status": "success",
-                    "product": standardized,
-                    "barcode": clean_barcode,
-                    "source": "openfoodfacts",
-                    "message": "Product retrieved successfully from Open Food Facts."
-                }
-            elif data.get("status") == "failure" or data.get("result", {}).get("id") == "product_not_found":
-                return {
-                    "status": "not_found",
-                    "error_code": "OFF_PRODUCT_NOT_FOUND",
-                    "http_status": 404,
-                    "product": None,
-                    "barcode": clean_barcode,
-                    "source": "openfoodfacts",
-                    "message": f"Barcode {clean_barcode} was not found in the Open Food Facts database. You can add it directly or enter nutrition facts manually."
-                }
-
-        elif response.status_code == 404:
-            return {
-                "status": "not_found",
-                "error_code": "OFF_PRODUCT_NOT_FOUND",
-                "http_status": 404,
-                "product": None,
-                "barcode": clean_barcode,
-                "source": "openfoodfacts",
-                "message": f"Barcode {clean_barcode} was not found in the Open Food Facts database. You can add it directly or enter nutrition facts manually."
-            }
-
-        elif response.status_code == 429:
-            logger.warning(f"Open Food Facts API rate limit exceeded for barcode {clean_barcode}")
-            return {
-                "status": "error",
-                "error_code": "OFF_RATE_LIMITED",
-                "http_status": 429,
-                "product": None,
-                "barcode": clean_barcode,
-                "source": "openfoodfacts",
-                "message": "Open Food Facts rate limit reached. Please wait a few moments before trying again, or enter nutrition facts manually.",
-                "technical_detail": "HTTP 429 Too Many Requests"
-            }
-
-        elif response.status_code >= 500:
-            logger.warning(f"Open Food Facts API upstream server error {response.status_code} for barcode {clean_barcode}")
-            return {
-                "status": "error",
-                "error_code": "OFF_UPSTREAM_ERROR",
-                "http_status": 502,
-                "product": None,
-                "barcode": clean_barcode,
-                "source": "openfoodfacts",
-                "message": "Open Food Facts servers are currently experiencing issues. Please try again later or enter details manually.",
-                "technical_detail": f"HTTP {response.status_code}"
-            }
-
-        else:
-            return {
-                "status": "error",
-                "error_code": "OFF_UPSTREAM_ERROR",
-                "http_status": 502,
-                "product": None,
-                "barcode": clean_barcode,
-                "source": "openfoodfacts",
-                "message": "Couldn't reach the Open Food Facts database right now. Check your connection, try again, or enter nutrition facts manually.",
-                "technical_detail": f"Unexpected HTTP status {response.status_code}"
-            }
-
-    except httpx.TimeoutException as e:
-        logger.warning(f"Open Food Facts query timed out for barcode {clean_barcode}: {e}")
-        return {
-            "status": "error",
-            "error_code": "OFF_TIMEOUT",
-            "http_status": 504,
-            "product": None,
-            "barcode": clean_barcode,
-            "source": "openfoodfacts",
-            "message": "Request to Open Food Facts timed out. Check your internet connection or try again shortly.",
-            "technical_detail": str(e)
-        }
-    except Exception as e:
-        err_str = str(e).lower()
-        is_tls = isinstance(e, (ssl.SSLError, ssl.SSLCertVerificationError)) or "certificate" in err_str or "ssl" in err_str or "tls" in err_str
-        if is_tls:
-            logger.error(f"Open Food Facts TLS/SSL verification error for barcode {clean_barcode}: {e}")
-            return {
-                "status": "error",
-                "error_code": "OFF_TLS_ERROR",
-                "http_status": 502,
-                "product": None,
-                "barcode": clean_barcode,
-                "source": "openfoodfacts",
-                "message": "Unable to verify secure connection to Open Food Facts. Check your system certificates or enter nutrition facts manually.",
-                "technical_detail": str(e)
-            }
-        else:
-            logger.error(f"Open Food Facts network/connection error for barcode {clean_barcode}: {e}")
-            return {
-                "status": "error",
-                "error_code": "OFF_NETWORK_ERROR",
-                "http_status": 502,
-                "product": None,
-                "barcode": clean_barcode,
-                "source": "openfoodfacts",
-                "message": "Couldn't reach the Open Food Facts database right now. Check your connection, try again, or search our catalogue / enter nutrition facts manually.",
-                "technical_detail": str(e)
-            }
-    finally:
-        if close_client:
-            client.close()
+    return {
+        "status": "success",
+        "product": map_off_product_to_eatgood(clean_barcode, raw_prod),
+        "barcode": clean_barcode,
+        "source": "openfoodfacts",
+        "message": "Product retrieved from Open Food Facts.",
+    }
 
 
-import time
+_OFF_QUERY_CACHE: dict[str, Any] = {}
+OFF_QUERY_CACHE_TTL = 300.0  # seconds
 
-_OFF_QUERY_CACHE: Dict[str, Any] = {}
-OFF_QUERY_CACHE_TTL = 300.0  # 5 minutes cache
 
-def search_openfoodfacts_text(
-    query: str,
-    limit: int = 6,
-    client: Optional[httpx.Client] = None
-) -> List[Dict[str, Any]]:
+def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client | None = None) -> dict[str, Any]:
     """
-    Discovers packaged products from official Open Food Facts search API.
-    Normalizes parameters, parses results into EATGOOD product schema,
-    caches successful returns in SQLite, and gracefully recovers on network/rate-limit issues.
+    Text search on Open Food Facts. Returns {"status": "ok"|"error", "products": [...],
+    "error_code"?, "message"?}. An error is never reported as an empty result.
     """
     clean_q = str(query).strip().lower()
-    if not clean_q or len(clean_q) < 2:
-        return []
+    if len(clean_q) < 2:
+        return {"status": "ok", "products": []}
 
     now = time.time()
-    if clean_q in _OFF_QUERY_CACHE:
-        cached_time, cached_items = _OFF_QUERY_CACHE[clean_q]
-        if now - cached_time < OFF_QUERY_CACHE_TTL:
-            return cached_items[:limit]
-
-    close_client = False
-    if client is None:
-        # Fast 4.5s timeout with certifi CA bundle so external API delays never block local search
-        client = get_httpx_client(4.5)
-        close_client = True
-
-    endpoints = [
-        "https://world.openfoodfacts.net/cgi/search.pl",
-        "https://world.openfoodfacts.org/cgi/search.pl"
-    ]
+    cached = _OFF_QUERY_CACHE.get(clean_q)
+    if cached and now - cached[0] < OFF_QUERY_CACHE_TTL:
+        return {"status": "ok", "products": cached[1][:limit]}
 
     params = {
         "search_terms": clean_q,
@@ -585,65 +537,45 @@ def search_openfoodfacts_text(
         "action": "process",
         "json": "1",
         "page_size": max(limit, 8),
-        "fields": OFF_REQUEST_FIELDS
+        "fields": OFF_REQUEST_FIELDS,
     }
-    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    try:
+        response = _get_with_retry(client or get_client(), OFF_SEARCH_URL, params)
+    except httpx.HTTPError as exc:
+        logger.warning("Open Food Facts search failed for %r: %r", clean_q, exc)
+        err = classify_exception(exc, "")
+        return {"status": "error", "products": [], "error_code": err["error_code"], "message": err["message"]}
+
+    if response.status_code == 429:
+        return {"status": "error", "products": [], "error_code": "OFF_RATE_LIMITED", "message": ERROR_MESSAGES["OFF_RATE_LIMITED"]}
+    if response.status_code != 200:
+        code = "OFF_UPSTREAM_ERROR" if response.status_code >= 500 else "OFF_BAD_RESPONSE"
+        return {"status": "error", "products": [], "error_code": code, "message": ERROR_MESSAGES[code]}
+    try:
+        raw_list = response.json().get("products", [])
+    except ValueError:
+        return {"status": "error", "products": [], "error_code": "OFF_BAD_RESPONSE", "message": ERROR_MESSAGES["OFF_BAD_RESPONSE"]}
 
     mapped_products = []
-
-    for ep in endpoints:
-        try:
-            resp = client.get(ep, params=params, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                raw_list = data.get("products", [])
-                for raw in raw_list:
-                    code = str(raw.get("code") or "").strip()
-                    if not code:
-                        continue
-                    p_name = raw.get("product_name") or raw.get("product_name_en")
-                    if not p_name or not str(p_name).strip():
-                        continue
-
-                    mapped = map_off_product_to_eatgood(code, raw)
-                    mapped["is_local"] = False
-                    mapped["source"] = "Open Food Facts"
-                    mapped["nutrition_summary"] = {
-                        "energy_kcal": mapped.get("energy_kcal"),
-                        "sugars_g": mapped.get("sugars_g"),
-                        "protein_g": mapped.get("protein_g"),
-                        "sodium_mg": mapped.get("sodium_mg"),
-                        "serving_size": mapped.get("serving_size"),
-                        "serving_size_unit": mapped.get("serving_size_unit", "g")
-                    }
-
-                    # Cache in external_products_cache SQLite table
-                    try:
-                        from backend.database import cache_barcode_product
-                        cache_barcode_product(code, mapped, source="openfoodfacts", status="success", ttl_hours=168)
-                    except Exception:
-                        pass
-
-                    mapped_products.append(mapped)
-                    if len(mapped_products) >= limit:
-                        break
-                if mapped_products:
-                    break
-            elif resp.status_code == 429:
-                logger.warning(f"Open Food Facts search rate limited for '{clean_q}'")
-                break
-        except httpx.TimeoutException:
-            logger.warning(f"Open Food Facts search timed out on {ep} for '{clean_q}'")
+    for raw in raw_list:
+        code = str(raw.get("code") or "").strip()
+        p_name = raw.get("product_name") or raw.get("product_name_en")
+        if not code or not p_name or not str(p_name).strip():
             continue
-        except Exception as e:
-            logger.warning(f"Open Food Facts search failed on {ep}: {e}")
-            continue
-
-    if close_client:
-        try:
-            client.close()
-        except Exception:
-            pass
+        mapped = map_off_product_to_eatgood(code, raw)
+        mapped["is_local"] = False
+        mapped["source"] = "Open Food Facts"
+        mapped["nutrition_summary"] = {
+            "energy_kcal": mapped.get("energy_kcal"),
+            "sugars_g": mapped.get("sugars_g"),
+            "protein_g": mapped.get("protein_g"),
+            "sodium_mg": mapped.get("sodium_mg"),
+            "serving_size": mapped.get("serving_size"),
+            "serving_size_unit": mapped.get("serving_size_unit", "g"),
+        }
+        mapped_products.append(mapped)
+        if len(mapped_products) >= limit:
+            break
 
     _OFF_QUERY_CACHE[clean_q] = (now, mapped_products)
-    return mapped_products[:limit]
+    return {"status": "ok", "products": mapped_products}

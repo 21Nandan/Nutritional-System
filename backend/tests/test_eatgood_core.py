@@ -4,21 +4,15 @@ Verifies data loading, 3-layer assessment logic, allergen conflicts,
 missing data handling, recommendation rankings, and claim detection.
 """
 
-import pytest
-import pandas as pd
-from backend.core.data_loader import data_loader
-from backend.core.standards_registry import CALIBRATED_CATEGORIES, get_applicable_standards
-from backend.core.allergen_engine import analyze_allergens
 from backend.core.claims_detector import evaluate_claims
-from backend.core.nutrition_scoring import (
-    assess_general_nutrition, assess_personalized_suitability, run_full_product_assessment
-)
-from backend.core.recommender import get_healthier_alternatives
+from backend.core.data_loader import data_loader
+from backend.core.nutrition_scoring import assess_general_nutrition, assess_personalized_suitability
+
 
 def test_data_loader_integrity():
     assert data_loader.products_df is not None
     assert len(data_loader.products_df) == 852, f"Expected 852 products, found {len(data_loader.products_df)}"
-    
+
     # Audit metrics check
     audit = data_loader.get_audit_metrics()
     assert audit["total_atwater_discrepancies"] == 78, f"Expected 78 Atwater anomalies, found {audit['total_atwater_discrepancies']}"
@@ -118,7 +112,7 @@ def test_misleading_claims_evaluation():
     }
     claims = "High Protein, Zero Sugar, No Added Sugar"
     evals = evaluate_claims(claims, prod_data)
-    
+
     assert len(evals) == 3
     # High protein check
     prot_eval = next(e for e in evals if e["claim"] == "High Protein")
@@ -145,7 +139,7 @@ def test_incomplete_data_no_score():
     }
     profile = {"goal": "Balanced Choices", "dietary_preference": "No preference", "allergens_to_avoid": ""}
     res = assess_personalized_suitability(incomplete_prod, profile)
-    
+
     assert res["personalized_score"] is None, "Incomplete product must NOT have a numeric personalized score!"
     assert res["has_insufficient_data"] is True
     assert res["calculation_breakdown"] is None
@@ -167,11 +161,11 @@ def test_score_calculation_breakdown_and_scale():
     }
     profile = {"goal": "Reduce Sugar", "dietary_preference": "Vegetarian", "allergens_to_avoid": ""}
     res = assess_personalized_suitability(prod, profile)
-    
+
     assert res["personalized_score"] is not None
     assert 1 <= res["personalized_score"] <= 100
     assert res["calculation_breakdown"] is not None
-    
+
     breakdown = res["calculation_breakdown"]
     assert breakdown["base_score"] == 70
     assert len(breakdown["steps"]) >= 3

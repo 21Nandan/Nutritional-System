@@ -1,8 +1,7 @@
-import pytest
 from fastapi.testclient import TestClient
+
+from backend.core.semantic_search import parse_semantic_intent
 from backend.main import app
-from backend.core.semantic_search import parse_semantic_intent, execute_semantic_search
-from backend.core.data_loader import data_loader
 
 client = TestClient(app)
 

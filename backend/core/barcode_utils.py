@@ -5,7 +5,8 @@ Supports EAN-13, EAN-8, UPC-A, and UPC-E without losing leading zeros.
 """
 
 import re
-from typing import Dict, Any, Optional
+from typing import Any
+
 
 def clean_barcode(barcode: Any) -> str:
     """Strips whitespace, hyphens, and periods while strictly preserving leading zeros as string."""
@@ -40,7 +41,7 @@ def calculate_gs1_check_digit(digits_str: str) -> int:
     return 0 if remainder == 0 else (10 - remainder)
 
 
-def validate_barcode(barcode: str, strict: bool = False) -> Dict[str, Any]:
+def validate_barcode(barcode: str, strict: bool = False) -> dict[str, Any]:
     """
     Validates and normalizes retail barcode strings:
     - Preserves leading zeros as string.

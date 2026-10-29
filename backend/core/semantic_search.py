@@ -11,22 +11,22 @@ Examples of handled intents:
 """
 
 import re
-import math
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 import pandas as pd
 
-CATEGORY_SYNONYMS = {
+CATEGORY_SYNONYMS: dict[str, list[str]] = {
     "Snacks": ["snack", "snacks", "namkeen", "chips", "crisps", "bhujia", "mixture", "sev", "wafers"],
     "Breakfast Cereals": ["cereal", "cereals", "corn flakes", "muesli", "oats", "granola", "breakfast"],
     "Biscuits & Bakery": ["biscuit", "biscuits", "cookie", "cookies", "cracker", "crackers", "rusk", "bakery", "bread", "cake"],
-    "Beverages": ["beverage", "beverages", "drink", "drinks", "juice", "tea", "coffee", "shake", "soda"],
+    "Packaged Beverages": ["beverage", "beverages", "drink", "drinks", "juice", "tea", "coffee", "shake", "soda"],
     "Dairy": ["dairy", "milk", "butter", "cheese", "yogurt", "curd", "paneer", "dahi"],
     "Instant Foods": ["noodles", "instant", "soup", "pasta", "ready to eat", "maggi"],
-    "Edible Oils & Fats": ["oil", "oils", "ghee", "fat", "fats", "cooking oil"],
-    "Staples & Grains": ["staples", "rice", "dal", "flour", "atta", "wheat", "grain", "grains", "pulses"]
+    "Chocolates & Sweets": ["chocolate", "chocolates", "sweet", "sweets", "candy", "mithai", "toffee"],
+    "Condiments & Spreads": ["sauce", "ketchup", "spread", "jam", "pickle", "chutney", "mayonnaise"],
 }
 
-NUTRIENT_INTENT_PATTERNS = [
+NUTRIENT_INTENT_PATTERNS: list[dict[str, Any]] = [
     {
         "key": "low_sodium",
         "patterns": [r"\b(less|low|lower|reduced|not\s+too|little)\s+(salty|salt|sodium)\b", r"\blow\s+sodium\b", r"\bless\s+salt\b"],
@@ -65,7 +65,7 @@ NUTRIENT_INTENT_PATTERNS = [
     }
 ]
 
-ALLERGEN_EXCLUSION_PATTERNS = [
+ALLERGEN_EXCLUSION_PATTERNS: list[dict[str, Any]] = [
     {
         "allergen": "peanuts",
         "patterns": [r"\b(without|no|free\s+from|zero)\s+peanuts?\b", r"\bpeanut\s*free\b"],
@@ -93,12 +93,12 @@ ALLERGEN_EXCLUSION_PATTERNS = [
     }
 ]
 
-def parse_semantic_intent(query: str) -> Dict[str, Any]:
+def parse_semantic_intent(query: str) -> dict[str, Any]:
     """
     Parses a natural language search query into structured constraints.
     """
     clean_q = query.strip().lower()
-    intent = {
+    intent: dict[str, Any] = {
         "original_query": query,
         "category": None,
         "nutrient_filters": {},
@@ -153,7 +153,7 @@ def parse_semantic_intent(query: str) -> Dict[str, Any]:
     for a_excl in ALLERGEN_EXCLUSION_PATTERNS:
         for pat in a_excl["patterns"]:
             token_q = re.sub(pat, " ", token_q)
-    
+
     tokens = re.findall(r"\b[a-z]{3,}\b", token_q)
     stop_words = {"for", "the", "and", "with", "without", "from", "that", "this", "some", "good", "best", "give", "find", "show", "items", "products"}
     intent["keyword_tokens"] = [t for t in tokens if t not in stop_words]
@@ -163,10 +163,10 @@ def parse_semantic_intent(query: str) -> Dict[str, Any]:
 def execute_semantic_search(
     query: str,
     products_df: pd.DataFrame,
-    user_profile: Optional[Dict[str, Any]] = None,
+    user_profile: dict[str, Any] | None = None,
     limit: int = 50,
     offset: int = 0
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Executes intent-based semantic search with hybrid ranking.
     """
@@ -198,20 +198,19 @@ def execute_semantic_search(
     # Filter Category if detected
     if intent["category"]:
         cat_matches = df[df["category"].str.lower() == intent["category"].lower()]
-        if not cat_matches.empty:
-            df = cat_matches
+        df = cat_matches
 
     # Calculate Hybrid Score for each candidate
     scored_items = []
-    
-    for idx, row in df.iterrows():
+
+    for _idx, row in df.iterrows():
         p_dict = row.to_dict()
         score = 50.0  # Base score
         explanations = []
 
         # 1. Nutrient Intent Scoring
         nf = intent["nutrient_filters"]
-        
+
         # Sodium check
         if "max_sodium" in nf:
             s_val = p_dict.get("sodium_mg")
@@ -312,7 +311,7 @@ def execute_semantic_search(
         scored_items.append(clean_item)
 
     # Sort descending by semantic score
-    scored_items.sort(key=lambda x: x["semantic_score"], reverse=True)
+    scored_items.sort(key=lambda x: float(x["semantic_score"] or 0), reverse=True)
 
     total_matches = len(scored_items)
     paginated = scored_items[offset: offset + limit]
