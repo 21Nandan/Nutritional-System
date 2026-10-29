@@ -30,7 +30,7 @@ DATASET_VERSION = "synthetic-2026.10-v2"
 random.seed(42)
 np.random.seed(42)
 
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+DATA_DIR = os.path.abspath(os.path.dirname(__file__))
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 os.makedirs(RAW_DIR, exist_ok=True)
 

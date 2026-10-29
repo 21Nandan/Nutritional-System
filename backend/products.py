@@ -1,15 +1,14 @@
 """
 EATGOOD — Product resolution shared by the route modules.
 
-Lookup order for an identifier: bundled catalogue → unmoderated user contribution →
-Open Food Facts (cache, then live). User contributions never override catalogue items.
+Lookup order for an identifier: unmoderated user contribution → Open Food Facts
+(cache, then live).
 """
 
 from typing import Any
 
 from backend.config import OFF_CACHE_TTL_HOURS
 from backend.core.barcode_utils import clean_barcode
-from backend.core.data_loader import data_loader
 from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
 from backend.database import cache_barcode_product, get_cached_lookup, get_user_contribution_by_barcode
 
@@ -72,10 +71,6 @@ def resolve_product(product_id: str) -> dict[str, Any] | None:
 
     Raises OpenFoodFactsUnavailable when the identifier needs Open Food Facts and it fails.
     """
-    product = data_loader.get_product_by_id(product_id)
-    if product is not None:
-        return product
-
     if product_id.startswith("USER_SUB_"):
         contribution = get_user_contribution_by_barcode(product_id.removeprefix("USER_SUB_"))
         return contribution_to_product(contribution) if contribution else None
@@ -84,9 +79,6 @@ def resolve_product(product_id: str) -> dict[str, Any] | None:
     if not code.isdigit():
         return None
 
-    product = data_loader.get_product_by_barcode(code)
-    if product is not None:
-        return product
     contribution = get_user_contribution_by_barcode(code)
     if contribution is not None:
         return contribution_to_product(contribution)

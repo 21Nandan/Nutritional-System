@@ -1,21 +1,17 @@
 """
-EATGOOD — Semantic Food Search Engine
-Translates natural language user intents into structured nutritional constraints,
-category filters, allergen exclusions, and hybrid BM25/nutrient-ranked results.
+EATGOOD — natural-language search intents.
+Turns phrases like "low sugar biscuits" into a category, nutrient limits and allergen
+exclusions, which off_catalogue applies as search filters.
 
 Examples of handled intents:
-- "Less salty snacks for evening" -> Category Snacks, low sodium <= 350mg, ranked by sodium
-- "Breakfast cereal with more fibre" -> Category Breakfast Cereals, high fibre >= 6g, ranked by fibre
+- "Less salty snacks for evening" -> Category Snacks, low sodium <= 350mg
+- "Breakfast cereal with more fibre" -> Category Breakfast Cereals, high fibre >= 6g
 - "High protein snacks without peanuts" -> Category Snacks, high protein >= 8g, exclude peanut
 - "Low sugar biscuits" -> Category Biscuits & Bakery, low sugar <= 5g
 """
 
 import re
 from typing import Any
-
-import pandas as pd
-
-from backend.core.standards_registry import nutrient_flags
 
 CATEGORY_SYNONYMS: dict[str, list[str]] = {
     "Snacks": ["snack", "snacks", "namkeen", "chips", "crisps", "bhujia", "mixture", "sev", "wafers"],
@@ -161,172 +157,3 @@ def parse_semantic_intent(query: str) -> dict[str, Any]:
     intent["keyword_tokens"] = [t for t in tokens if t not in stop_words]
 
     return intent
-
-def execute_semantic_search(
-    query: str,
-    products_df: pd.DataFrame,
-    user_profile: dict[str, Any] | None = None,
-    limit: int = 50,
-    offset: int = 0
-) -> dict[str, Any]:
-    """
-    Executes intent-based semantic search with hybrid ranking.
-    """
-    if products_df is None or products_df.empty:
-        return {"total": 0, "products": [], "intent": {}}
-
-    intent = parse_semantic_intent(query)
-    df = products_df.copy()
-
-    # Apply strict negative allergen exclusions from query
-    if intent["forbidden_terms"]:
-        for term in intent["forbidden_terms"]:
-            term_l = term.lower()
-            df = df[
-                ~df["ingredients"].astype(str).str.lower().str.contains(r"\b" + re.escape(term_l) + r"\b", na=False) &
-                ~df["allergens_declared"].astype(str).str.lower().str.contains(r"\b" + re.escape(term_l) + r"\b", na=False)
-            ]
-
-    # Also apply active user profile allergen exclusions
-    if user_profile and user_profile.get("allergens_to_avoid"):
-        u_allgs = [a.strip().lower() for a in user_profile["allergens_to_avoid"].split(",") if a.strip()]
-        for u_a in u_allgs:
-            if u_a not in ["none", ""]:
-                df = df[
-                    ~df["ingredients"].astype(str).str.lower().str.contains(r"\b" + re.escape(u_a) + r"\b", na=False) &
-                    ~df["allergens_declared"].astype(str).str.lower().str.contains(r"\b" + re.escape(u_a) + r"\b", na=False)
-                ]
-
-    # Filter Category if detected
-    if intent["category"]:
-        cat_matches = df[df["category"].str.lower() == intent["category"].lower()]
-        df = cat_matches
-
-    # Calculate Hybrid Score for each candidate
-    scored_items = []
-
-    for _idx, row in df.iterrows():
-        p_dict = row.to_dict()
-        score = 50.0  # Base score
-        explanations = []
-
-        # 1. Nutrient Intent Scoring
-        nf = intent["nutrient_filters"]
-
-        # Sodium check
-        if "max_sodium" in nf:
-            s_val = p_dict.get("sodium_mg")
-            if pd.notna(s_val):
-                s_float = float(s_val)
-                if s_float <= nf["max_sodium"]:
-                    score += 25.0
-                    explanations.append(f"Low sodium ({int(s_float)}mg/100g)")
-                elif s_float <= nf["max_sodium"] * 1.5:
-                    score += 10.0
-                else:
-                    score -= 15.0
-            else:
-                score -= 5.0
-
-        # Fibre check
-        if "min_fibre" in nf:
-            f_val = p_dict.get("dietary_fibre_g")
-            if pd.notna(f_val):
-                f_float = float(f_val)
-                if f_float >= nf["min_fibre"]:
-                    score += 25.0
-                    explanations.append(f"High fibre ({f_float}g/100g)")
-                elif f_float >= nf["min_fibre"] * 0.7:
-                    score += 10.0
-                else:
-                    score -= 10.0
-
-        # Protein check
-        if "min_protein" in nf:
-            p_val = p_dict.get("protein_g")
-            if pd.notna(p_val):
-                p_float = float(p_val)
-                if p_float >= nf["min_protein"]:
-                    score += 25.0
-                    explanations.append(f"High protein ({p_float}g/100g)")
-                elif p_float >= nf["min_protein"] * 0.7:
-                    score += 10.0
-                else:
-                    score -= 10.0
-
-        # Sugar check
-        if "max_sugars" in nf:
-            sg_val = p_dict.get("sugars_g")
-            if pd.notna(sg_val):
-                sg_float = float(sg_val)
-                if sg_float <= nf["max_sugars"]:
-                    score += 25.0
-                    explanations.append(f"Low sugar ({sg_float}g/100g)")
-                elif sg_float <= nf["max_sugars"] * 1.5:
-                    score += 10.0
-                else:
-                    score -= 15.0
-
-        # Saturated fat check
-        if "max_sat_fat" in nf:
-            sf_val = p_dict.get("saturated_fat_g")
-            if pd.notna(sf_val):
-                sf_float = float(sf_val)
-                if sf_float <= nf["max_sat_fat"]:
-                    score += 20.0
-                    explanations.append(f"Low saturated fat ({sf_float}g/100g)")
-                else:
-                    score -= 10.0
-
-        # 2. Text Keyword Token Matching
-        if intent["keyword_tokens"]:
-            text_corpus = f"{p_dict.get('product_name', '')} {p_dict.get('brand', '')} {p_dict.get('category', '')} {p_dict.get('sub_category', '')} {p_dict.get('ingredients', '')}".lower()
-            matched_tokens = [t for t in intent["keyword_tokens"] if t in text_corpus]
-            if matched_tokens:
-                score += len(matched_tokens) * 15.0
-                explanations.append(f"Keyword match: {', '.join(matched_tokens)}")
-            else:
-                score -= 10.0
-
-        # 3. Active User Profile Match Bonus
-        if user_profile:
-            u_goal = user_profile.get("goal", "")
-            if "Reduce Sugar" in u_goal and pd.notna(p_dict.get("sugars_g")) and float(p_dict["sugars_g"]) <= 6.0:
-                score += 10.0
-            if "Reduce Sodium" in u_goal and pd.notna(p_dict.get("sodium_mg")) and float(p_dict["sodium_mg"]) <= 350.0:
-                score += 10.0
-            if "Increase Fibre" in u_goal and pd.notna(p_dict.get("dietary_fibre_g")) and float(p_dict["dietary_fibre_g"]) >= 5.0:
-                score += 10.0
-            if "Increase Protein" in u_goal and pd.notna(p_dict.get("protein_g")) and float(p_dict["protein_g"]) >= 8.0:
-                score += 10.0
-
-        # Format explanation
-        if not explanations:
-            if intent["category"]:
-                explanations.append(f"Matches category '{intent['category']}'")
-            else:
-                explanations.append("Catalogue match")
-
-        p_dict["semantic_score"] = round(min(max(score, 5.0), 99.0), 1)
-        p_dict["semantic_reason"] = " • ".join(explanations)
-        clean_item = {k: (None if pd.isna(v) else v) for k, v in p_dict.items()}
-        clean_item["nutrient_flags"] = nutrient_flags(clean_item)
-        scored_items.append(clean_item)
-
-    # Sort descending by semantic score
-    scored_items.sort(key=lambda x: float(x["semantic_score"] or 0), reverse=True)
-
-    total_matches = len(scored_items)
-    paginated = scored_items[offset: offset + limit]
-
-    return {
-        "query": query,
-        "interpreted_intent": {
-            "category": intent["category"],
-            "nutrient_focus": intent["nutrient_descriptions"],
-            "excluded_allergens": intent["excluded_allergens"],
-            "keywords": intent["keyword_tokens"]
-        },
-        "total": total_matches,
-        "products": paginated
-    }

@@ -1,5 +1,5 @@
 # EATGOOD developer commands. Requires Python 3.12+, Node 22+ and uv (https://docs.astral.sh/uv/).
-.PHONY: setup dev api web build test lint typecheck security e2e smoke check lock data clean
+.PHONY: setup dev api web build test lint typecheck security e2e smoke check lock clean
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -51,8 +51,6 @@ lock: ## Re-pin Python dependencies after editing pyproject.toml (uv.lock is wha
 	uv pip compile pyproject.toml --python-version 3.12 -o requirements.txt
 	uv pip compile pyproject.toml --group dev --python-version 3.12 -o requirements-dev.txt
 
-data: ## Regenerate the synthetic demo catalogue (reproducible, seed 42)
-	$(PY) scripts/generate_initial_data.py
 
 clean:
 	rm -rf frontend/dist .pytest_cache .mypy_cache .ruff_cache .coverage data/eatgood_app.db

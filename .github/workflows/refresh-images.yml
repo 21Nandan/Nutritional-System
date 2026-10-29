@@ -10,35 +10,47 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - run: pip install httpx
-      - name: Probe Open Food Facts search capabilities (temporary)
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Check the catalogue queries against the live search service (temporary)
         shell: python
         run: |
-          import httpx, json
-          c = httpx.Client(headers={"User-Agent": "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)"}, timeout=25)
-          F = "code,product_name,brands,categories_tags,countries_tags,unique_scans_n,nutriments,image_front_small_url"
-          IN = 'countries_tags:"en:india"'
-          NC = 'states_tags:"en:nutrition-facts-completed"'
-          tests = {
-            "india_nutrition_complete": {"q": f'{IN} AND {NC}', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "range_sugar_lte5": {"q": f'{IN} AND {NC} AND nutriments.sugars_100g:<=5', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F + ",nutriments"},
-            "range_sugar_bracket": {"q": f'{IN} AND {NC} AND nutriments.sugars_100g:[0 TO 5]', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "range_sodium": {"q": f'{IN} AND {NC} AND nutriments.sodium_100g:[0 TO 0.4]', "page_size": 3, "fields": F},
-            "or_group": {"q": f'{IN} AND (categories_tags:"en:chocolates" OR categories_tags:"en:confectioneries")', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "not_alcohol": {"q": f'{IN} AND categories_tags:"en:beverages" AND NOT categories_tags:"en:alcoholic-beverages"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "salty_snacks": {"q": f'{IN} AND {NC} AND categories_tags:"en:salty-snacks"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "text_kurkure_world": {"q": "kurkure", "page_size": 3, "fields": F},
-            "text_with_filters": {"q": f'bhujia AND {IN}', "page_size": 3, "fields": F},
-            "has_image": {"q": f'{IN} AND {NC} AND _exists_:image_front_small_url', "page_size": 3, "fields": F},
-          }
-          for name, params in tests.items():
-              try:
-                  r = c.get("https://search.openfoodfacts.org/search", params=params)
-                  body = r.json() if "json" in r.headers.get("content-type", "") else {}
-                  hits = body.get("hits") or []
-                  print("====", name, r.status_code, round(r.elapsed.total_seconds(), 2), "count", body.get("count"), "page_count", body.get("page_count"), "err", str(body.get("detail") or body.get("errors") or "")[:300])
-                  for h in hits[:5]:
-                      n = h.get("nutriments") or {}
-                      print("   ", h.get("code"), "|", h.get("product_name"), "|", h.get("brands"), "|", (h.get("categories_tags") or [])[-2:], "| india" if "en:india" in (h.get("countries_tags") or []) else "| -", "| scans", h.get("unique_scans_n"), "| kcal", n.get("energy-kcal_100g"), "| img", bool(h.get("image_front_small_url")))
-              except Exception as e:
-                  print("====", name, "EXC", repr(e))
+          import sys; sys.path.insert(0, ".")
+          from backend.core.off_catalogue import browse_catalogue, build_catalogue_query, alternative_candidates
+          from backend.core.openfoodfacts import search_openfoodfacts_text
+          cases = [
+            ("browse india", {}),
+            ("browse world", {"india_only": False}),
+            ("snacks", {"category": "Snacks"}),
+            ("biscuits", {"category": "Biscuits & Bakery"}),
+            ("chocolates", {"category": "Chocolates & Sweets"}),
+            ("instant", {"category": "Instant Foods"}),
+            ("dairy", {"category": "Dairy"}),
+            ("condiments", {"category": "Condiments & Spreads"}),
+            ("beverages", {"category": "Packaged Beverages"}),
+            ("cereals", {"category": "Breakfast Cereals"}),
+            ("text maggi", {"text": "maggi"}),
+            ("text lay's (salted)", {"text": "lay's (salted)"}),
+            ("text world nutella", {"text": "nutella", "india_only": False}),
+            ("sugar<=10 sodium<=400 satfat<=4", {"nutrient_filters": {"max_sugars": 10, "max_sodium": 400, "max_sat_fat": 4}}),
+            ("fibre>=3 protein>=7", {"nutrient_filters": {"min_fibre": 3, "min_protein": 7}}),
+            ("photos", {"has_image": True}),
+            ("intent low sugar biscuits", {"text": "low sugar biscuits"}),
+            ("intent snacks without peanuts", {"text": "high protein snacks without peanuts"}),
+            ("page 3", {"page": 3}),
+          ]
+          for name, kw in cases:
+              q, _ = build_catalogue_query(kw.get("text", ""), kw.get("category", "All"), kw.get("india_only", True), kw.get("nutrient_filters"), kw.get("has_image", False))
+              r = browse_catalogue(**kw)
+              print("====", name, "|", r["status"], "| count", r.get("count"), "| n", len(r.get("products", [])), "|", r.get("error_code") or "", "| intent", r.get("interpreted_intent"))
+              print("   query:", q)
+              for p in r.get("products", [])[:4]:
+                  print("   ", p["product_id"], "|", p["product_name"], "|", p["brand"], "|", p["category"], "/", p["sub_category"], "| kcal", p["energy_kcal"], "| sug", p["sugars_g"], "| na", p["sodium_mg"], "| img", bool(p.get("image_small_url")))
+          for cat_product in [{"category": "Snacks", "barcode": "1"}, {"category": "Packaged Beverages", "barcode": "1"}]:
+              r = alternative_candidates(cat_product)
+              print("==== alternatives", cat_product["category"], r["status"], len(r["products"]), [p["product_name"] for p in r["products"][:5]])
+          r = search_openfoodfacts_text("kurkure", limit=5)
+          print("==== text search kurkure", r["status"], r.get("count"))

@@ -5,10 +5,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.core.barcode_utils import validate_barcode
-from backend.core.data_loader import data_loader
 from backend.core.nutrition_scoring import run_full_product_assessment
 from backend.core.rate_limiter import enforce_rate_limit
-from backend.core.recommender import get_healthier_alternatives
 from backend.database import get_user_contribution_by_barcode, record_user_contribution
 from backend.errors import off_unavailable_error
 from backend.products import NUTRIENT_FIELDS, UNVERIFIED_CONTRIBUTION_STATUS, contribution_to_product, fetch_off_product
@@ -30,7 +28,6 @@ def _found(source: str, product: dict, profile: dict, val: dict, message: str) -
         "check_digit_valid": val["check_digit_valid"],
         "product": product,
         "assessment": assessment,
-        "alternatives": get_healthier_alternatives(product, profile)["alternatives"],
         "data_confidence_status": product.get("data_confidence_status"),
         "openfoodfacts_attribution": product.get("openfoodfacts_attribution"),
         "message": message,
@@ -39,7 +36,7 @@ def _found(source: str, product: dict, profile: dict, val: dict, message: str) -
 
 @router.get("/products/barcode/{barcode}")
 def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_request_profile)):
-    """Catalogue → unmoderated user contribution → Open Food Facts (cached, then live)."""
+    """Unmoderated user contribution → Open Food Facts (cached, then live)."""
     enforce_rate_limit(request, "off_barcode")
 
     val = validate_barcode(barcode, strict=False)
@@ -53,10 +50,6 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
             },
         )
     code = val["normalized"]
-
-    local = data_loader.get_product_by_barcode(code)
-    if local is not None:
-        return _found("local_database", local, profile, val, f"Found '{local['product_name']}' in the EATGOOD catalogue.")
 
     contribution = get_user_contribution_by_barcode(code)
     if contribution is not None:
@@ -80,7 +73,7 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
                 "barcode": code,
                 "barcode_format": val["format"],
                 "check_digit_valid": val["check_digit_valid"],
-                "message": f"Barcode {code} isn't in our catalogue or the product database yet.",
+                "message": f"Barcode {code} isn't in the product database yet.",
             },
         )
     raise off_unavailable_error(result)
@@ -102,7 +95,7 @@ def assess_custom_food(payload: ManualNutritionInput, profile: dict = Depends(ge
 
 @router.post("/products/contribute")
 def contribute_product(payload: ProductContributionRequest, request: Request):
-    """Stores an unlisted product as an unreviewed contribution. It can never replace a catalogue product."""
+    """Stores an unlisted product as an unreviewed contribution."""
     enforce_rate_limit(request, "contribution")
 
     val = validate_barcode(payload.barcode, strict=False)
@@ -112,11 +105,6 @@ def contribute_product(payload: ProductContributionRequest, request: Request):
             detail={"error_code": "INVALID_BARCODE", "message": val["error"] or "That doesn't look like a valid barcode."},
         )
     code = val["normalized"]
-    if data_loader.get_product_by_barcode(code) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail={"error_code": "PRODUCT_EXISTS", "message": f"Barcode {code} is already in the EATGOOD catalogue."},
-        )
 
     data = payload.model_dump()
     sub_id = record_user_contribution(
