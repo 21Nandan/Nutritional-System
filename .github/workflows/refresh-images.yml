@@ -10,38 +10,39 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - run: pip install httpx
-      - name: Probe search syntax for partial words, barcodes and ingredients (temporary)
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Check catalogue search against the live search service (temporary)
         shell: python
         run: |
-          import httpx
-          c = httpx.Client(headers={"User-Agent": "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)"}, timeout=25)
-          IN = 'countries_tags:"en:india"'
-          NC = "nutriments.energy-kcal_100g:[0 TO 1000]"
-          F = "code,product_name,brands"
-          qs = {
-            "dairy +filters": f"dairy AND {IN} AND {NC}",
-            "milk +filters": f"milk AND {IN} AND {NC}",
-            "dairy milk (none)": "dairy milk",
-            "dairy milk +IN only": f"dairy milk AND {IN}",
-            "(dairy milk) +filters": f"(dairy milk) AND {IN} AND {NC}",
-            "filters first then words": f"{IN} AND {NC} AND dairy milk",
-            "implicit words + filters": f"dairy milk {IN} {NC}",
-            "cadbury dairy +filters": f"cadbury dairy AND {IN} AND {NC}",
-            "parle +filters": f"parle AND {IN} AND {NC}",
-            "parle g (none)": "parle g",
-            "product_name:dairy +IN": f"product_name:dairy AND {IN}",
-            "cadbury da* (none)": "cadbury da*",
-            "dairy mi* (none)": "dairy mi*",
-            "dairy milk silk (none)": "dairy milk silk",
-          }
-          for name, q in qs.items():
-              r = c.get("https://search.openfoodfacts.org/search", params={"q": q, "page_size": 6, "fields": F, "langs": "en"})
-              try:
-                  b = r.json()
-              except Exception:
-                  b = {}
-              hits = b.get("hits") or []
-              print("====", name, "|", r.status_code, "| count", b.get("count"), "|", str(b.get("detail") or "")[:200])
-              for h in hits[:4]:
-                  print("    ", h.get("code"), "|", h.get("product_name"), "|", h.get("brands"))
+          import sys; sys.path.insert(0, ".")
+          from backend.core.off_catalogue import browse_catalogue
+          cases = [
+            ("cadbury", {"text": "cadbury"}),
+            ("cadbury da", {"text": "cadbury da"}),
+            ("dairy milk", {"text": "dairy milk"}),
+            ("Cadbury Dairy Milk", {"text": "Cadbury Dairy Milk"}),
+            ("  CADBURY   ", {"text": "  CADBURY   "}),
+            ("cadb", {"text": "cadb"}),
+            ("barcode", {"text": "8901233030548"}),
+            ("parle g", {"text": "parle g"}),
+            ("lay's", {"text": "lay's"}),
+            ("haldiram bhujia", {"text": "haldiram bhujia"}),
+            ("maggi + Instant Foods", {"text": "maggi", "category": "Instant Foods"}),
+            ("cadbury + Chocolates", {"text": "cadbury", "category": "Chocolates & Sweets"}),
+            ("cadbury + sugar<=10", {"text": "cadbury", "nutrient_filters": {"max_sugars": 10}}),
+            ("dairy milk + photos", {"text": "dairy milk", "has_image": True}),
+            ("low sugar biscuits", {"text": "low sugar biscuits"}),
+            ("nonsense", {"text": "zzqqxxwv"}),
+            ("browse all filters", {"nutrient_filters": {"max_sugars": 10, "max_sodium": 400, "max_sat_fat": 4, "min_fibre": 3, "min_protein": 7}}),
+            ("browse page 2", {"page": 2}),
+            ("nutella world", {"text": "nutella", "india_only": False}),
+          ]
+          for name, kw in cases:
+              r = browse_catalogue(**kw)
+              print("====", name, "|", r["status"], "| mode", r.get("match_mode"), "| count", r.get("count"), "| n", len(r.get("products", [])), "| pool", r.get("searched_pool"), "|", r.get("error_code") or "")
+              for p in r.get("products", [])[:4]:
+                  print("   ", p["product_id"], "|", p["product_name"], "|", p["brand"], "|", p["category"])

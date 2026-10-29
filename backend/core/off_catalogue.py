@@ -8,6 +8,7 @@ field filters, AND / OR / NOT, parentheses and [min TO max] ranges on nutriments
 `_exists_` does not.
 """
 
+import re
 from typing import Any
 
 from backend.core.openfoodfacts import clean_search_text, search_openfoodfacts
@@ -69,8 +70,8 @@ def build_catalogue_query(
     india_only: bool = True,
     nutrient_filters: dict[str, float | None] | None = None,
     has_image: bool = False,
-) -> tuple[str, dict[str, Any] | None]:
-    """The search-service query for a catalogue view, and the interpreted intent if the text had one."""
+) -> tuple[list[str], str, dict[str, Any] | None]:
+    """The words to search for, the filter clause, and the interpreted intent if the text had one."""
     words = clean_search_text(text)
     filters = dict(nutrient_filters or {})
     excluded: list[str] = []
@@ -93,7 +94,7 @@ def build_catalogue_query(
             "keywords": words.split(),
         }
 
-    clauses = [words] if words else []
+    clauses = []
     if india_only:
         clauses.append(INDIA)
     if category not in ("All", ""):
@@ -105,11 +106,33 @@ def build_catalogue_query(
     if has_image:
         clauses.append(HAS_PHOTO)
     clauses += [f'NOT allergens_tags:"{ALLERGEN_TAGS[a]}"' for a in excluded if a in ALLERGEN_TAGS]
-    return " AND ".join(clauses), interpreted
+    return words.split(), " AND ".join(clauses), interpreted
+
+
+def compose_query(words: list[str], filter_clause: str) -> str:
+    """Search words followed by the filters.
+
+    The search service mishandles "two words AND filter" (checked 2026-10-29: "dairy milk AND
+    countries_tags:..." finds nothing), while words separated from the filters by a space are
+    searched as text and the filters still apply.
+    """
+    return f"{' '.join(words)} {filter_clause}".strip()
 
 
 def _category_words(category: str) -> set[str]:
     return {w for syn in CATEGORY_SYNONYMS.get(category, []) for w in syn.split()}
+
+
+# How many products a partial-word search looks through (the search service has no prefix search).
+PARTIAL_WORD_POOL = 100
+# A last word shorter than this is treated as still being typed ("cadbury da").
+MIN_COMPLETE_WORD = 3
+_BARCODE = re.compile(r"^\d{8,14}$")
+
+
+def _starts_word(product: dict[str, Any], prefix: str) -> bool:
+    text = clean_search_text(f"{product.get('product_name') or ''} {product.get('brand') or ''}")
+    return any(word.startswith(prefix) for word in text.split())
 
 
 def browse_catalogue(
@@ -121,12 +144,44 @@ def browse_catalogue(
     limit: int = 30,
     page: int = 1,
 ) -> dict[str, Any]:
-    """One catalogue page. Text searches are ranked by relevance, plain browsing by popularity."""
-    query, interpreted = build_catalogue_query(text, category, india_only, nutrient_filters, has_image)
-    sort = None if clean_search_text(text) else POPULAR_FIRST
-    result = search_openfoodfacts(query, limit=limit, page=page, sort_by=sort)
-    result["interpreted_intent"] = interpreted
-    return result
+    """One catalogue page.
+
+    Text searches are ranked by relevance, plain browsing by popularity. A barcode is looked up
+    exactly. When the last word looks unfinished, or the full words find nothing, the complete
+    words are searched and results are kept if a word of their name or brand starts with the last
+    word, so "cadbury da" finds "Cadbury Dairy Milk".
+    """
+    words, filter_clause, interpreted = build_catalogue_query(text, category, india_only, nutrient_filters, has_image)
+    if len(words) == 1 and _BARCODE.match(words[0]):
+        result = search_openfoodfacts(f'code:"{words[0]}"', limit=limit, page=page)
+        result.update(interpreted_intent=None, match_mode="barcode")
+        return result
+
+    sort = None if words else POPULAR_FIRST
+    prefix_search = len(words) > 1 and len(words[-1]) < MIN_COMPLETE_WORD
+    if not prefix_search:
+        result = search_openfoodfacts(compose_query(words, filter_clause), limit=limit, page=page, sort_by=sort)
+        no_match = result["status"] == "ok" and result.get("count") == 0
+        if not (words and no_match):
+            result.update(interpreted_intent=interpreted, match_mode="words")
+            return result
+
+    head, prefix = words[:-1], words[-1]
+    pool = search_openfoodfacts(
+        compose_query(head, filter_clause), limit=PARTIAL_WORD_POOL, page=1, sort_by=None if head else POPULAR_FIRST
+    )
+    if pool["status"] == "error":
+        return pool
+    matches = [p for p in pool["products"] if _starts_word(p, prefix)]
+    start = (page - 1) * limit
+    return {
+        "status": "ok",
+        "products": matches[start:start + limit],
+        "count": len(matches),
+        "interpreted_intent": interpreted,
+        "match_mode": "partial",
+        "searched_pool": len(pool["products"]),
+    }
 
 
 def alternative_candidates(product: dict[str, Any], limit: int = 40) -> dict[str, Any]:
@@ -134,7 +189,7 @@ def alternative_candidates(product: dict[str, Any], limit: int = 40) -> dict[str
     category = product.get("category")
     if category not in CATEGORY_FILTERS:
         return {"status": "ok", "products": [], "count": 0}
-    query = " AND ".join([INDIA, CATEGORY_FILTERS[category], HAS_NUTRITION])
+    query = " AND ".join([INDIA, CATEGORY_FILTERS[category], HAS_NUTRITION])  # filters only, no words
     result = search_openfoodfacts(query, limit=limit, page=1, sort_by=POPULAR_FIRST)
     if result["status"] == "ok":
         own = str(product.get("barcode") or "")

@@ -564,11 +564,13 @@ def _search_error(error_code: str, http_status: int) -> dict[str, Any]:
 # Characters with a meaning in the search service's query syntax. Removed from visitor text so a
 # search for "lay's (salted)" is plain words, never a malformed or altered query.
 _QUERY_SYNTAX_CHARS = re.compile(r'[+\-&|!(){}\[\]^"~*?:\\/<>=]')
+# Apostrophes are dropped rather than spaced: "lay's" is searched as "lays".
+_APOSTROPHES = re.compile(r"['\u2019]")
 
 
 def clean_search_text(text: str) -> str:
     """Visitor text reduced to plain lower-case words (operators like AND/OR are lower-cased too)."""
-    return " ".join(_QUERY_SYNTAX_CHARS.sub(" ", str(text)).lower().split())
+    return " ".join(_QUERY_SYNTAX_CHARS.sub(" ", _APOSTROPHES.sub("", str(text))).lower().split())
 
 
 def search_openfoodfacts(
