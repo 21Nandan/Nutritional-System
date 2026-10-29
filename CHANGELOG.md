@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Search ranking and data quality: deterministic ranking (relevance first, then completeness,
+  ingredients/allergens, product identity and evidence of sale in India); products with severely
+  incomplete or invalid key nutrition data are no longer listed; duplicates are merged. Applies to
+  the catalogue, product search and healthier alternatives. "Sold in India" shown only on evidence.
+- Removed user-facing source and community-contribution labels from product pages, barcode results,
+  search and history. Community ratings and NOVA groups are unchanged.
+
 - Catalogue: products now come from Open Food Facts (sold in India by default, or all countries). The
   852-product generated catalogue is quarantined in `data/quarantine/`, not deleted.
 - Search: several words, an unfinished last word ("cadbury da"), extra spaces and barcodes work;

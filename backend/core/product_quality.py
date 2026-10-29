@@ -113,12 +113,19 @@ def relevance(product: dict[str, Any], query: str) -> int:
         return 90
 
     def word_score(w: str, is_last: bool) -> float:
-        if w in text_words:
-            return 1.0
-        if is_last and any(t.startswith(w) for t in text_words):
-            return 0.85  # word still being typed
-        best = max(SequenceMatcher(None, w, t).ratio() for t in text_words)
-        return 0.7 if best >= _FUZZY_WORD and len(w) >= 4 else 0.0
+        # A word found in the product name counts more than one found only in the brand, so
+        # "kurkure" ranks products named "Kurkure ..." above other products of that brand.
+        for words, weight in ((name_words, 1.0), (brand_words, 0.8)):
+            if w in words:
+                return weight
+        for words, weight in ((name_words, 0.85), (brand_words, 0.7)):
+            if is_last and any(t.startswith(w) for t in words):
+                return weight  # word still being typed
+        if len(w) >= 4:
+            for words, weight in ((name_words, 0.7), (brand_words, 0.6)):
+                if words and max(SequenceMatcher(None, w, t).ratio() for t in words) >= _FUZZY_WORD:
+                    return weight  # likely misspelling
+        return 0.0
 
     scores = [word_score(w, i == len(q_words) - 1) for i, w in enumerate(q_words)]
     matched = sum(1 for s in scores if s > 0)

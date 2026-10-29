@@ -17,6 +17,29 @@ The catalogue, search, barcode lookups, comparisons and healthier alternatives a
 Values are community-contributed and can be wrong or missing; missing values are shown as "Not
 stated" and never treated as zero.
 
+### Which products are listed, and in what order (`backend/core/product_quality.py`)
+
+The same rules apply to catalogue pages, product search and healthier alternatives:
+
+- **Key nutrition values:** energy, protein, carbohydrate, sugars, total fat, saturated fat and sodium
+  (the core panel on Indian labels). A product is listed only if energy is stated and at most 3 of
+  the others are missing. Fibre, added sugars, trans fat and cholesterol are optional.
+- **Invalid records are not listed:** sugars above carbohydrates, saturated fat above total fat,
+  energy above 950 kcal per 100 g, negative or unreadable values, or no stated basis (the same
+  checks the grade uses). Missing values are never counted as zero.
+- **Order:** relevance to the search text first (exact name, name start, all words, a word still
+  being typed, close spellings, brand), in bands of 20 points; within a band, data quality
+  (key and optional nutrition values, ingredients, allergen declaration, barcode check digit, brand,
+  evidence of sale in India); then the search service's own order. A weakly matching product can
+  never outrank a strong match because it has more data.
+- **Duplicates** (same barcode, or same brand, name and nutrition values) are merged, keeping the
+  most complete record.
+- **Sold in India** is shown only when the record lists India among its countries of sale; a missing
+  country list means unknown, never assumed from the brand or an 890 barcode prefix.
+- Text searches rank the first 100 results from the search service. Plain browsing ranks each page.
+- A barcode lookup shows the scanned product even if its data is incomplete (with an honest
+  "not enough data" in place of scores).
+
 ## The former built-in catalogue (quarantined)
 
 The 852-product catalogue described below is **no longer used by the app**. Its files are kept,

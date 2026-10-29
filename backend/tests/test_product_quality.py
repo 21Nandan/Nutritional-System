@@ -65,6 +65,13 @@ def test_typos_and_unfinished_words_still_match():
     assert relevance(bar, "") == 0
 
 
+def test_a_name_match_ranks_above_a_brand_only_match():
+    brand_only = product("Puffcorn", brand="Kurkure", barcode="1001")  # complete data
+    named = product("Kurkure Masala Munch", brand="PepsiCo", barcode="1002", ingredients="", allergens_declared="")
+    ranked, _ = rank_products([brand_only, named], "kurkure")
+    assert names(ranked) == ["Kurkure Masala Munch", "Puffcorn"]
+
+
 def test_ranking_is_deterministic():
     items = [product(f"Cadbury Dairy Milk {n}", barcode=str(5000 + n)) for n in range(6)]
     first, _ = rank_products(items, "cadbury dairy milk")

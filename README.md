@@ -113,8 +113,9 @@ once, or behind a corporate proxy set `SSL_CERT_FILE` to your organisation's CA 
 
 ## Limitations
 
-- Product data comes from Open Food Facts and is community-contributed. Text search matches whole words;
-  an unfinished last word is matched against the first 100 results, and ingredient text is not searchable.
+- Product data comes from Open Food Facts and can be wrong or incomplete. Text searches rank the first
+  100 results from the search service; ingredient text is not searchable. Products with severely
+  incomplete or invalid key nutrition data are not listed (rules in docs/DATA.md).
 - Thresholds are informed by, but not yet checked against, the cited documents. Chocolates, sweets and
   condiments get no grade.
 - Label reading is English only and struggles with glare, curved packs and Hindi/bilingual labels.

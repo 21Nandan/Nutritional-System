@@ -24,7 +24,7 @@ jobs:
           from backend.core.off_catalogue import browse_catalogue, alternative_candidates
           from backend.core.openfoodfacts import search_openfoodfacts_text
           from backend.core.product_quality import rank_products
-          for q in ["cadbury", "cadbury da", "dairy milk", "Cadbury Dairy Milk", "maggi", "parle g", "kurkure", "haldiram bhujia", "amul butter", "britania", "zzqqxxwv", ""]:
+          for q in ["kurkure", "haldiram bhujia", "cadbury da", "dairy milk", "amul butter", "britania"]:
               r = browse_catalogue(text=q)
               print("==== catalogue", repr(q), r["status"], "| mode", r.get("match_mode"), "| count", r.get("count"), "| pool", r.get("searched_pool"), "| removed", r.get("removed"))
               for p in r.get("products", [])[:5]:
