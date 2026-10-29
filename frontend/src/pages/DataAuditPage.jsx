@@ -11,7 +11,7 @@ const SOURCES = [
   },
   {
     name: 'Open Food Facts',
-    use: 'Barcode lookups and search results marked "Open Food Facts"; 38 product photos',
+    use: 'Barcode lookups, search results marked "Open Food Facts", and catalogue product photos',
     licence: 'Database: ODbL 1.0 · Photos: CC BY-SA',
     note: 'Community-contributed and not checked by EATGOOD.',
     href: 'https://world.openfoodfacts.org',

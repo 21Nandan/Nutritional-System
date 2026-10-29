@@ -33,23 +33,29 @@ on the `backup-antigravity-original` branch.
 
 ## Images
 
-38 products have a photo, stored in `data/product_images.csv` and hotlinked from Open Food Facts
-(CC BY-SA). Findings:
+26 products have a photo, listed in `data/product_images.csv` and loaded from Open Food Facts'
+public image server (`images.openfoodfacts.org`, CC BY-SA). How they were checked (2026-10-29):
 
-- All 38 were matched by **product name**, not barcode. 14 were labelled `exact_barcode`, but none of the
-  barcodes in the image URLs matches the (random) barcode in the catalogue. They are now labelled
-  `matching_method = name_match`, `review_status = unverified`.
-- 37 of 38 URLs point at `images.openfoodfacts.net`, which is Open Food Facts' **staging** domain and
-  may not be permanent. 1 points at the production domain `images.openfoodfacts.org`.
-- Whether each photo shows the right product, or a back-of-pack image, could not be checked here
-  (Open Food Facts was blocked from the work environment). The earlier report of Haldiram's Navratan Mix
-  showing a Maggi pack came from the old code; the Navratan record now points at Open Food Facts product
-  8904004412956. **Unverified.**
-- Products without a photo show a neutral category placeholder.
+- The original 38 links pointed at `images.openfoodfacts.net`, Open Food Facts' password-protected
+  **staging** server, so browsers could not load any of them and the app showed placeholders.
+- `scripts/refresh_product_images.py` looked up each image barcode on the production API (run on
+  GitHub Actions, workflow "Refresh product images"). It recorded the current production image URL and
+  the product name Open Food Facts holds (`off_product_name`).
+- Each Open Food Facts name was compared with the catalogue name. 26 match the same product
+  (`review_status = name_checked`).
+- 12 were removed because Open Food Facts holds a different product or doesn't say which variant it is.
+  These products show the category placeholder instead.
+  - Different product: Bingo Masala Madness (OFF: Tomato Madness), Balaji Wafers Masala (Sev Murmura),
+    Britannia Time Pass (Vita Marie Gold), Oreo biscuits (Cadbury Dairy Milk Oreo bar), Epigamia
+    strawberry smoothie (natural yogurt), Pringles South African Peri Peri (Kickin' Peri Peri),
+    Parle-G Gold (regular Parle-G).
+  - Variant not stated: Too Yumm Tangy Tomato, Too Yumm Karare Munchy Masala, Balaji Crunchex Chilli,
+    Saffola Masala Oats, Ferrero Rocher.
+- Photos are matched by name, not by the catalogue's random barcodes, and the photos themselves have
+  not been inspected by eye. Some show a pack from another country (for example a French Doritos pack).
 
-Proposal (needs a person with network access, about 30 minutes): open each URL in
-`data/product_images.csv`, set `review_status` to `verified` or remove the row, and switch `.net` to
-`.org` URLs where the same image exists.
+To refresh the links later, run the "Refresh product images" workflow from the Actions tab and review
+the printed CSV before committing it.
 
 ## Pipeline
 

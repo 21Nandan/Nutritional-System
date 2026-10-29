@@ -5,9 +5,6 @@ name: Refresh product images
 # nothing is committed automatically.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/sleepy-franklin-rxra0a]
-    paths: [scripts/refresh_product_images.py, .github/workflows/refresh-images.yml]
 
 permissions:
   contents: read
