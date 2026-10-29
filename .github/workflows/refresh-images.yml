@@ -17,15 +17,19 @@ jobs:
           import httpx, json
           c = httpx.Client(headers={"User-Agent": "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)"}, timeout=25)
           F = "code,product_name,brands,categories_tags,countries_tags,unique_scans_n,nutriments,image_front_small_url"
+          IN = 'countries_tags:"en:india"'
+          NC = 'states_tags:"en:nutrition-facts-completed"'
           tests = {
-            "india_browse_popular": {"q": 'countries_tags:"en:india"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "india_snacks": {"q": 'countries_tags:"en:india" AND categories_tags:"en:snacks"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
-            "india_text_maggi": {"q": 'maggi countries_tags:"en:india"', "page_size": 5, "fields": F},
-            "india_text_and": {"q": 'maggi AND countries_tags:"en:india"', "page_size": 5, "fields": F},
-            "empty_q": {"q": "", "page_size": 3, "fields": F},
-            "no_q_sort": {"sort_by": "-unique_scans_n", "page_size": 3, "fields": F},
-            "page_50": {"q": 'countries_tags:"en:india"', "sort_by": "-unique_scans_n", "page_size": 30, "page": 50, "fields": "code"},
-            "beverages_india": {"q": 'countries_tags:"en:india" AND categories_tags:"en:beverages"', "page_size": 3, "fields": F},
+            "india_nutrition_complete": {"q": f'{IN} AND {NC}', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "range_sugar_lte5": {"q": f'{IN} AND {NC} AND nutriments.sugars_100g:<=5', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F + ",nutriments"},
+            "range_sugar_bracket": {"q": f'{IN} AND {NC} AND nutriments.sugars_100g:[0 TO 5]', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "range_sodium": {"q": f'{IN} AND {NC} AND nutriments.sodium_100g:[0 TO 0.4]', "page_size": 3, "fields": F},
+            "or_group": {"q": f'{IN} AND (categories_tags:"en:chocolates" OR categories_tags:"en:confectioneries")', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "not_alcohol": {"q": f'{IN} AND categories_tags:"en:beverages" AND NOT categories_tags:"en:alcoholic-beverages"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "salty_snacks": {"q": f'{IN} AND {NC} AND categories_tags:"en:salty-snacks"', "sort_by": "-unique_scans_n", "page_size": 5, "fields": F},
+            "text_kurkure_world": {"q": "kurkure", "page_size": 3, "fields": F},
+            "text_with_filters": {"q": f'bhujia AND {IN}', "page_size": 3, "fields": F},
+            "has_image": {"q": f'{IN} AND {NC} AND _exists_:image_front_small_url', "page_size": 3, "fields": F},
           }
           for name, params in tests.items():
               try:
