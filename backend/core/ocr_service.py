@@ -17,10 +17,12 @@ import re
 import shutil
 import logging
 import base64
+import ssl
 from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 from PIL import Image, ImageOps
 import httpx
+import certifi
 
 try:
     import cv2
@@ -294,7 +296,8 @@ def run_cloud_vision_ocr(image_path: str) -> Dict[str, Any]:
 
         url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
 
-        with httpx.Client(timeout=12.0) as client:
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        with httpx.Client(verify=ssl_ctx, timeout=12.0) as client:
             resp = client.post(url, json=payload)
 
         if resp.status_code == 400:

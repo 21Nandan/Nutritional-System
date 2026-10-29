@@ -678,6 +678,7 @@ def lookup_product_by_barcode(barcode: str, request: Request = None):
             status_code=404,
             detail={
                 "status": "not_found",
+                "error_code": "OFF_PRODUCT_NOT_FOUND",
                 "barcode": clean_code,
                 "barcode_format": val["format"],
                 "check_digit_valid": val["check_digit_valid"],
@@ -686,11 +687,16 @@ def lookup_product_by_barcode(barcode: str, request: Request = None):
         )
 
     else:
-        # Network or timeout error
+        req_id = (request.headers.get("x-request-id") if request else None) or "req_internal"
+        err_code = off_result.get("error_code", "OFF_UNAVAILABLE")
+        http_code = off_result.get("http_status", 502)
+        tech_detail = off_result.get("technical_detail", "")
+        logger.error(f"[{req_id}] OFF barcode lookup failed for '{clean_code}': error_code={err_code}, detail='{tech_detail}'")
         raise HTTPException(
-            status_code=502,
+            status_code=http_code,
             detail={
                 "status": "external_unavailable",
+                "error_code": err_code,
                 "barcode": clean_code,
                 "barcode_format": val["format"],
                 "message": off_result.get("message") or "External Open Food Facts service currently unavailable."

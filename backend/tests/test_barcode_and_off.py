@@ -287,6 +287,7 @@ def test_openfoodfacts_rate_limit_handling():
 
     res = fetch_product_from_openfoodfacts("5449000000996", client=MockClient())
     assert res["status"] == "error"
+    assert res["error_code"] == "OFF_RATE_LIMITED"
     assert "rate limit" in res["message"].lower()
 
 def test_openfoodfacts_timeout_handling():
@@ -300,7 +301,105 @@ def test_openfoodfacts_timeout_handling():
 
     res = fetch_product_from_openfoodfacts("5449000000996", client=TimeoutClient())
     assert res["status"] == "error"
+    assert res["error_code"] == "OFF_TIMEOUT"
+    assert res["http_status"] == 504
     assert "timed out" in res["message"].lower()
+
+def test_openfoodfacts_ssl_cert_verification_error_handling():
+    """Verify ssl.SSLCertVerificationError is captured cleanly with OFF_TLS_ERROR and no raw tracebacks."""
+    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+    import httpx
+    import ssl
+
+    class SSLErrorClient:
+        def get(self, url, headers=None, params=None):
+            raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)")
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=SSLErrorClient())
+    assert res["status"] == "error"
+    assert res["error_code"] == "OFF_TLS_ERROR"
+    assert res["http_status"] == 502
+    assert "unable to verify secure connection" in res["message"].lower()
+    assert "_ssl.c" not in res["message"]  # Raw Python C-extension detail must be concealed from user
+    assert "_ssl.c" in res["technical_detail"]  # But preserved for server logging
+
+def test_openfoodfacts_network_error_handling():
+    """Verify socket/network connection refusal returns clean OFF_NETWORK_ERROR."""
+    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+    import httpx
+
+    class NetworkErrorClient:
+        def get(self, url, headers=None, params=None):
+            raise httpx.ConnectError("Failed to establish a new connection: [Errno 61] Connection refused")
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=NetworkErrorClient())
+    assert res["status"] == "error"
+    assert res["error_code"] == "OFF_NETWORK_ERROR"
+    assert res["http_status"] == 502
+    assert "couldn't reach the open food facts database" in res["message"].lower()
+    assert "Errno 61" not in res["message"]
+    assert "Errno 61" in res["technical_detail"]
+
+def test_openfoodfacts_upstream_500_handling():
+    """Verify upstream HTTP 500 server error returns clean OFF_UPSTREAM_ERROR."""
+    from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+
+    class ServerErrorResponse:
+        status_code = 500
+        def json(self):
+            return {"error": "Internal Server Error"}
+
+    class ServerErrorClient:
+        def get(self, url, headers=None, params=None):
+            return ServerErrorResponse()
+
+    res = fetch_product_from_openfoodfacts("5449000000996", client=ServerErrorClient())
+    assert res["status"] == "error"
+    assert res["error_code"] == "OFF_UPSTREAM_ERROR"
+    assert res["http_status"] == 502
+    assert "experiencing issues" in res["message"].lower()
+
+def test_barcode_endpoint_ssl_error_integration():
+    """Verify API endpoint returns HTTP 502 with structured error_code and sanitized message on SSL failure."""
+    from unittest.mock import patch
+    uncached_test_barcode = "9999999999994"
+    with patch("backend.main.fetch_product_from_openfoodfacts") as mock_off:
+        mock_off.return_value = {
+            "status": "error",
+            "error_code": "OFF_TLS_ERROR",
+            "http_status": 502,
+            "product": None,
+            "barcode": uncached_test_barcode,
+            "message": "Unable to verify secure connection to Open Food Facts. Check your system certificates or enter nutrition facts manually.",
+            "technical_detail": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1129)"
+        }
+        res = client.get(f"/api/products/barcode/{uncached_test_barcode}")
+        assert res.status_code == 502
+        detail = res.json()["detail"]
+        assert detail["status"] == "external_unavailable"
+        assert detail["error_code"] == "OFF_TLS_ERROR"
+        assert "_ssl.c" not in detail["message"]
+        assert "unable to verify secure connection" in detail["message"].lower()
+
+def test_barcode_endpoint_not_found_is_distinct_from_network_error():
+    """Verify HTTP 404 with OFF_PRODUCT_NOT_FOUND is returned for unknown barcodes, never looking like connection error."""
+    from unittest.mock import patch
+    with patch("backend.main.fetch_product_from_openfoodfacts") as mock_off:
+        mock_off.return_value = {
+            "status": "not_found",
+            "error_code": "OFF_PRODUCT_NOT_FOUND",
+            "http_status": 404,
+            "product": None,
+            "barcode": "7622210000000",
+            "message": "Barcode 7622210000000 was not found in the Open Food Facts database."
+        }
+        res = client.get("/api/products/barcode/7622210000000")
+        assert res.status_code == 404
+        detail = res.json()["detail"]
+        assert detail["status"] == "not_found"
+        assert detail["error_code"] == "OFF_PRODUCT_NOT_FOUND"
+        assert "not found" in detail["message"].lower()
+        assert "network" not in detail["message"].lower()
 
 def test_off_normalization_extracts_proteins_and_additives():
     """Verify map_off_product_to_eatgood maps proteins_100g, additives_tags, allergens_tags properly."""

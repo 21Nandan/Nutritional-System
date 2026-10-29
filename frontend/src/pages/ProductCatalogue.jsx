@@ -14,6 +14,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
   const [pageSize, setPageSize] = useState('All');
   const [hasImageFilter, setHasImageFilter] = useState(false);
   const [semanticIntent, setSemanticIntent] = useState(null);
+  const [apiError, setApiError] = useState(null);
 
   // Filter Drawer State & Nutritional Filter States (Default: show everything / all products)
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -113,15 +114,22 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
     fetch(`/api/products?${params.toString()}&user_id=${encodeURIComponent(cid)}`, {
       headers: { 'X-User-Id': cid }
     })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`Catalogue API returned ${res.status}`);
+        }
+        return res.json();
+      })
       .then(data => {
         setProducts(data.products || []);
         setTotal(data.total || 0);
         setSemanticIntent(data.interpreted_intent || null);
+        setApiError(null);
         setLoading(false);
       })
       .catch(err => {
         console.error(err);
+        setApiError('Unable to load catalogue products right now. Please check your connection or retry.');
         setLoading(false);
       });
   };
@@ -610,6 +618,21 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       {loading ? (
         <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>
           Loading products...
+        </div>
+      ) : apiError ? (
+        <div style={{ padding: '48px 20px', textAlign: 'center', background: '#fff9fa', borderRadius: 12, border: '1px solid #ffcdd2' }}>
+          <AlertCircle size={36} color="#d32f2f" style={{ margin: '0 auto 12px' }} />
+          <h3 style={{ fontSize: '1.2rem', color: '#c62828', marginBottom: 6 }}>Unable to Connect to Product Catalogue</h3>
+          <p style={{ color: '#555', fontSize: '0.9rem', maxWidth: 480, margin: '0 auto 16px' }}>
+            {apiError}
+          </p>
+          <button
+            className="btn-primary"
+            onClick={fetchProducts}
+            style={{ padding: '8px 20px', fontSize: '0.88rem' }}
+          >
+            Retry Connection
+          </button>
         </div>
       ) : products.length === 0 ? (
         <div style={{ padding: '60px 20px', textAlign: 'center', background: '#fff', borderRadius: 12, border: '1px solid var(--color-border)' }}>

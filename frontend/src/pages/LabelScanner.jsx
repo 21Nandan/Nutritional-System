@@ -165,8 +165,8 @@ export default function LabelScanner({
           message: data.detail?.message || `Barcode ${code} was not found in the local catalogue or Open Food Facts.`
         });
       } else {
-        const errorDetail = data.detail?.message || data.detail || 'Barcode lookup failed.';
-        setBarcodeError(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
+        const errorMsg = data?.detail?.message || (typeof data?.detail === 'string' ? data.detail : null) || 'Unable to complete barcode lookup. Please check connection or enter nutrition details manually.';
+        setBarcodeError(errorMsg);
       }
     } catch (err) {
       console.error(err);

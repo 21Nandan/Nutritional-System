@@ -1,6 +1,12 @@
 {
   "buildCommand": "cd frontend && (unset npm_config_cache_dir NPM_CONFIG_CACHE_DIR 2>/dev/null || true) && npm install && npm run build",
   "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{backend/**,data/**,models/**}",
+      "maxDuration": 15
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

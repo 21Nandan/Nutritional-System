@@ -313,6 +313,17 @@ PYTHONPATH=. backend/venv/bin/python -c "from backend.database import init_db; i
   - Ensure packaging is well lit and barcode lines are flat and unobstructed.
   - Tap the "Torch" toggle button if supported by your smartphone.
   - If the barcode is worn or curved, use the "Enter Barcode Manually" option or "Search by Name".
+- **macOS SSL Certificate Verification (`[SSL: CERTIFICATE_VERIFY_FAILED]`):**
+  - If running on macOS with Python from python.org or standard installer, Python does not read the macOS Keychain by default.
+  - To install the official certificates bundle for your Python installation, run:
+    ```bash
+    /Applications/Python\ 3.x/Install\ Certificates.command
+    ```
+  - Alternatively, export the Mozilla CA bundle path from `certifi` in your terminal shell:
+    ```bash
+    export SSL_CERT_FILE=$(python3 -m certifi)
+    ```
+  - EATGOOD's backend explicitly configures `httpx` to verify against Mozilla's trusted CA bundle using `certifi.where()`, ensuring robust TLS verification across all platforms without disabling certificate validation.
 - **Open Food Facts Rate Limits / Offline:**
   - Open Food Facts API v3 applies community rate limits. If a 429 status code is returned, EATGOOD displays an informative notice and prompts the user to use manual entry or search the local catalogue.
 - **CORS & Security Headers:**

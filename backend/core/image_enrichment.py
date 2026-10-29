@@ -14,8 +14,13 @@ enriches only visual packaging assets (front, ingredients, nutrition labels) wit
 
 import logging
 import re
+import ssl
 from typing import Dict, Any, Optional, List, Tuple
 import httpx
+import certifi
+
+def _get_ssl_context() -> ssl.SSLContext:
+    return ssl.create_default_context(cafile=certifi.where())
 
 from backend.database import (
     upsert_product_image,
@@ -69,10 +74,10 @@ CURATED_INDIAN_PRODUCT_SEEDS: List[Dict[str, Any]] = [
         "product_name": "Kurkure Masala Munch",
         "brand": "Kurkure",
         "category": "Snacks",
-        "image_url": "https://images.openfoodfacts.net/images/products/890/149/136/1026/front_en.51.400.jpg",
-        "image_small_url": "https://images.openfoodfacts.net/images/products/890/149/136/1026/front_en.51.200.jpg",
+        "image_url": "https://images.openfoodfacts.org/images/products/890/149/136/1026/1.400.jpg",
+        "image_small_url": "https://images.openfoodfacts.org/images/products/890/149/136/1026/1.200.jpg",
         "image_ingredients_url": None,
-        "image_nutrition_url": None,
+        "image_nutrition_url": "https://images.openfoodfacts.org/images/products/890/149/136/1026/8.400.jpg",
         "image_source": "openfoodfacts",
         "matching_method": "brand_product_compatible",
         "review_status": "verified"
@@ -617,7 +622,7 @@ def fetch_image_by_exact_barcode(
 
     close_client = False
     if client is None:
-        client = httpx.Client(timeout=REQUEST_TIMEOUT)
+        client = httpx.Client(verify=_get_ssl_context(), timeout=REQUEST_TIMEOUT)
         close_client = True
 
     try:
@@ -732,7 +737,7 @@ def fetch_image_by_brand_and_product(
 
     close_client = False
     if client is None:
-        client = httpx.Client(timeout=REQUEST_TIMEOUT)
+        client = httpx.Client(verify=_get_ssl_context(), timeout=REQUEST_TIMEOUT)
         close_client = True
 
     try:
@@ -952,7 +957,7 @@ def run_catalogue_image_enrichment(
     if not batch:
         return results
 
-    client = httpx.Client(timeout=REQUEST_TIMEOUT)
+    client = httpx.Client(verify=_get_ssl_context(), timeout=REQUEST_TIMEOUT)
     try:
         for idx, row in enumerate(batch):
             if idx >= max_requests:
