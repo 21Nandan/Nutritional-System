@@ -20,27 +20,23 @@ jobs:
           NC = "nutriments.energy-kcal_100g:[0 TO 1000]"
           F = "code,product_name,brands"
           qs = {
-            "cadbury": f"cadbury AND {IN} AND {NC}",
-            "Cadbury caps": f"Cadbury AND {IN} AND {NC}",
-            "cadbury da* (no AND)": f"cadbury da* AND {IN} AND {NC}",
-            "cadbury AND da*": f"cadbury AND da* AND {IN} AND {NC}",
-            "(cadbury da*)": f"(cadbury AND da*) AND {IN} AND {NC}",
-            "cadb*": f"cadb* AND {IN} AND {NC}",
-            "dairy milk": f"dairy milk AND {IN} AND {NC}",
-            "(dairy AND milk)": f"(dairy AND milk) AND {IN} AND {NC}",
-            "\"dairy milk\" phrase": f'"dairy milk" AND {IN} AND {NC}',
-            "code exact": 'code:"8901233030548"',
-            "code digits as text": "8901233030548",
-            "ingredients_text cocoa": f"ingredients_text:cocoa AND {IN} AND {NC}",
-            "ingredients_text_en cocoa": f"ingredients_text_en:cocoa AND {IN} AND {NC}",
-            "ingredients.text cocoa": f"ingredients_text.en:cocoa AND {IN} AND {NC}",
-            "maggi": f"maggi AND {IN} AND {NC}",
-            "mag*": f"mag* AND {IN} AND {NC}",
-            "parle g": f"parle g AND {IN} AND {NC}",
-            "(parle AND g*)": f"(parle AND g*) AND {IN} AND {NC}",
+            "dairy +filters": f"dairy AND {IN} AND {NC}",
+            "milk +filters": f"milk AND {IN} AND {NC}",
+            "dairy milk (none)": "dairy milk",
+            "dairy milk +IN only": f"dairy milk AND {IN}",
+            "(dairy milk) +filters": f"(dairy milk) AND {IN} AND {NC}",
+            "filters first then words": f"{IN} AND {NC} AND dairy milk",
+            "implicit words + filters": f"dairy milk {IN} {NC}",
+            "cadbury dairy +filters": f"cadbury dairy AND {IN} AND {NC}",
+            "parle +filters": f"parle AND {IN} AND {NC}",
+            "parle g (none)": "parle g",
+            "product_name:dairy +IN": f"product_name:dairy AND {IN}",
+            "cadbury da* (none)": "cadbury da*",
+            "dairy mi* (none)": "dairy mi*",
+            "dairy milk silk (none)": "dairy milk silk",
           }
           for name, q in qs.items():
-              r = c.get("https://search.openfoodfacts.org/search", params={"q": q, "page_size": 4, "fields": F, "langs": "en"})
+              r = c.get("https://search.openfoodfacts.org/search", params={"q": q, "page_size": 6, "fields": F, "langs": "en"})
               try:
                   b = r.json()
               except Exception:
