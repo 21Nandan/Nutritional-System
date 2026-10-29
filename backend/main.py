@@ -93,12 +93,17 @@ FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 if not IS_SERVERLESS and (FRONTEND_DIST / "index.html").is_file():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
+    # Only files that exist in the build at startup can be served; request paths are
+    # looked up in this map and never joined onto the filesystem.
+    STATIC_FILES = {
+        path.relative_to(FRONTEND_DIST).as_posix(): path
+        for path in FRONTEND_DIST.rglob("*")
+        if path.is_file() and not path.relative_to(FRONTEND_DIST).as_posix().startswith("assets/")
+    }
+    INDEX_HTML = FRONTEND_DIST / "index.html"
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str):
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail={"error_code": "NOT_FOUND", "message": "Unknown API route."})
-        candidate = (FRONTEND_DIST / full_path).resolve()
-        if candidate.is_file() and FRONTEND_DIST.resolve() in candidate.parents:
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
-
+        return FileResponse(STATIC_FILES.get(full_path, INDEX_HTML))

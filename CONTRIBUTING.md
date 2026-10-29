@@ -16,5 +16,5 @@ Rules for this project:
   Changing one needs a source and an entry in `docs/THRESHOLDS.md`.
 - **Honest claims.** Don't describe data as verified, audited or authentic unless it is, and don't
   imply endorsement by WHO, FSSAI or others.
-- Python dependencies: edit `pyproject.toml`, then `make lock`. Frontend dependencies: `npm install --save-exact`.
+- Python dependencies: edit `pyproject.toml`, then `make lock` (updates `uv.lock`, used by Vercel, and `requirements*.txt`, used by CI). Frontend dependencies: `npm install --save-exact`.
 - Use plain language in anything a user reads.

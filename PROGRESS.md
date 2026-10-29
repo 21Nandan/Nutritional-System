@@ -19,6 +19,14 @@
    in the environment settings, add `eatgood26.vercel.app`, `vercel.com`, `api.vercel.com`,
    `world.openfoodfacts.org` and `images.openfoodfacts.org` under Allowed domains.
 2. **Vercel** (dashboard → project → Settings), because no Vercel login is available here:
+   - **Most important: Build and Deployment → Root Directory → clear it (use the repository root),
+     then redeploy.** Every deployment since the original commit `f1faaf6` (06:20 UTC, before this
+     work) has failed within 5–7 seconds, before any build ran. Vercel's PR comment marks the project
+     as a monorepo (Root Directory set to a subfolder, almost certainly `frontend/`). The previous
+     tool deleted the copies of `api/`, `data/` and `vercel.json` it had placed in `frontend/`, so
+     Vercel finds nothing to deploy. The same build succeeds locally with the Vercel CLI from the
+     repository root. Until this is changed, the live site keeps serving the last deployment from
+     before 06:20.
    - Check Environment Variables for `npm_config_cache_dir` / `NPM_CONFIG_CACHE_DIR` (the likely
      source of "Unknown env config cache-dir") and delete it. Also delete `VISION_API_KEY`, which is
      no longer used.
