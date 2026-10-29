@@ -1,180 +1,140 @@
-# EATGOOD — System Audit & Upgrade Report
+# EATGOOD audit report
 
-**Repository:** `github.com/21Nandan/Nutritional-System`  
-**Live Production URL:** `https://eatgood26.vercel.app`  
-**Date:** October 29, 2026  
-**Status:** Phase 0 & Phase 1 Complete (Baseline Established, Root Cause Diagnosed with Evidence)
+Date: 2026-10-29 · Baseline: `f1faaf6` (preserved on branch `backup-antigravity-original`) ·
+Work branch: `claude/sleepy-franklin-rxra0a`
 
----
+## Limits of this audit
 
-## 1. Executive Summary
+The work environment could not reach `eatgood26.vercel.app`, Vercel's API, `world.openfoodfacts.org` or
+WHO/PubMed pages (the proxy refused the connections), and had no Vercel credentials. **Everything about
+the live deployment is unverified.** Everything else below was reproduced locally, with commands and
+tests in the repository.
 
-This report establishes the baseline status of the **EATGOOD** food safety and nutritional scoring platform and diagnoses the P0 production failure where the Catalogue page on `https://eatgood26.vercel.app` renders empty (`"No matching products found"`).
+## Findings by severity
 
-### Key Findings
-1. **P0 Root Cause:** All `/api/*` endpoints on the live deployment return **`500 FUNCTION_INVOCATION_FAILED`** because non-Python assets (`data/*.csv` and `data/eatgood_app.db`) are excluded from the Vercel serverless function bundle due to missing array-formatted `includeFiles` in `vercel.json`. Module-level synchronous execution of `data_loader.py` and `database.py:init_db()` crashes on missing filesystem paths during Lambda cold-start initialization.
-2. **Frontend Error Masking:** The React frontend swallows non-200 / 500 HTML responses in `.catch()` handlers, resetting product and category state to empty arrays `[]`. As a result, catastrophic backend outages render identically to a genuine empty search query.
-3. **Repository Duplication & Dead Code:** The repository contains duplicate trees inside `frontend/` (`frontend/data/`, `frontend/models/`, `frontend/api/`, `frontend/requirements.txt`, `frontend/vercel.json`), plus untracked/stray SQLite database files and upload artifacts committed to git history.
-4. **Local vs. Production Discrepancy:** All 11 platform flows (catalogue, search, category filter, 3-layer assessment, barcode lookup, profile, save product, history, data quality audit) execute with 100% success locally (103/103 pytest tests passing), proving the business logic is functional when provided with valid data paths.
+### Critical
+1. **The catalogue is synthetic but was presented as real and verified.** `scripts/generate_initial_data.py`
+   (seed 42) reproduces all 852 products byte for byte: random nutrients, random allergens, random
+   barcodes. The records said "Label Scan / Retail Packaging Audit 2026" and "Verified", and the README
+   said "852 authentic products". **Fixed:** relabelled as synthetic (nutrient values unchanged), with a
+   persistent banner, an "About the data" page and a dataset manifest checked at startup.
+2. **One visitor's data could reach or harm another.**
+   - A new visitor inherited the shared default profile, which anyone could overwrite, allergens included.
+   - `GET /api/history` returned everyone's history, and `DELETE /api/history` erased it.
+   - Saved items and OCR scan logs were global.
 
----
+   **Fixed:** the server stores no personal data. The profile lives in the browser and is sent per
+   request (goal, diet and allergens only). Tests confirm the old endpoints no longer exist.
+3. **Allergen checks ignored the visitor on two paths.** Barcode lookup and the active
+   `/api/alternatives` route used the global default profile, so alternatives could include the user's
+   allergen. **Fixed:** every path uses the request profile; an invariant test covers catalogue,
+   barcode (catalogue, contribution and Open Food Facts), manual/OCR entry, compare, saved items, and
+   alternatives for 5 allergens across all 8 categories.
 
-## 2. Phase 0: Baseline Repository Audit
+### High
+4. **Allergen matching errors.**
+   - Declarations matched by exact substring ("Egg" missed Eggs, "almonds" missed Tree Nuts).
+   - The "may contain" branch could never run.
+   - Custom allergens were never matched.
+   - "coconut milk" and "cocoa butter" were flagged as milk.
+   - Missing allergen data counted as safe for alternatives.
 
-### 2.1 Repository Map & Usage
+   **Fixed**, with tests for synonyms, regional names, hidden sources and false positives.
+5. **OCR could not work on Vercel** (no Tesseract binary), and "auto-repair" silently changed values
+   (3736 g became 37.36 g). **Fixed:** OCR runs in the browser (verified in Chromium, including under
+   the production CSP). Impossible values are left empty with a suggestion the user must accept, and
+   flagged values need explicit confirmation.
+6. **Silent failures.** A missing CSV gave an empty catalogue, SQLite errors fell back to an in-memory
+   DB, the ML model silently didn't load, Open Food Facts search errors returned `[]`, and the frontend
+   swallowed errors into "No matching products found". **Fixed:** fail-fast loader, `/api/ready`
+   returns 503, plain error messages with distinct codes, and separate loading/error/empty states.
+7. **Products with no stated measurement basis were graded** against per-100 g thresholds (40
+   products). **Fixed:** no grade, with an explanation. Exactly those 40 grades changed and no other.
+8. **Open Food Facts client.**
+   - Text search used the staging host first.
+   - Unknown categories were silently treated as "Snacks" and graded.
+   - "Chocolates" matched the beverage keyword "cola".
+   - "May contain" traces were never requested.
 
-| Directory / File | Purpose | Active Runtime Status | Issues & Dead Code Flags |
-| :--- | :--- | :--- | :--- |
-| `api/index.py` | Vercel serverless entrypoint mounting `backend.main:app` | **Active (Production)** | Resolves root path; needs robust cold-start error isolation. |
-| `backend/main.py` | FastAPI application routing & middleware | **Active** | Large monolith (1,190 lines); synchronous module-level init. |
-| `backend/config.py` | Configuration and env var management | **Active** | Needs conversion to `pydantic-settings`. |
-| `backend/database.py` | SQLite connection and repository queries | **Active** | Calls `init_db()` at module load time; ephemeral on serverless `/tmp`. |
-| `backend/core/` | 13 business logic modules (scoring, OCR, OFF, allergens) | **Active** | Core algorithms are functional; needs modular router separation. |
-| `backend/tests/` | Pytest test suite (10 test files) | **Active (Test)** | 103 tests, all passing locally. |
-| `backend/requirements.txt`| Backend Python dependencies | **Redundant** | Duplicate of root `requirements.txt`. |
-| `src/recommend.py` | Standalone recommendation script | **Dead Code** | Legacy prototype; not imported or used anywhere. |
-| `src/train_model.py` | Experimental RandomForest model training script | **Offline Tool** | Not used in production runtime; circular synthetic training. |
-| `scripts/ocr_helper.swift`| macOS VisionKit OCR wrapper | **Platform-Specific** | Only works on macOS; unused on Vercel/Linux. |
-| `scripts/generate_initial_data.py` | Synthetic dataset generator | **Offline Tool** | Generates initial CSVs and test users. |
-| `models/eatgood_model.joblib` | Serialized scikit-learn classifier | **Legacy Prototype** | 100% accuracy on synthetic data; heavy dependency. |
-| `data/*.csv` (11 files) | 852-item product catalogue and audit tables | **Active Data** | Single source of truth for catalogue; not bundled on Vercel. |
-| `data/eatgood_app.db` | Local SQLite database file | **Defect** | Committed to git repository; should be untracked. |
-| `frontend/src/` | React 18 + Vite SPA client | **Active** | Swallows API errors; defaults to "Show All" 852 products. |
-| **`frontend/data/`** | Duplicate copy of all CSVs & SQLite DB | **Dead Duplicate** | 1.5MB redundant copy of `data/`. Delete. |
-| **`frontend/models/`** | Duplicate copy of model and metadata | **Dead Duplicate** | Redundant copy of `models/`. Delete. |
-| **`frontend/api/`** | Stale copy of `api/index.py` | **Dead Duplicate** | Outdated candidate path list. Delete. |
-| **`frontend/requirements.txt`** | Triplicate requirements file | **Dead Duplicate** | Redundant copy. Delete. |
-| **`frontend/vercel.json`** | Duplicate Vercel configuration | **Dead Duplicate** | Confuses Vercel deployment root resolution. Delete. |
+   **Fixed**, with tests.
+9. **The broken emergency entrypoint** (`api/index.py` referenced an out-of-scope `e`) would also have
+   published tracebacks and server paths. **Fixed:** import errors now surface in Vercel logs.
 
----
+### Medium
+10. **False or unsupported claims** throughout the README, privacy policy, onboarding and UI: "offline",
+    "zero cloud egress", "100% local", "audited", "evidence-based", "AI-powered", an "ML model", test
+    counts of 61/36/44. **Rewritten.** The README now lists exactly what leaves the device, and test
+    counts come from the CI badge.
+11. **Thresholds are unverified.** The "verification dates" had no evidence behind them, and the WHO
+    SEARO ISBN was wrong. **Fixed:** ISBN corrected, every entry marked unverified, and full table in
+    `docs/THRESHOLDS.md`. No numbers changed.
+12. **Catalogue UX.**
+    - "Show All" loaded all 852 cards, and pagination didn't know the total.
+    - Colour coding used hard-coded 15 g / 600 mg limits that disagreed with the grade.
+    - Deep links `/product/IND_PKG_041` were lowercased and returned 404 on reload.
+    - First load stripped filter parameters from the URL.
+    - Picking a search result kept the previous product's nutrients.
 
-### 2.2 Local vs. Live Production Flow Comparison
+    **All fixed.**
+13. **Repository hygiene.**
+    - A committed SQLite DB with test data and a local macOS path.
+    - Committed `dist/`.
+    - Duplicate requirements and `uv.toml`.
+    - Dead code: `src/`, the Swift helper, the ML model, image enrichment, 6 unused CSVs.
+    - CI on Python 3.9.
+    - No linters and no licence.
 
-Each of the 11 platform flows was executed against localhost (FastAPI `TestClient` & local uvicorn) and against the live production deployment (`https://eatgood26.vercel.app`).
+    **Fixed.** Removed files are kept on the backup branch.
 
-```text
-====================================================================================================
-ENDPOINT / FLOW                LOCAL TEST (127.0.0.1)             PRODUCTION (https://eatgood26.vercel.app)
-====================================================================================================
-Frontend Shell (/)             200 OK (Vite React bundle)         200 OK (Vercel Edge CDN)
-/api/health                    200 OK (852 products loaded)       500 FUNCTION_INVOCATION_FAILED (0.96s)
-/api/ready                     200 OK (dataset_ready: True)       500 FUNCTION_INVOCATION_FAILED (0.97s)
-/api/products                  200 OK (852 products paginated)    500 FUNCTION_INVOCATION_FAILED (0.98s)
-/api/products/categories       200 OK (8 categories + All)        500 FUNCTION_INVOCATION_FAILED (0.96s)
-/api/products/search?q=maggi   200 OK (19 products found)         500 FUNCTION_INVOCATION_FAILED (0.97s)
-/api/products/IND_PKG_001      200 OK (Haldiram's Bhujia Sev)     500 FUNCTION_INVOCATION_FAILED (0.98s)
-/api/profile                   200 OK (Profile saved/retrieved)   500 FUNCTION_INVOCATION_FAILED (0.96s)
-/api/saved                     200 OK (Saved items retrieved)     500 FUNCTION_INVOCATION_FAILED (0.97s)
-/api/history                   200 OK (Scan session history)      500 FUNCTION_INVOCATION_FAILED (0.97s)
-/api/audit/data-quality        200 OK (Summary metrics returned)  500 FUNCTION_INVOCATION_FAILED (0.96s)
-====================================================================================================
-```
+### Low
+14. 75 synthetic products have sugars greater than carbohydrates, and the stored report says 13
+    serving anomalies where the data shows 12 (`docs/DATA.md`). These products show "Data
+    Contradiction" instead of a grade.
+15. Product photos: 38, matched by name only, and 37 of them on Open Food Facts' staging image host.
+    Correctness is unverified.
 
----
+## What changed (high level)
 
-### 2.3 Baseline Verification Evidence
+- Backend split into `routes/`, `products.py`, `profile.py`, `schemas.py` (Pydantic for every body)
+  and `errors.py`, with config validated at startup.
+- One Python dependency source (`pyproject.toml`) compiled to pinned `requirements*.txt`; Python ≥ 3.12.
+- New frontend modules: `api.js`, `storage.js`, `ocr.js`, `format.js`; `DemoDataBanner`; rewritten
+  data page.
+- Security headers in `vercel.json` (CSP tested against the running app, Permissions-Policy limiting
+  the camera to this site, HSTS); self-hosted fonts and OCR assets; 10 KB logo.
+- Tooling: CI (ruff, mypy, pytest with an 82 % coverage floor, bandit, pip-audit, ESLint, build, npm
+  audit, Playwright e2e on desktop and mobile, gitleaks), CodeQL, Dependabot, pre-commit, Makefile,
+  post-deploy smoke workflow, templates, LICENSE (MIT), SECURITY, CONTRIBUTING, CHANGELOG.
 
-1. **Pytest:** **103 passed** in 10.98s (`.pytest_cache` verified clean).
-2. **Frontend Build:** `npm run build` (Vite v6.4.5) built successfully in **1.02s**:
-   - `dist/index.html`: 2.02 kB
-   - `dist/assets/zxing-5x8OBijs.js`: 454.34 kB (gzip: 116.57 kB)
-   - `dist/assets/index-Dl2-2zaP.js`: 240.05 kB (gzip: 52.30 kB)
-   - `dist/assets/vendor-B7xN2sPX.js`: 134.66 kB (gzip: 43.24 kB)
-   - `dist/assets/logo-CTPOwvnv.png`: 305.90 kB
-3. **Linting & Typing:** `ruff`, `mypy`, and `eslint` are currently not installed/configured in the baseline environments; they will be installed and configured in Phase 3/7.
+## Verification evidence (local, final run)
 
----
+| Check | Result |
+|---|---|
+| pytest | 214 passed; coverage 84 % (allergen engine 97 %, recommender 94 %, routes 81–97 %) |
+| ruff / mypy / bandit / pip-audit | clean / clean / no issues / no known vulnerabilities |
+| ESLint / Vite build / npm audit | 0 problems / builds with no warnings / 0 vulnerabilities |
+| Playwright e2e (desktop + mobile) | 14 passed: catalogue, URL filters, search, empty state, allergen override, compare, saved items, in-browser label OCR (no photo upload) |
+| Same flows under the production CSP | no CSP violations, no console errors |
+| Dataset regeneration | byte-identical nutrient values; only the provenance label columns changed |
 
-## 3. Phase 1: Root Cause Analysis (Empty Catalogue on Production)
+Phase 0 baseline for comparison: 108 tests (105 passed, 1 failed because the Tesseract binary was
+missing, 2 skipped), 75 % coverage, 67 ruff F-class errors, no ESLint.
 
-### 3.1 Direct Production Telemetry
+## What remains risky
 
-Calling any API endpoint on `https://eatgood26.vercel.app` results in:
+- **Production is untested by me.** The PR's Vercel preview and the smoke workflow must pass before
+  merging. The most likely deploy-time risks:
+  - Python dependency detection with the new `pyproject.toml` (`requirements.txt` is still present,
+    as Vercel expects).
+  - `includeFiles` / `excludeFiles` in `vercel.json`.
+  - The CSP on Vercel (tested locally only).
+- **The data is not real.** Grades and allergen results on catalogue products describe invented values.
+- **Thresholds have not been checked against the source documents.**
+- Contributions and the Open Food Facts cache are per serverless instance; rate limits are best-effort.
+- Phase 6 Layer-1 simplification (before/after for approval), Lighthouse and the responsive audit at
+  5 widths were not done in this pass. The mobile e2e project passes, but there was no visual review
+  at 320/375/768/1024/1440.
 
-```http
-HTTP/2 500
-date: Thu, 29 Oct 2026 05:41:25 GMT
-server: Vercel
-content-type: text/plain; charset=utf-8
-x-vercel-id: bom1::bng9n-17932524874
+## Decisions and actions only you can take
 
-A server error has occurred
-
-FUNCTION_INVOCATION_FAILED
-
-bom1::bng9n-17932524874
-```
-
-### 3.2 Root Cause Breakdown
-
-```mermaid
-flowchart TD
-    A["Client visits https://eatgood26.vercel.app/catalogue"] --> B["Frontend fetches /api/products and /api/products/categories"]
-    B --> C["Vercel routes /api/* to api/index.py"]
-    C --> D["AWS Lambda cold-start: Python initializes api/index.py"]
-    D --> E["api/index.py executes: from backend.main import app"]
-    E --> F["backend/main.py synchronously runs module-level init"]
-    F --> G["data_loader.load_all() searches for data/products_cleaned.csv"]
-    F --> H["database.py executes init_db() on DB_PATH"]
-    G --> I["MISSING ASSETS: vercel.json has no functions.includeFiles array!"]
-    H --> I
-    I --> J["data/ is not packaged into Lambda /var/task bundle"]
-    J --> K["data_loader fails to find CSVs -> products_df is empty (0 rows)"]
-    J --> L["database cannot locate SOURCE_DB_PATH -> SQLite fails on read-only /var/task"]
-    K & L --> M["Module import crashes during Lambda cold-start"]
-    M --> N["Vercel outputs HTTP 500 FUNCTION_INVOCATION_FAILED"]
-    N --> O["Frontend res.json() fails -> .catch() sets products=[] and categories=[]"]
-    O --> P["UI displays: 'No matching products found' (Empty Catalogue)"]
-```
-
-#### Factor 1: Missing `includeFiles` in `vercel.json` (Commit `8350538`)
-In commit `8350538`, invalid comma-separated syntax (`"includeFiles": "data/**, models/**, backend/**"`) was removed entirely instead of being corrected to a JSON array (`"includeFiles": ["data/**", "models/**", "backend/**"]`). Consequently, Vercel's Python builder deployed only the Python source files, excluding the data directory containing the 852-product catalogue and database.
-
-#### Factor 2: Synchronous Module-Level Initialization in Serverless Context
-`backend/main.py` imports `data_loader`, which invokes `self.load_all()` inside `__init__()`. This synchronously reads multi-megabyte CSV files into pandas DataFrames, merges SQLite product images, and calls `init_db()` at import time. In serverless environments, import-time failures crash the entire Lambda container before any route handler can catch the error.
-
-#### Factor 3: Frontend Silent Error Swallowing
-In [`frontend/src/pages/ProductCatalogue.jsx`](file:///Users/nandan/3rd%20sem%20EL/frontend/src/pages/ProductCatalogue.jsx#L48-L63) and [`frontend/src/pages/ProductCatalogue.jsx`](file:///Users/nandan/3rd%20sem%20EL/frontend/src/pages/ProductCatalogue.jsx#L113-L127):
-```javascript
-fetch(`/api/products?${params.toString()}&user_id=${encodeURIComponent(cid)}`)
-  .then(res => res.json())
-  .then(data => {
-    setProducts(data.products || []);
-    setTotal(data.total || 0);
-    setLoading(false);
-  })
-  .catch(err => {
-    console.error(err);
-    setLoading(false); // products remains [], rendering "No matching products found"
-  });
-```
-Because the 500 response body is plain text/HTML (`FUNCTION_INVOCATION_FAILED`), `res.json()` throws a SyntaxError. The `.catch()` logs to console and sets `loading = false`, leaving `products = []`. The page presents this as zero search results instead of an operational error with a retry action.
-
----
-
-## 4. Architectural Decisions Required from Owner
-
-Before proceeding to implement Phase 2 through Phase 12, owner alignment is requested on the following design choices:
-
-> [!IMPORTANT]
-> **Decision 1: OCR Hosting Architecture (Phase 2)**  
-> Vercel Serverless Functions do not include system binaries like Tesseract (`tesseract-ocr`), so local Tesseract OCR cannot execute in Vercel's serverless environment.  
-> - **Option A (Containerized Backend):** Package FastAPI, Tesseract 5, and OpenCV in a Docker container hosted on Fly.io, Railway, Render, or Hugging Face Spaces. Retain Vercel strictly for the static React frontend.  
-> - **Option B (Client-Side OCR):** Utilize `tesseract.js` directly in the browser for local-first extraction, posting raw text to FastAPI for nutritional parsing.  
-> - **Option C (Cloud OCR API):** Rely on Google Cloud Vision API (mocked/stubbed in `ocr_service.py`) for production while retaining Tesseract for local dev.
-
-> [!IMPORTANT]
-> **Decision 2: Production Database Strategy (Phase 2)**  
-> SQLite in `/tmp` on serverless is ephemeral and isolated per worker instance; user contributions, saved products, and profiles vanish across worker lifecycles.  
-> - **Option A (Managed Cloud SQL):** Integrate a serverless SQL database (e.g. Neon Postgres, Supabase, or Turso libSQL) for production persistence, retaining SQLite for local offline development behind a unified repository interface.  
-> - **Option B (Client-Side Storage):** Retain SQLite local-first for development and store user profile/saved items in browser `localStorage`/`IndexedDB` in production, treating the backend as a stateless calculation engine.
-
-> [!TIP]
-> **Decision 3: Catalogue Serving Architecture (Phase 1 & Phase 7)**  
-> - **Option A (Include Files in Bundle):** Configure `"includeFiles": ["data/*.csv"]` in `vercel.json` and resolve paths via `Path(__file__)`.  
-> - **Option B (Static Pre-Compiled Catalogue - Recommended):** Compile the 852-item catalogue into a static JSON asset at build time or serve from CDN, eliminating cold-start pandas CSV loading entirely.
-
-> [!NOTE]
-> **Decision 4: Machine Learning Model (Phase 6)**  
-> `models/eatgood_model.joblib` was trained on synthetic rule-generated data (reporting circular 100% accuracy) and adds `joblib` and `scikit-learn` dependency weight.  
-> - We recommend archiving the model to `/experiments` and removing `joblib` from production runtime dependencies, relying exclusively on the deterministic, transparent 3-layer nutrition scoring engine. Please confirm approval to remove `joblib`.
+See the summary at the end of `PROGRESS.md`.

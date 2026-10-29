@@ -117,9 +117,12 @@ OFF_REQUEST_FIELDS = (
     "categories,categories_tags,image_front_url,image_front_small_url,image_url,"
     "ingredients_text,ingredients_text_en,ingredients,nutriments,nutrition_data_per,"
     "nutrition_data_prepared_per,serving_size,serving_quantity,quantity,allergens,"
-    "allergens_tags,allergens_hierarchy,additives_tags,additives_original_tags,"
+    "allergens_tags,allergens_hierarchy,traces_tags,additives_tags,additives_original_tags,"
     "nutriscore_grade,nutriscore_score,nova_group,data_quality_tags,completeness,states_tags,misc_tags"
 )
+
+
+UNCATEGORISED = "Uncategorised"
 
 
 def map_off_category_to_eatgood(categories_str: str | None, categories_tags: list | None) -> str:
@@ -136,27 +139,31 @@ def map_off_category_to_eatgood(categories_str: str | None, categories_tags: lis
     """
     text = (categories_str or "").lower()
     tags = " ".join(categories_tags or []).lower()
-    combined = f"{text} {tags}"
+    # Whole-word matching: "chocolates" must not match "cola", nor "steak" match "tea".
+    combined = re.sub(r"[^a-z]+", " ", f"{text} {tags}")
 
-    if any(k in combined for k in ["beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola"]):
+    def has(*words: str) -> bool:
+        return any(re.search(rf"\b{re.escape(w)}s?\b", combined) for w in words)
+
+    if has("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar"):
         return "Packaged Beverages"
-    elif any(k in combined for k in ["cereal", "muesli", "granola", "oats", "corn flakes", "porridge"]):
+    if has("cereal", "muesli", "granola", "oats", "corn flakes", "porridge"):
         return "Breakfast Cereals"
-    elif any(k in combined for k in ["biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk"]):
+    if has("biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk"):
         return "Biscuits & Bakery"
-    elif any(k in combined for k in ["chocolate", "candy", "sweet", "confectionery", "toffee"]):
+    if has("chocolate", "candy", "candies", "sweet", "confectionery", "confectioneries", "toffee"):
         return "Chocolates & Sweets"
-    elif any(k in combined for k in ["chip", "snack", "crisp", "namkeen", "popcorn", "nuts", "makhana", "bhujia"]):
+    if has("chip", "snack", "crisp", "namkeen", "popcorn", "nut", "makhana", "bhujia"):
         return "Snacks"
-    elif any(k in combined for k in ["noodle", "instant", "ready-to-eat", "soup", "pasta", "ramen"]):
+    if has("noodle", "instant", "ready to eat", "soup", "pasta", "ramen"):
         return "Instant Foods"
-    elif any(k in combined for k in ["dairy", "milk", "cheese", "yogurt", "butter", "curd", "paneer", "ghee"]):
+    if has("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "paneer", "ghee"):
         return "Dairy"
-    elif any(k in combined for k in ["sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip"]):
+    if has("sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip"):
         return "Condiments & Spreads"
 
-    # Default to Snacks for packaged dry goods
-    return "Snacks"
+    # Unknown category: never guess. "Uncategorised" has no thresholds, so no grade is given.
+    return UNCATEGORISED
 
 
 def clean_allergens_from_tags(tags: list[str] | None) -> str:
@@ -391,6 +398,10 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
     allergens = off_product.get("allergens")
     if not allergens and off_product.get("allergens_tags"):
         allergens = clean_allergens_from_tags(off_product.get("allergens_tags"))
+    traces = clean_allergens_from_tags(off_product.get("traces_tags"))
+    if traces:
+        # Keep cross-contact warnings as a separate "may contain" statement.
+        allergens = f"{allergens}. May contain: {traces}" if allergens else f"May contain: {traces}"
 
     # Additives in statutory INS notation
     additives_text = format_additives_from_tags(off_product.get("additives_tags"))

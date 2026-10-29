@@ -40,3 +40,5 @@ frontend/public/ocr/
 
 # Build output (Vercel and local runs rebuild it)
 frontend/dist/
+test-results/
+playwright-report/

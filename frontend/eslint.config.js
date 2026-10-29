@@ -4,7 +4,7 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
-  { ignores: ['dist/**', 'public/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'public/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
@@ -27,7 +27,11 @@ export default [
     },
   },
   {
-    files: ['scripts/**/*.{js,mjs}', 'vite.config.js', 'eslint.config.js'],
+    files: ['e2e/**/*.js'],
+    rules: { 'react-hooks/rules-of-hooks': 'off' },
+  },
+  {
+    files: ['scripts/**/*.{js,mjs}', 'vite.config.js', 'eslint.config.js', 'playwright.config.js', 'e2e/**/*.js'],
     languageOptions: { globals: { ...globals.node } },
   },
 ];
