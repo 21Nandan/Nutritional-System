@@ -46,7 +46,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             onClick={() => setActivePage('scanner')}
           >
             <ScanLine size={18} />
-            <span>Analyze a Food Label</span>
+            <span>Find a Product</span>
           </button>
           
           <button 
@@ -263,7 +263,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
           gap: 16
         }}>
           {[
-            { step: '01', title: 'Scan or Search', desc: 'Upload a label photo, enter values manually, or search across packaged foods.' },
+            { step: '01', title: 'Scan or Search', desc: 'Search a world database of packaged foods, scan a barcode, or enter values manually.' },
             { step: '02', title: 'Confirm Nutrition', desc: 'Verify extracted serving size, ingredients, and nutrients with an editable confirmation step.' },
             { step: '03', title: 'Standards Benchmark', desc: 'Assess nutrient levels against established WHO and FSSAI guidelines for high sugar, sodium, and fat.' },
             { step: '04', title: 'Personalized Result', desc: 'Get a tailored suitability score, clear allergen alerts, and healthier same-category alternatives.' }
@@ -296,7 +296,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
               Limits you should know about
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              • <strong>Demo catalogue:</strong> the product catalogue uses generated nutrition values for demonstration. Barcode scans of real products use Open Food Facts, a community database.
+              • <strong>Data sources:</strong> barcode lookups and product search use a community-contributed product database. Always check values against the pack.
               <br />
               • <strong>Thresholds:</strong> grades use category thresholds informed by WHO and FSSAI reference documents; these bodies have not reviewed or endorsed EATGOOD. Chocolates, sweets and condiments get no grade.
               <br />
@@ -304,15 +304,6 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
               <br />
               • <strong>Not medical advice:</strong> EATGOOD is informational only.
             </p>
-            <div style={{ display: 'flex', gap: 14 }}>
-              <button 
-                className="btn-secondary" 
-                style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                onClick={() => setActivePage('audit')}
-              >
-                About the data
-              </button>
-            </div>
           </div>
         </div>
       </section>

@@ -4,7 +4,9 @@ import { test as base, expect } from '@playwright/test';
 // and fails if the page logs an error or a same-origin request fails.
 export const test = base.extend({
   profile: [{ goal: 'Reduce Sugar', dietary_preference: 'No preference', allergens_to_avoid: 'Milk' }, { option: true }],
-  page: async ({ page, profile, baseURL }, use) => {
+  // URL fragments a test expects to fail on purpose (for example a mocked upstream error).
+  allowedFailures: [[], { option: true }],
+  page: async ({ page, profile, baseURL, allowedFailures }, use) => {
     const problems = [];
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
     page.on('console', (m) => {
@@ -12,7 +14,8 @@ export const test = base.extend({
       if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) problems.push(`console: ${m.text()}`);
     });
     page.on('response', (r) => {
-      if (r.url().startsWith(baseURL) && r.status() >= 400 && !r.url().includes('/_vercel/')) {
+      const allowed = allowedFailures.some((fragment) => r.url().includes(fragment));
+      if (r.url().startsWith(baseURL) && r.status() >= 400 && !r.url().includes('/_vercel/') && !allowed) {
         problems.push(`${r.status()} ${r.url()}`);
       }
     });

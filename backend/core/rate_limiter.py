@@ -1,7 +1,7 @@
 """
 EATGOOD — In-Memory Rate Limiter & Abuse Protection
 Provides thread-safe, sliding-window rate limiting for sensitive/expensive endpoints
-(OCR processing, external Open Food Facts queries, and public user contributions).
+(Open Food Facts searches and barcode lookups, and public user contributions).
 State is per server instance, so on serverless hosts this is a best-effort limit, not a guarantee.
 """
 
@@ -14,8 +14,8 @@ from backend.config import (
     IS_SERVERLESS,
     RATE_LIMIT_CONTRIB_RPM,
     RATE_LIMIT_ENABLED,
-    RATE_LIMIT_OCR_RPM,
     RATE_LIMIT_OFF_RPM,
+    RATE_LIMIT_OFF_SEARCH_RPM,
 )
 
 
@@ -77,13 +77,13 @@ def get_client_identifier(request: Request) -> str:
 def enforce_rate_limit(request: Request, endpoint_type: str):
     """
     Dependency / helper to enforce rate limiting on specified endpoint types:
-    'ocr', 'off_barcode', 'contribution'.
+    'off_search', 'off_barcode', 'contribution'.
     """
     if not RATE_LIMIT_ENABLED:
         return
 
     limits = {
-        "ocr": RATE_LIMIT_OCR_RPM,
+        "off_search": RATE_LIMIT_OFF_SEARCH_RPM,
         "off_barcode": RATE_LIMIT_OFF_RPM,
         "contribution": RATE_LIMIT_CONTRIB_RPM
     }

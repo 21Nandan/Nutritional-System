@@ -27,7 +27,9 @@ from backend.core.standards_registry import nutrient_flags
 
 logger = logging.getLogger("eatgood.openfoodfacts")
 
-OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+# Open Food Facts' search service (search-a-licious). The older cgi/search.pl endpoint answers
+# 503 "unusually high demand" to most clients, so it is not used.
+OFF_SEARCH_URL = "https://search.openfoodfacts.org/search"
 RETRY_BACKOFF_SECONDS = 0.5
 
 _client: httpx.Client | None = None
@@ -80,13 +82,13 @@ def _get_with_retry(client: httpx.Client, url: str, params: dict) -> httpx.Respo
 
 
 ERROR_MESSAGES = {
-    "OFF_TIMEOUT": "Open Food Facts took too long to answer. Please try again in a moment, or enter the nutrition facts manually.",
-    "OFF_TLS_ERROR": "We couldn't open a secure connection to Open Food Facts. Please try again later, or enter the nutrition facts manually.",
-    "OFF_NETWORK_ERROR": "We couldn't reach Open Food Facts right now. Check your connection and try again, or enter the nutrition facts manually.",
-    "OFF_RATE_LIMITED": "Open Food Facts is receiving too many requests. Please wait a minute and try again.",
-    "OFF_UPSTREAM_ERROR": "Open Food Facts is having problems right now. Please try again later, or enter the nutrition facts manually.",
-    "OFF_BAD_RESPONSE": "Open Food Facts sent an answer we couldn't understand. Please try again later, or enter the nutrition facts manually.",
-    "OFF_BARCODE_MISMATCH": "Open Food Facts returned a different product for this barcode, so we did not use it.",
+    "OFF_TIMEOUT": "The product database took too long to answer. Please try again in a moment, or enter the nutrition facts manually.",
+    "OFF_TLS_ERROR": "We couldn't open a secure connection to the product database. Please try again later, or enter the nutrition facts manually.",
+    "OFF_NETWORK_ERROR": "We couldn't reach the product database right now. Check your connection and try again, or enter the nutrition facts manually.",
+    "OFF_RATE_LIMITED": "The product database is receiving too many requests. Please wait a minute and try again.",
+    "OFF_UPSTREAM_ERROR": "The product database is having problems right now. Please try again later, or enter the nutrition facts manually.",
+    "OFF_BAD_RESPONSE": "The product database sent an answer we couldn't understand. Please try again later, or enter the nutrition facts manually.",
+    "OFF_BARCODE_MISMATCH": "The product database returned a different product for this barcode, so we did not use it.",
 }
 
 
@@ -125,6 +127,25 @@ OFF_REQUEST_FIELDS = (
 UNCATEGORISED = "Uncategorised"
 
 
+_CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("Packaged Beverages", ("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar")),
+    ("Breakfast Cereals", ("cereal", "muesli", "granola", "oats", "corn flakes", "porridge")),
+    ("Biscuits & Bakery", ("biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk")),
+    ("Chocolates & Sweets", ("chocolate", "candy", "candies", "sweet", "confectionery", "confectioneries", "toffee")),
+    ("Snacks", ("chip", "snack", "crisp", "namkeen", "popcorn", "nut", "makhana", "bhujia")),
+    ("Instant Foods", ("noodle", "instant", "ready to eat", "soup", "pasta", "ramen")),
+    ("Dairy", ("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "paneer", "ghee")),
+    ("Condiments & Spreads", ("sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip")),
+]
+
+
+def _category_for_entry(words: str) -> str | None:
+    for category, keywords in _CATEGORY_RULES:
+        if any(re.search(rf"\b{re.escape(k)}s?\b", words) for k in keywords):
+            return category
+    return None
+
+
 def map_off_category_to_eatgood(categories_str: str | None, categories_tags: list | None) -> str:
     """
     Maps Open Food Facts category strings into EATGOOD primary categories:
@@ -137,30 +158,21 @@ def map_off_category_to_eatgood(categories_str: str | None, categories_tags: lis
     - Condiments & Spreads
     - Biscuits & Bakery
     """
-    text = (categories_str or "").lower()
-    tags = " ".join(categories_tags or []).lower()
-    # Whole-word matching: "chocolates" must not match "cola", nor "steak" match "tea".
-    combined = re.sub(r"[^a-z]+", " ", f"{text} {tags}")
+    # Open Food Facts lists categories from general to specific, and files most plant-based foods
+    # (crisps included) under umbrella entries such as "Plant-based foods and beverages". Read the
+    # entries from most specific to least and skip the umbrellas, so "beverages" in an umbrella
+    # name never turns a snack into a drink.
+    entries = [e for e in (categories_str or "").split(",") if e.strip()]
+    entries += [t.split(":", 1)[-1] for t in (categories_tags or [])]
 
-    def has(*words: str) -> bool:
-        return any(re.search(rf"\b{re.escape(w)}s?\b", combined) for w in words)
-
-    if has("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar"):
-        return "Packaged Beverages"
-    if has("cereal", "muesli", "granola", "oats", "corn flakes", "porridge"):
-        return "Breakfast Cereals"
-    if has("biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk"):
-        return "Biscuits & Bakery"
-    if has("chocolate", "candy", "candies", "sweet", "confectionery", "confectioneries", "toffee"):
-        return "Chocolates & Sweets"
-    if has("chip", "snack", "crisp", "namkeen", "popcorn", "nut", "makhana", "bhujia"):
-        return "Snacks"
-    if has("noodle", "instant", "ready to eat", "soup", "pasta", "ramen"):
-        return "Instant Foods"
-    if has("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "paneer", "ghee"):
-        return "Dairy"
-    if has("sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip"):
-        return "Condiments & Spreads"
+    for entry in reversed(entries):
+        # Whole-word matching: "chocolates" must not match "cola", nor "steak" match "tea".
+        words = re.sub(r"[^a-z]+", " ", entry.lower()).strip()
+        if "food" in words and "beverage" in words:
+            continue
+        category = _category_for_entry(words)
+        if category:
+            return category
 
     # Unknown category: never guess. "Uncategorised" has no thresholds, so no grade is given.
     return UNCATEGORISED
@@ -460,10 +472,10 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
             "nutriscore_score": off_product.get("nutriscore_score"),
             "nova_group": nova_group,
             "data_completeness": completeness,
-            "notice": "Source-reported metrics from Open Food Facts community database; distinct from EATGOOD calculated assessment."
+            "notice": "Community-reported ratings; separate from the EATGOOD assessment."
         },
-        "data_source": "Open Food Facts (v3 API)",
-        "data_confidence_status": "Community Sourced (Open Food Facts)",
+        "data_source": "Product database (community-contributed)",
+        "data_confidence_status": "Community-contributed",
         "retrieved_at": now_iso,
         "openfoodfacts_attribution": "Nutritional and ingredient information retrieved from Open Food Facts under Open Database License (ODbL)."
     }
@@ -490,7 +502,7 @@ def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None =
         "product": None,
         "barcode": clean_barcode,
         "source": "openfoodfacts",
-        "message": f"Barcode {clean_barcode} is not in Open Food Facts yet. You can add it, or enter the nutrition facts manually.",
+        "message": f"Barcode {clean_barcode} is not in the product database yet. You can add it, or enter the nutrition facts manually.",
     }
     if response.status_code == 404:
         return not_found
@@ -521,34 +533,48 @@ def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None =
         "product": map_off_product_to_eatgood(clean_barcode, raw_prod),
         "barcode": clean_barcode,
         "source": "openfoodfacts",
-        "message": "Product retrieved from Open Food Facts.",
+        "message": "Product found in the product database.",
     }
 
 
-_OFF_QUERY_CACHE: dict[str, Any] = {}
+_OFF_QUERY_CACHE: dict[tuple[str, int, int], tuple[float, list[dict[str, Any]], int | None]] = {}
 OFF_QUERY_CACHE_TTL = 300.0  # seconds
 
 
-def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client | None = None) -> dict[str, Any]:
+def _search_error(error_code: str, http_status: int) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "products": [],
+        "count": None,
+        "error_code": error_code,
+        "http_status": http_status,
+        "message": ERROR_MESSAGES[error_code],
+    }
+
+
+def search_openfoodfacts_text(
+    query: str, limit: int = 6, client: httpx.Client | None = None, page: int = 1
+) -> dict[str, Any]:
     """
-    Text search on Open Food Facts. Returns {"status": "ok"|"error", "products": [...],
-    "error_code"?, "message"?}. An error is never reported as an empty result.
+    Text search on Open Food Facts, one page of `limit` results. Returns {"status": "ok"|"error",
+    "products": [...], "count": total matches or None, "error_code"?, "http_status"?, "message"?}.
+    An error is never reported as an empty result.
     """
     clean_q = str(query).strip().lower()
     if len(clean_q) < 2:
-        return {"status": "ok", "products": []}
+        return {"status": "ok", "products": [], "count": 0}
 
     now = time.time()
-    cached = _OFF_QUERY_CACHE.get(clean_q)
+    cache_key = (clean_q, page, limit)
+    cached = _OFF_QUERY_CACHE.get(cache_key)
     if cached and now - cached[0] < OFF_QUERY_CACHE_TTL:
-        return {"status": "ok", "products": cached[1][:limit]}
+        return {"status": "ok", "products": cached[1], "count": cached[2]}
 
     params = {
-        "search_terms": clean_q,
-        "search_simple": "1",
-        "action": "process",
-        "json": "1",
-        "page_size": max(limit, 8),
+        "q": clean_q,
+        "langs": "en",
+        "page": page,
+        "page_size": limit,
         "fields": OFF_REQUEST_FIELDS,
     }
     try:
@@ -556,17 +582,18 @@ def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client |
     except httpx.HTTPError as exc:
         logger.warning("Open Food Facts search failed for %r: %r", clean_q, exc)
         err = classify_exception(exc, "")
-        return {"status": "error", "products": [], "error_code": err["error_code"], "message": err["message"]}
+        return _search_error(err["error_code"], err["http_status"])
 
     if response.status_code == 429:
-        return {"status": "error", "products": [], "error_code": "OFF_RATE_LIMITED", "message": ERROR_MESSAGES["OFF_RATE_LIMITED"]}
+        return _search_error("OFF_RATE_LIMITED", 429)
     if response.status_code != 200:
-        code = "OFF_UPSTREAM_ERROR" if response.status_code >= 500 else "OFF_BAD_RESPONSE"
-        return {"status": "error", "products": [], "error_code": code, "message": ERROR_MESSAGES[code]}
+        return _search_error("OFF_UPSTREAM_ERROR" if response.status_code >= 500 else "OFF_BAD_RESPONSE", 502)
     try:
-        raw_list = response.json().get("products", [])
-    except ValueError:
-        return {"status": "error", "products": [], "error_code": "OFF_BAD_RESPONSE", "message": ERROR_MESSAGES["OFF_BAD_RESPONSE"]}
+        body = response.json()
+        raw_list = body["hits"]
+        count = int(body["count"]) if body.get("count") is not None else None
+    except (ValueError, TypeError, AttributeError, KeyError):
+        return _search_error("OFF_BAD_RESPONSE", 502)
 
     mapped_products = []
     for raw in raw_list:
@@ -574,6 +601,9 @@ def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client |
         p_name = raw.get("product_name") or raw.get("product_name_en")
         if not code or not p_name or not str(p_name).strip():
             continue
+        if isinstance(raw.get("brands"), list):
+            # The search service returns brands as a list; the product API returns a comma-separated string.
+            raw = {**raw, "brands": ", ".join(str(b) for b in raw["brands"])}
         mapped = map_off_product_to_eatgood(code, raw)
         mapped["nutrient_flags"] = nutrient_flags(mapped)
         mapped["is_local"] = False
@@ -590,5 +620,5 @@ def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client |
         if len(mapped_products) >= limit:
             break
 
-    _OFF_QUERY_CACHE[clean_q] = (now, mapped_products)
-    return {"status": "ok", "products": mapped_products}
+    _OFF_QUERY_CACHE[cache_key] = (now, mapped_products, count)
+    return {"status": "ok", "products": mapped_products, "count": count}

@@ -1,13 +1,11 @@
-"""Barcode lookup, label-text parsing, manual assessment and user contributions."""
+"""Barcode lookup, manual assessment and user contributions."""
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from backend.config import MAX_OCR_TEXT_CHARS
 from backend.core.barcode_utils import validate_barcode
 from backend.core.data_loader import data_loader
-from backend.core.label_text_parser import extract_nutrition_from_text
 from backend.core.nutrition_scoring import run_full_product_assessment
 from backend.core.rate_limiter import enforce_rate_limit
 from backend.core.recommender import get_healthier_alternatives
@@ -15,7 +13,7 @@ from backend.database import get_user_contribution_by_barcode, record_user_contr
 from backend.errors import off_unavailable_error
 from backend.products import NUTRIENT_FIELDS, UNVERIFIED_CONTRIBUTION_STATUS, contribution_to_product, fetch_off_product
 from backend.profile import get_request_profile
-from backend.schemas import LabelTextRequest, ManualNutritionInput, ProductContributionRequest
+from backend.schemas import ManualNutritionInput, ProductContributionRequest
 
 logger = logging.getLogger("eatgood.scan")
 router = APIRouter(prefix="/api")
@@ -73,7 +71,7 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
 
     result = fetch_off_product(code)
     if result["status"] == "success":
-        return _found("openfoodfacts", result["product"], profile, val, "Product found on Open Food Facts.")
+        return _found("openfoodfacts", result["product"], profile, val, "Product found in the product database.")
     if result["status"] == "not_found":
         raise HTTPException(
             status_code=404,
@@ -82,39 +80,15 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
                 "barcode": code,
                 "barcode_format": val["format"],
                 "check_digit_valid": val["check_digit_valid"],
-                "message": f"Barcode {code} isn't in our catalogue or on Open Food Facts yet.",
+                "message": f"Barcode {code} isn't in our catalogue or the product database yet.",
             },
         )
     raise off_unavailable_error(result)
 
 
-@router.post("/analyze/label-text")
-def analyze_label_text(payload: LabelTextRequest, request: Request):
-    """Parses text recognised in the browser. Values must be confirmed by the user before scoring."""
-    enforce_rate_limit(request, "ocr")
-    if len(payload.raw_text) > MAX_OCR_TEXT_CHARS:
-        raise HTTPException(
-            status_code=413,
-            detail={"error_code": "OCR_TEXT_TOO_LONG", "message": "The recognised text is too long. Try a closer photo of just the nutrition table."},
-        )
-    extraction = extract_nutrition_from_text(payload.raw_text, payload.ocr_confidence)
-    values = extraction["extracted_values"]
-    found_any = any(values.get(k) is not None for k in NUTRIENT_FIELDS)
-    return {
-        "status": "success" if found_any else "no_values_found",
-        "ocr_engine": payload.engine,
-        "ocr_confidence": payload.ocr_confidence,
-        "raw_text": payload.raw_text,
-        **extraction,
-        "message": "Check every value against the label and correct anything that is wrong before continuing."
-        if found_any
-        else "We read some text but couldn't find nutrition values. Try a sharper, well-lit photo of the nutrition table, or enter the values manually.",
-    }
-
-
 @router.post("/products/assess")
 def assess_custom_food(payload: ManualNutritionInput, profile: dict = Depends(get_request_profile)):
-    """Assesses values the user typed in or confirmed after a label scan."""
+    """Assesses values the user typed in."""
     product = payload.model_dump()
     product["product_id"] = "CUSTOM_SCAN"
     product["data_source"] = "Entered or confirmed by you"

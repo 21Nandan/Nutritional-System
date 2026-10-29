@@ -2,7 +2,7 @@
 EATGOOD — Allergen safety invariant.
 
 1. An allergen conflict overrides the score on every path: catalogue product, barcode
-   (catalogue, contribution, Open Food Facts), manual/OCR entry and comparison.
+   (catalogue, contribution, Open Food Facts), manual entry and comparison.
 2. Alternatives never include a product that conflicts with the user's allergens, or one
    whose allergen information is missing while the user has allergens to avoid.
 3. The allergen matcher handles synonyms, regional names, hidden sources and "may contain",
@@ -92,7 +92,7 @@ def test_barcode_user_contribution_path():
     assert_overridden(data["assessment"], "Peanuts")
 
 
-def test_manual_and_ocr_entry_path():
+def test_manual_entry_path():
     payload = {
         "product_name": "Scanned Wafer",
         "category": "Biscuits & Bakery",
@@ -218,3 +218,12 @@ def test_every_group_name_is_matched_when_declared():
     for group in MAJOR_ALLERGENS:
         result = analyze_allergens("", f"Contains: {group}", [group])
         assert result["has_critical_conflict"], group
+
+
+def test_compare_reports_unknown_allergen_information_and_nutrient_flags():
+    """The comparison must be able to tell "no alerts" apart from "allergen information missing"."""
+    data = client.get("/api/compare?ids=IND_PKG_001,IND_PKG_002", headers=profile_header("Milk")).json()
+    for row in data["products_compared"]:
+        assert isinstance(row["allergen_status_unknown"], bool)
+        assert isinstance(row["user_allergen_check_incomplete"], bool)
+        assert set(row["nutrient_flags"]) <= {"sugars_g", "saturated_fat_g", "sodium_mg"}

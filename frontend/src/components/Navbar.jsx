@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Home, Search, ScanLine, ArrowLeftRight, 
-  User, ShieldCheck, Menu, X 
+  User, Menu, X
 } from 'lucide-react';
 import logoImg from '../assets/logo.png';
 
@@ -13,8 +13,7 @@ export default function Navbar({ activePage, setActivePage }) {
     { id: 'scanner', label: 'Label Scanner', icon: ScanLine },
     { id: 'catalogue', label: 'Catalogue', labelSub: 'Products', icon: Search },
     { id: 'compare', label: 'Compare', icon: ArrowLeftRight },
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'audit', label: 'About the Data', icon: ShieldCheck }
+    { id: 'profile', label: 'Profile', icon: User }
   ];
 
   const handleNavClick = (id) => {

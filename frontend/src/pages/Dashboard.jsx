@@ -115,7 +115,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustom
       </div>
 
       {/* Grid: Recent History & Saved Products */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
+      <div className="dashboard-columns">
         
         {/* Recent Analysis History */}
         <div className="card">

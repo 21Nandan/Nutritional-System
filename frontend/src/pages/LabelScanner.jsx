@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { apiFetch } from '../api';
-import { recognizeLabel } from '../ocr';
-import { 
-  Upload, Camera, FileText, CheckCircle2, AlertTriangle, 
+import {
+  Camera, FileText, AlertTriangle,
   Sparkles, ArrowRight, RefreshCw, Barcode, Search,
-  ChevronDown, ChevronUp, Smartphone, PlusCircle, Globe, ShieldCheck, Package, AlertCircle
+  PlusCircle, ShieldCheck
 } from 'lucide-react';
 import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
+import ProductSearch from '../components/ProductSearch';
 import ProductContributionModal from '../components/ProductContributionModal';
 
 export default function LabelScanner({ 
@@ -17,17 +17,10 @@ export default function LabelScanner({
   mode: propMode,
   setMode: propSetMode
 }) {
-  const [internalMode, setInternalMode] = useState('upload'); // 'upload', 'manual', 'barcode'
+  const [internalMode, setInternalMode] = useState('search'); // 'search', 'barcode', 'manual'
   const mode = propMode !== undefined ? propMode : internalMode;
   const setMode = propSetMode || setInternalMode;
 
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrResult, setOcrResult] = useState(null);
-  const [ocrError, setOcrError] = useState(null);
-  const [ocrProgress, setOcrProgress] = useState({ value: 0, label: '' });
-  const [suggestions, setSuggestions] = useState({});
-  const [checksConfirmed, setChecksConfirmed] = useState(false);
-  const [showRawText, setShowRawText] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeError, setBarcodeError] = useState('');
 
@@ -39,18 +32,6 @@ export default function LabelScanner({
   const [barcodeNotFoundInfo, setBarcodeNotFoundInfo] = useState(null);
   const [isContributionModalOpen, setIsContributionModalOpen] = useState(false);
   const [contributionBarcode, setContributionBarcode] = useState('');
-
-  // Product Search by Name / Brand Fallback & Live Autocomplete State
-  const [nameSearchQuery, setNameSearchQuery] = useState('');
-  const [nameSearchResults, setNameSearchResults] = useState([]);
-  const [nameSearchLoading, setNameSearchLoading] = useState(false);
-  const [nameSearchError, setNameSearchError] = useState(null);
-  const [showNameSearch, setShowNameSearch] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
-  const searchContainerRef = useRef(null);
-  const notFoundSearchContainerRef = useRef(null);
-  const searchAbortControllerRef = useRef(null);
 
   // Editable confirmation form state (preserves inputs across views)
   const [internalFormData, setInternalFormData] = useState({
@@ -77,75 +58,7 @@ export default function LabelScanner({
   const formData = propFormData !== undefined ? propFormData : internalFormData;
   const setFormData = propSetFormData || setInternalFormData;
 
-  const [fieldStatuses, setFieldStatuses] = useState({});
-  const [fieldNotes, setFieldNotes] = useState({});
-  const [suspiciousFlags, setSuspiciousFlags] = useState([]);
   const [evaluating, setEvaluating] = useState(false);
-
-  const processUploadedFile = async (uploadedFile) => {
-    if (!uploadedFile) return;
-    setOcrLoading(true);
-    setOcrResult(null);
-    setOcrError(null);
-    setOcrProgress({ value: 0, label: 'Preparing the photo…' });
-    setChecksConfirmed(false);
-
-    try {
-      const recognised = await recognizeLabel(uploadedFile, (value, label) => setOcrProgress({ value, label }));
-      setOcrProgress({ value: 1, label: 'Finding nutrition values…' });
-      const data = await apiFetch('/api/analyze/label-text', {
-        method: 'POST',
-        body: { raw_text: recognised.text, ocr_confidence: recognised.confidence, engine: recognised.engine },
-      });
-      setOcrResult(data);
-
-      // Fill the confirmation form only with values the parser found; everything else stays empty.
-      const vals = data.extracted_values;
-      const asText = (v) => (v != null ? String(v) : '');
-      setFormData(prev => ({
-        ...prev,
-        product_name: prev.product_name || uploadedFile.name.replace(/\.[^/.]+$/, ''),
-        serving_size: asText(vals.serving_size),
-        serving_size_unit: vals.serving_size_unit,
-        measurement_basis: vals.measurement_basis,
-        energy_kcal: asText(vals.energy_kcal),
-        carbohydrates_g: asText(vals.carbohydrates_g),
-        sugars_g: asText(vals.sugars_g),
-        added_sugars_g: asText(vals.added_sugars_g),
-        protein_g: asText(vals.protein_g),
-        total_fat_g: asText(vals.total_fat_g),
-        saturated_fat_g: asText(vals.saturated_fat_g),
-        trans_fat_g: asText(vals.trans_fat_g),
-        sodium_mg: asText(vals.sodium_mg),
-        dietary_fibre_g: asText(vals.dietary_fibre_g),
-        ingredients: vals.ingredients || ''
-      }));
-
-      setFieldStatuses(data.field_statuses);
-      setFieldNotes(data.field_notes);
-      setSuspiciousFlags(data.suspicious_flags);
-      setSuggestions(data.suggestions);
-    } catch (err) {
-      setOcrError(err.message);
-    } finally {
-      setOcrLoading(false);
-    }
-  };
-
-  const acceptSuggestion = (field) => {
-    const suggestion = suggestions[field];
-    if (!suggestion || suggestion.suggested_value == null) return;
-    setFormData(prev => ({ ...prev, [field]: String(suggestion.suggested_value) }));
-    setSuggestions(prev => {
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  };
-
-  const handleFileUpload = (e) => {
-    processUploadedFile(e.target.files[0]);
-  };
 
   const handleBarcodeLookup = async (codeToLookup) => {
     const code = String(codeToLookup !== undefined ? codeToLookup : barcodeInput).trim();
@@ -155,7 +68,7 @@ export default function LabelScanner({
     }
     setBarcodeError('');
     setBarcodeSearching(true);
-    setBarcodeLookupStep('Querying local catalogue & Open Food Facts...');
+    setBarcodeLookupStep('Searching the catalogue and product database...');
     setBarcodeFoundResult(null);
     setBarcodeNotFoundInfo(null);
     setIsCameraActive(false);
@@ -183,333 +96,6 @@ export default function LabelScanner({
     handleBarcodeLookup(barcodeInput);
   };
 
-  // Live autocomplete search effect with debouncing (280ms)
-  useEffect(() => {
-    const query = nameSearchQuery.trim();
-    if (query.length < 2) {
-      setNameSearchResults([]);
-      setShowSuggestions(false);
-      setNameSearchLoading(false);
-      setNameSearchError(null);
-      return;
-    }
-
-    setNameSearchLoading(true);
-    setNameSearchError(null);
-
-    const timer = setTimeout(async () => {
-      if (searchAbortControllerRef.current) {
-        searchAbortControllerRef.current.abort();
-      }
-      const controller = new AbortController();
-      searchAbortControllerRef.current = controller;
-
-      try {
-        const data = await apiFetch(
-          `/api/products/search?q=${encodeURIComponent(query)}&limit=8&include_external=true`,
-          { signal: controller.signal }
-        );
-        setNameSearchResults(data.products);
-        setNameSearchError(data.external_error ? `Open Food Facts results are missing: ${data.external_error.message}` : null);
-        setShowSuggestions(true);
-        setActiveSuggestionIdx(-1);
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          setNameSearchResults([]);
-          setNameSearchError(err.message);
-        }
-      } finally {
-        setNameSearchLoading(false);
-      }
-    }, 280);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [nameSearchQuery]);
-
-  // Click outside to close suggestions dropdown
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      const inMain = searchContainerRef.current && searchContainerRef.current.contains(e.target);
-      const inNotFound = notFoundSearchContainerRef.current && notFoundSearchContainerRef.current.contains(e.target);
-      if (!inMain && !inNotFound) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  const handleNameSearch = async (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    const query = nameSearchQuery.trim();
-    if (!query) return;
-
-    setNameSearchLoading(true);
-    setNameSearchError(null);
-    try {
-      const data = await apiFetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=12&include_external=true`);
-      setNameSearchResults(data.products);
-      setNameSearchError(data.external_error ? `Open Food Facts results are missing: ${data.external_error.message}` : null);
-      setShowSuggestions(true);
-      setActiveSuggestionIdx(-1);
-    } catch (err) {
-      setNameSearchResults([]);
-      setNameSearchError(err.message);
-    } finally {
-      setNameSearchLoading(false);
-    }
-  };
-
-  const handleSearchKeyDown = (e) => {
-    if (!showSuggestions || nameSearchResults.length === 0) {
-      if (e.key === 'Enter') {
-        handleNameSearch(e);
-      }
-      return;
-    }
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveSuggestionIdx(prev => (prev < nameSearchResults.length - 1 ? prev + 1 : 0));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveSuggestionIdx(prev => (prev > 0 ? prev - 1 : nameSearchResults.length - 1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeSuggestionIdx >= 0 && activeSuggestionIdx < nameSearchResults.length) {
-        handleSelectSearchResult(nameSearchResults[activeSuggestionIdx]);
-      } else {
-        handleNameSearch(e);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setShowSuggestions(false);
-      setActiveSuggestionIdx(-1);
-    }
-  };
-
-  const handleSelectSearchResult = (prod) => {
-    if (!prod) return;
-    setShowSuggestions(false);
-    setActiveSuggestionIdx(-1);
-
-    // Fill the form from the chosen product only. Missing values stay empty: they are never
-    // carried over from whatever was in the form before.
-    const asText = (v) => (v != null ? String(v) : '');
-    setFormData(prev => ({
-      ...prev,
-      product_name: prod.product_name || '',
-      brand: prod.brand || '',
-      category: prod.category || 'Snacks',
-      serving_size: asText(prod.serving_size),
-      serving_size_unit: prod.serving_size_unit || 'g',
-      measurement_basis: prod.measurement_basis || 'per 100g',
-      energy_kcal: asText(prod.energy_kcal),
-      carbohydrates_g: asText(prod.carbohydrates_g),
-      sugars_g: asText(prod.sugars_g),
-      added_sugars_g: asText(prod.added_sugars_g),
-      protein_g: asText(prod.protein_g),
-      total_fat_g: asText(prod.total_fat_g),
-      saturated_fat_g: asText(prod.saturated_fat_g),
-      trans_fat_g: asText(prod.trans_fat_g),
-      sodium_mg: asText(prod.sodium_mg),
-      dietary_fibre_g: asText(prod.dietary_fibre_g),
-      ingredients: prod.ingredients || '',
-      allergens_declared: prod.allergens_declared || ''
-    }));
-
-    if (prod.is_local && prod.product_id) {
-      // Local catalogue item: view full assessment directly
-      onSelectProduct(prod.product_id);
-    } else if (prod.barcode) {
-      // Open Food Facts product with barcode: trigger barcode lookup to fetch assessment & display result
-      setBarcodeInput(prod.barcode);
-      handleBarcodeLookup(prod.barcode);
-    } else {
-      // No barcode: open confirmation form in manual mode for user review
-      setMode('manual');
-    }
-  };
-
-  const renderNameSearchBox = (containerRef) => (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%', maxWidth: 500, margin: '12px auto 0' }}>
-      <form onSubmit={handleNameSearch} style={{ display: 'flex', gap: 8 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input
-            type="text"
-            placeholder="Search by product name or brand (e.g. Lay's, Maggi, Amul)..."
-            value={nameSearchQuery}
-            onChange={(e) => {
-              setNameSearchQuery(e.target.value);
-              if (!showSuggestions && e.target.value.trim().length >= 2) {
-                setShowSuggestions(true);
-              }
-            }}
-            onFocus={() => {
-              if (nameSearchResults.length > 0 || nameSearchQuery.trim().length >= 2) {
-                setShowSuggestions(true);
-              }
-            }}
-            onKeyDown={handleSearchKeyDown}
-            style={{
-              width: '100%',
-              padding: '10px 36px 10px 34px',
-              borderRadius: 8,
-              border: '1px solid var(--color-border)',
-              fontSize: '0.88rem',
-              boxSizing: 'border-box'
-            }}
-          />
-          <Search
-            size={15}
-            color="var(--color-text-muted)"
-            style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-          />
-          {nameSearchLoading && (
-            <div style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
-              <RefreshCw size={14} className="spin" color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
-            </div>
-          )}
-        </div>
-        <button
-          type="submit"
-          className="btn-primary"
-          disabled={nameSearchLoading}
-          style={{ padding: '9px 18px', fontSize: '0.85rem', flexShrink: 0 }}
-        >
-          {nameSearchLoading ? 'Searching...' : 'Search'}
-        </button>
-      </form>
-
-      {/* Live Suggestions Dropdown */}
-      {showSuggestions && nameSearchQuery.trim().length >= 2 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            right: 0,
-            background: '#ffffff',
-            borderRadius: 8,
-            border: '1px solid var(--color-border)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            maxHeight: 320,
-            overflowY: 'auto',
-            zIndex: 1000,
-            textAlign: 'left'
-          }}
-        >
-          {nameSearchLoading && nameSearchResults.length === 0 && (
-            <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.82rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              <RefreshCw size={14} className="spin" color="var(--color-primary)" style={{ animation: 'spin 1s linear infinite' }} />
-              <span>Searching local catalogue & Open Food Facts...</span>
-            </div>
-          )}
-
-          {nameSearchError && (
-            <div style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#c62828', background: '#ffebee', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <AlertCircle size={14} />
-              <span>{nameSearchError}</span>
-            </div>
-          )}
-
-          {nameSearchResults.length > 0 && (
-            <>
-              <div style={{ padding: '6px 12px', background: '#f8f9fa', borderBottom: '1px solid #eee', fontSize: '0.72rem', color: 'var(--color-text-muted)', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-                <span>SUGGESTIONS</span>
-                <span>↑ ↓ to navigate • Enter to select</span>
-              </div>
-              {nameSearchResults.map((prod, idx) => {
-                const isSelected = idx === activeSuggestionIdx;
-                const hasImg = prod.image_url && typeof prod.image_url === 'string' && prod.image_url.trim() !== '' && prod.image_url !== 'None';
-                return (
-                  <div
-                    key={prod.product_id || prod.barcode || idx}
-                    onClick={() => handleSelectSearchResult(prod)}
-                    onMouseEnter={() => setActiveSuggestionIdx(idx)}
-                    style={{
-                      padding: '8px 12px',
-                      borderBottom: idx === nameSearchResults.length - 1 ? 'none' : '1px solid #f2f2f2',
-                      cursor: 'pointer',
-                      background: isSelected ? '#f4f6fd' : '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      transition: 'background 0.1s ease'
-                    }}
-                  >
-                    <div style={{ width: 38, height: 38, borderRadius: 6, background: '#fafafa', border: '1px solid var(--color-border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                      {hasImg ? (
-                        <img
-                          src={prod.image_url}
-                          alt=""
-                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                          onError={e => { e.target.style.display = 'none'; }}
-                        />
-                      ) : (
-                        <Package size={18} color="var(--color-text-muted)" />
-                      )}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <strong style={{ fontSize: '0.85rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main, #222)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '75%' }}>
-                          {prod.product_name}
-                        </strong>
-                        {prod.is_local ? (
-                          <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 4, background: '#e8f5e9', color: '#2e7d32', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                            <CheckCircle2 size={10} /> Local
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 4, background: '#e3f2fd', color: '#1565c0', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                            <Globe size={10} /> Open Food Facts
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--color-text-subtle, #666)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span>{prod.brand || 'Brand'}</span>
-                        <span>•</span>
-                        <span>{prod.category || 'Food'}</span>
-                        {prod.barcode && <span>• Barcode: {prod.barcode}</span>}
-                      </div>
-
-                      {prod.nutrition_summary && (prod.nutrition_summary.energy_kcal != null || prod.nutrition_summary.sugars_g != null) && (
-                        <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-                          {prod.nutrition_summary.energy_kcal != null && (
-                            <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 3, background: '#f5f5f5', color: '#555' }}>
-                              {Math.round(Number(prod.nutrition_summary.energy_kcal))} kcal
-                            </span>
-                          )}
-                          {prod.nutrition_summary.sugars_g != null && (
-                            <span style={{ fontSize: '0.66rem', padding: '1px 5px', borderRadius: 3, background: '#f5f5f5', color: '#555' }}>
-                              Sugar: {Number(prod.nutrition_summary.sugars_g).toFixed(1)}g
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <ArrowRight size={14} color={isSelected ? 'var(--color-primary)' : 'var(--color-text-muted)'} style={{ flexShrink: 0 }} />
-                  </div>
-                );
-              })}
-            </>
-          )}
-
-          {!nameSearchLoading && nameSearchResults.length === 0 && (
-            <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-              No matching products found in local catalogue or Open Food Facts for "{nameSearchQuery}".
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
   const handleViewBarcodeAssessment = (foundResult) => {
     if (!foundResult) return;
     if (foundResult.source === 'local_database' && foundResult.product?.product_id) {
@@ -528,16 +114,10 @@ export default function LabelScanner({
     handleBarcodeLookup(productObj.barcode);
   };
 
-  const needsConfirmation = Object.values(fieldStatuses).includes('needs_review') || Object.keys(suggestions).length > 0;
-
   const handleGenerateAssessment = async (e) => {
     e.preventDefault();
     if (!formData.product_name.trim()) {
       window.alert('Please enter a product name.');
-      return;
-    }
-    if (needsConfirmation && !checksConfirmed) {
-      window.alert('Some values were flagged. Check them against the label and tick the confirmation box first.');
       return;
     }
 
@@ -577,90 +157,31 @@ export default function LabelScanner({
     }
   };
 
-  const renderFieldBadge = (fieldKey) => {
-    const status = fieldStatuses[fieldKey];
-    const note = fieldNotes[fieldKey];
-
-    if (status === 'extracted') {
-      return (
-        <span 
-          style={{
-            fontSize: '0.7rem',
-            fontWeight: 700,
-            color: '#2e7d32',
-            background: '#e8f5e9',
-            padding: '2px 6px',
-            borderRadius: 4,
-            marginLeft: 6
-          }}
-          title="Extracted from OCR packaging scan"
-        >
-          ✓ Extracted
-        </span>
-      );
-    }
-    if (status === 'needs_review') {
-      return (
-        <span 
-          style={{
-            fontSize: '0.7rem',
-            fontWeight: 700,
-            color: '#b73800',
-            background: '#fff3e0',
-            padding: '2px 6px',
-            borderRadius: 4,
-            marginLeft: 6
-          }}
-          title={note || 'Anomaly or repair flagged — verify against packaging'}
-        >
-          ⚠️ Review
-        </span>
-      );
-    }
-    if (ocrResult && status === 'not_found') {
-      return (
-        <span 
-          style={{
-            fontSize: '0.68rem',
-            fontWeight: 500,
-            color: '#84988d',
-            background: '#f1f5ef',
-            padding: '2px 6px',
-            borderRadius: 4,
-            marginLeft: 6
-          }}
-        >
-          Manual
-        </span>
-      );
-    }
-    return null;
-  };
-
   return (
     <div className="label-scanner">
       <div style={{ marginBottom: 28, textAlign: 'center', maxWidth: 700, margin: '0 auto 28px' }}>
         <h1 style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', color: 'var(--color-primary)', marginBottom: 8 }}>
-          Food Label Scanner & Analysis
+          Find a Product
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Upload a food label photo for automated OCR extraction, snap a picture on mobile, look up a barcode, or manually enter nutrition facts.
+          Search a world database of packaged foods, scan or type a barcode, or enter the nutrition facts yourself.
         </p>
       </div>
 
       {/* Mode Switcher */}
-      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
+      <div className="scanner-modes" style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
         <button
-          className={`btn-secondary ${mode === 'upload' ? 'active' : ''}`}
-          onClick={() => setMode('upload')}
-          style={{ 
-            background: mode === 'upload' ? 'var(--color-primary)' : '#fff', 
-            color: mode === 'upload' ? '#fff' : 'inherit',
+          className={`btn-secondary ${mode === 'search' ? 'active' : ''}`}
+          onClick={() => setMode('search')}
+          aria-pressed={mode === 'search'}
+          style={{
+            background: mode === 'search' ? 'var(--color-primary)' : '#fff',
+            color: mode === 'search' ? '#fff' : 'inherit',
             minHeight: 44
           }}
         >
-          <Camera size={16} />
-          <span>Upload Label (OCR)</span>
+          <Search size={16} />
+          <span>Search Products</span>
         </button>
         <button
           className={`btn-secondary ${mode === 'barcode' ? 'active' : ''}`}
@@ -688,7 +209,9 @@ export default function LabelScanner({
         </button>
       </div>
 
-      {/* Mode 1: Barcode Lookup & Camera Scanner */}
+      {mode === 'search' && <ProductSearch onSelectProduct={onSelectProduct} />}
+
+      {/* Barcode Lookup & Camera Scanner */}
       {mode === 'barcode' && (
         <div style={{ maxWidth: 680, margin: '0 auto 30px' }}>
           {/* Active Camera Viewfinder */}
@@ -720,7 +243,7 @@ export default function LabelScanner({
                 Searching Product Barcode...
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                {barcodeLookupStep || 'Checking local database and Open Food Facts...'}
+                {barcodeLookupStep || 'Searching the catalogue and product database...'}
               </p>
             </div>
           )}
@@ -749,7 +272,7 @@ export default function LabelScanner({
                       <ShieldCheck size={13} />
                       {barcodeFoundResult.source === 'local_database' ? 'Local EATGOOD Catalogue' :
                        barcodeFoundResult.source === 'user_contributed' ? 'User Contributed (Pending Review)' :
-                       'Open Food Facts (v3 API)'}
+                       'Product Database'}
                     </span>
 
                     <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', background: '#f5f5f5', padding: '3px 8px', borderRadius: 4 }}>
@@ -790,7 +313,7 @@ export default function LabelScanner({
                 </div>
               </div>
 
-              {/* Product Thumbnail if available from OFF */}
+              {/* Product thumbnail, when the database has one */}
               {barcodeFoundResult.product?.image_url && (
                 <div style={{ marginBottom: 14, textAlign: 'center' }}>
                   <img 
@@ -798,21 +321,6 @@ export default function LabelScanner({
                     alt={barcodeFoundResult.product.product_name} 
                     style={{ maxHeight: 140, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--color-border)' }} 
                   />
-                </div>
-              )}
-
-              {/* Open Food Facts Attribution Notice */}
-              {barcodeFoundResult.openfoodfacts_attribution && (
-                <div style={{
-                  background: '#f8f9fa',
-                  border: '1px solid #e9ecef',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  fontSize: '0.75rem',
-                  color: 'var(--color-text-muted)',
-                  marginBottom: 16
-                }}>
-                  {barcodeFoundResult.openfoodfacts_attribution}
                 </div>
               )}
 
@@ -875,7 +383,7 @@ export default function LabelScanner({
               </div>
 
               <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 18 }}>
-                {barcodeNotFoundInfo.message} You can add it directly to your local database, scan its nutrition table photo via OCR, or search by product name.
+                {barcodeNotFoundInfo.message} You can contribute it, enter the values from the pack yourself, or search by product name.
               </p>
 
               {/* Action Buttons for Not Found State */}
@@ -905,7 +413,7 @@ export default function LabelScanner({
                       ...prev,
                       product_name: prev.product_name || `Product ${barcodeNotFoundInfo.barcode}`
                     }));
-                    setMode('upload');
+                    setMode('manual');
                   }}
                   style={{
                     padding: '10px 14px',
@@ -916,8 +424,8 @@ export default function LabelScanner({
                     gap: 6
                   }}
                 >
-                  <Camera size={15} />
-                  <span>Scan Label via OCR</span>
+                  <FileText size={15} />
+                  <span>Enter Values Manually</span>
                 </button>
 
                 <button
@@ -944,9 +452,7 @@ export default function LabelScanner({
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => {
-                    setShowNameSearch(prev => !prev);
-                  }}
+                  onClick={() => setMode('search')}
                   style={{
                     padding: '10px 14px',
                     fontSize: '0.85rem',
@@ -961,15 +467,6 @@ export default function LabelScanner({
                 </button>
               </div>
 
-              {/* Product Name Search Section in Not Found Card */}
-              {showNameSearch && (
-                <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid #ffe0b2' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b73800', display: 'block', marginBottom: 4 }}>
-                    Search Local Indian Food Catalogue & Open Food Facts by Name:
-                  </span>
-                  {renderNameSearchBox(notFoundSearchContainerRef)}
-                </div>
-              )}
             </div>
           )}
 
@@ -981,7 +478,7 @@ export default function LabelScanner({
                 Barcode Scanner & Product Discovery
               </h2>
               <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', maxWidth: 500, margin: '0 auto 20px', lineHeight: 1.4 }}>
-                Scan retail food barcodes with your camera or enter the digits. Matches against our local Indian catalogue, then Open Food Facts.
+                Scan retail food barcodes with your camera or enter the digits. Matches against our Indian catalogue, then a world product database.
               </p>
 
               {/* Main Camera Scan Button */}
@@ -1047,7 +544,7 @@ export default function LabelScanner({
               <div style={{ marginTop: 16 }}>
                 <button
                   type="button"
-                  onClick={() => setShowNameSearch(prev => !prev)}
+                  onClick={() => setMode('search')}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -1061,15 +558,9 @@ export default function LabelScanner({
                   }}
                 >
                   <Search size={14} />
-                  <span>{showNameSearch ? 'Hide Name Search' : "Can't find barcode? Search by Product Name or Brand"}</span>
+                  <span>Can&apos;t find the barcode? Search by product name or brand</span>
                 </button>
               </div>
-
-              {showNameSearch && (
-                <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--color-border)', maxWidth: 520, margin: '14px auto 0' }}>
-                  {renderNameSearchBox(searchContainerRef)}
-                </div>
-              )}
 
               {barcodeError && (
                 <div style={{ color: '#c62828', fontSize: '0.85rem', marginTop: 14, background: '#ffebee', padding: 10, borderRadius: 8 }}>
@@ -1089,169 +580,8 @@ export default function LabelScanner({
         onSuccessAssessment={handleContributionSuccess}
       />
 
-      {/* Mode 2: Label Image Upload */}
-      {mode === 'upload' && (
-        <div className="card" style={{ maxWidth: 740, margin: '0 auto 30px' }}>
-          <div style={{
-            border: '2px dashed var(--color-border)',
-            borderRadius: 12,
-            padding: '30px 16px',
-            textAlign: 'center',
-            background: 'var(--color-surface-alt)',
-            position: 'relative'
-          }}>
-            <Upload size={36} color="var(--color-accent)" style={{ margin: '0 auto 12px' }} />
-            <h3 style={{ fontSize: '1.15rem', color: 'var(--color-primary)', marginBottom: 6 }}>
-              Select or Photograph Food Label
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: 18 }}>
-              PNG, JPEG or WebP photos of the nutrition table or ingredients. The text is read on your device; the photo is not uploaded.
-            </p>
-
-            {/* Action Buttons for Mobile & Desktop */}
-            <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <label 
-                className="btn-primary" 
-                style={{ 
-                  cursor: 'pointer', 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: 8, 
-                  minHeight: 44,
-                  padding: '10px 20px',
-                  borderRadius: 8
-                }}
-              >
-                <Upload size={16} />
-                <span>Choose Image</span>
-                <input
-                  type="file"
-                  accept="image/png, image/jpeg, image/webp"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-              </label>
-
-              <label 
-                className="btn-secondary" 
-                style={{ 
-                  cursor: 'pointer', 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: 8, 
-                  minHeight: 44,
-                  padding: '10px 20px',
-                  borderRadius: 8,
-                  background: '#fff',
-                  border: '1px solid var(--color-border)'
-                }}
-              >
-                <Smartphone size={16} />
-                <span>Take Photo (Camera)</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </div>
-          </div>
-
-          {ocrLoading && (
-            <div style={{ marginTop: 20, textAlign: 'center', padding: 20, background: '#eaf6e5', borderRadius: 8, color: 'var(--color-primary)' }}>
-              <RefreshCw size={24} className="spin" style={{ margin: '0 auto 8px', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontWeight: 700 }}>{ocrProgress.label || 'Reading the label…'}</div>
-              <progress value={ocrProgress.value} max={1} style={{ width: '60%', marginTop: 8 }} aria-label="Label reading progress" />
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 6 }}>Your photo stays on this device; only the recognised text is sent to EATGOOD.</div>
-            </div>
-          )}
-
-          {ocrError && (
-            <div role="alert" style={{ marginTop: 20, padding: 16, background: '#ffebee', borderRadius: 8, color: '#b71c1c', fontSize: '0.88rem' }}>
-              {ocrError}
-            </div>
-          )}
-
-          {ocrResult && (
-            <div style={{ marginTop: 20, background: '#f8faf7', border: '1px solid var(--color-border)', borderRadius: 8, padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ 
-                    fontSize: '0.78rem', 
-                    fontWeight: 700, 
-                    color: ocrResult.status === 'success' ? '#2e7d32' : (ocrResult.status === 'partial' ? '#b73800' : '#c62828'),
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4
-                  }}>
-                    {ocrResult.status === 'success' && <CheckCircle2 size={14} />}
-                    {ocrResult.status === 'partial' && <AlertTriangle size={14} />}
-                    {ocrResult.status.toUpperCase()}
-                  </span>
-                  {ocrResult.ocr_confidence > 0 && (
-                    <span style={{ fontSize: '0.72rem', background: '#eaf6e5', color: 'var(--color-accent)', padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>
-                      Text Extracted
-                    </span>
-                  )}
-                </div>
-                <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-                  Local Text Extraction
-                </span>
-              </div>
-
-              {ocrResult.message && (
-                <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 10 }}>
-                  {ocrResult.message}
-                </div>
-              )}
-
-              {/* Raw OCR Text Accordion */}
-              {ocrResult.raw_text && (
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowRawText(prev => !prev)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      color: 'var(--color-primary)',
-                      padding: '6px 0',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <span>{showRawText ? 'Hide Raw OCR Text' : 'View Raw Extracted Text'}</span>
-                    {showRawText ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </button>
-
-                  {showRawText && (
-                    <div style={{ 
-                      maxHeight: 180, 
-                      overflowY: 'auto', 
-                      background: '#fff', 
-                      border: '1px solid #e2e8e0', 
-                      borderRadius: 6, 
-                      padding: 10, 
-                      fontSize: '0.75rem', 
-                      fontFamily: 'monospace', 
-                      whiteSpace: 'pre-wrap',
-                      marginTop: 6
-                    }}>
-                      {ocrResult.raw_text}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Editable Confirmation Form */}
+      {mode === 'manual' && (
       <form onSubmit={handleGenerateAssessment} className="card" style={{ maxWidth: 840, margin: '0 auto' }}>
         <div style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 16, marginBottom: 20 }}>
           <h2 style={{ fontSize: 'clamp(1.2rem, 3vw, 1.4rem)', color: 'var(--color-primary)' }}>
@@ -1261,41 +591,6 @@ export default function LabelScanner({
             Check every value against the pack before continuing. Nothing is scored until you submit this form.
           </p>
         </div>
-
-        {/* Suspicious Anomaly Flags Notice */}
-        {suspiciousFlags.length > 0 && (
-          <div style={{ background: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: 8, padding: 14, marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#b73800', fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>
-              <AlertTriangle size={16} />
-              <span>Label Inconsistency Flags (Please Confirm):</span>
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.8rem', color: '#8c2d00' }}>
-              {suspiciousFlags.map((flag, i) => (
-                <li key={i}>{flag}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {Object.keys(suggestions).length > 0 && (
-          <div role="alert" style={{ background: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: 8, padding: 14, marginBottom: 20 }}>
-            <div style={{ color: '#b73800', fontWeight: 700, fontSize: '0.85rem', marginBottom: 6 }}>
-              These values look misread, so we left them empty:
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.82rem', color: '#8c2d00', display: 'grid', gap: 6 }}>
-              {Object.entries(suggestions).map(([field, sug]) => (
-                <li key={field}>
-                  {fieldNotes[field]}{' '}
-                  {sug.suggested_value != null && (
-                    <button type="button" className="btn-secondary" style={{ padding: '2px 10px', fontSize: '0.78rem', marginLeft: 6 }} onClick={() => acceptSuggestion(field)}>
-                      Use {sug.suggested_value}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {/* Basic Product Info */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 18 }}>
@@ -1352,7 +647,6 @@ export default function LabelScanner({
           <div>
             <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
               <span>Serving Size</span>
-              {renderFieldBadge('serving_size')}
             </label>
             <input
               type="number"
@@ -1408,7 +702,6 @@ export default function LabelScanner({
             <div>
               <label style={labelStyle}>
                 <span>Calories (kcal)</span>
-                {renderFieldBadge('energy_kcal')}
               </label>
               <input
                 type="number"
@@ -1418,15 +711,11 @@ export default function LabelScanner({
                 onChange={e => setFormData({ ...formData, energy_kcal: e.target.value })}
                 style={inputStyle}
               />
-              {fieldNotes['energy_kcal'] && (
-                <div style={{ fontSize: '0.68rem', color: '#b73800', marginTop: 2 }}>{fieldNotes['energy_kcal']}</div>
-              )}
             </div>
 
             <div>
               <label style={labelStyle}>
                 <span>Carbs (g)</span>
-                {renderFieldBadge('carbohydrates_g')}
               </label>
               <input
                 type="number"
@@ -1436,15 +725,11 @@ export default function LabelScanner({
                 onChange={e => setFormData({ ...formData, carbohydrates_g: e.target.value })}
                 style={inputStyle}
               />
-              {fieldNotes['carbohydrates_g'] && (
-                <div style={{ fontSize: '0.68rem', color: '#b73800', marginTop: 2 }}>{fieldNotes['carbohydrates_g']}</div>
-              )}
             </div>
 
             <div>
               <label style={labelStyle}>
                 <span>Total Sugars (g)</span>
-                {renderFieldBadge('sugars_g')}
               </label>
               <input
                 type="number"
@@ -1459,7 +744,6 @@ export default function LabelScanner({
             <div>
               <label style={labelStyle}>
                 <span>Added Sugars (g)</span>
-                {renderFieldBadge('added_sugars_g')}
               </label>
               <input
                 type="number"
@@ -1474,7 +758,6 @@ export default function LabelScanner({
             <div>
               <label style={labelStyle}>
                 <span>Sodium (mg)</span>
-                {renderFieldBadge('sodium_mg')}
               </label>
               <input
                 type="number"
@@ -1484,15 +767,11 @@ export default function LabelScanner({
                 onChange={e => setFormData({ ...formData, sodium_mg: e.target.value })}
                 style={inputStyle}
               />
-              {fieldNotes['sodium_mg'] && (
-                <div style={{ fontSize: '0.68rem', color: '#56695e', marginTop: 2 }}>{fieldNotes['sodium_mg']}</div>
-              )}
             </div>
 
             <div>
               <label style={labelStyle}>
                 <span>Protein (g)</span>
-                {renderFieldBadge('protein_g')}
               </label>
               <input
                 type="number"
@@ -1507,7 +786,6 @@ export default function LabelScanner({
             <div>
               <label style={labelStyle}>
                 <span>Total Fat (g)</span>
-                {renderFieldBadge('total_fat_g')}
               </label>
               <input
                 type="number"
@@ -1522,7 +800,6 @@ export default function LabelScanner({
             <div>
               <label style={labelStyle}>
                 <span>Saturated Fat (g)</span>
-                {renderFieldBadge('saturated_fat_g')}
               </label>
               <input
                 type="number"
@@ -1537,7 +814,6 @@ export default function LabelScanner({
             <div>
               <label style={labelStyle}>
                 <span>Dietary Fibre (g)</span>
-                {renderFieldBadge('dietary_fibre_g')}
               </label>
               <input
                 type="number"
@@ -1547,9 +823,6 @@ export default function LabelScanner({
                 onChange={e => setFormData({ ...formData, dietary_fibre_g: e.target.value })}
                 style={inputStyle}
               />
-              {fieldNotes['dietary_fibre_g'] && (
-                <div style={{ fontSize: '0.68rem', color: '#b73800', marginTop: 2 }}>{fieldNotes['dietary_fibre_g']}</div>
-              )}
             </div>
           </div>
         </div>
@@ -1558,7 +831,6 @@ export default function LabelScanner({
         <div style={{ marginBottom: 18 }}>
           <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.82rem', fontWeight: 700, marginBottom: 4 }}>
             <span>Ingredients List</span>
-            {renderFieldBadge('ingredients')}
           </label>
           <textarea
             rows={3}
@@ -1597,19 +869,12 @@ export default function LabelScanner({
           </div>
         </div>
 
-        {needsConfirmation && (
-          <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.88rem', marginBottom: 16, padding: 12, background: '#fff3e0', borderRadius: 8 }}>
-            <input type="checkbox" checked={checksConfirmed} onChange={(e) => setChecksConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
-            <span>I have checked the flagged values against the label. Empty fields are treated as &ldquo;not stated&rdquo;, not zero.</span>
-          </label>
-        )}
-
         {/* Submit Action */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button
             type="submit"
             className="btn-accent"
-            disabled={evaluating || (needsConfirmation && !checksConfirmed)}
+            disabled={evaluating}
             style={{ padding: '12px 28px', fontSize: '1rem', minHeight: 48, width: '100%', maxWidth: 320 }}
           >
             {evaluating ? 'Analyzing...' : 'Generate Assessment'}
@@ -1617,6 +882,7 @@ export default function LabelScanner({
           </button>
         </div>
       </form>
+      )}
     </div>
   );
 }

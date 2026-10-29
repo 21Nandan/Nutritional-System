@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, AlertTriangle, CheckCircle2, Bookmark, 
-  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, Sliders, RefreshCw, Camera
+  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, Sliders, RefreshCw
 } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
@@ -96,6 +96,7 @@ export default function ProductAssessment({
   const [alternatives, setAlternatives] = useState([]);
   const [isSaved, setIsSaved] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showScoreLedger, setShowScoreLedger] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [showDetailedL1, setShowDetailedL1] = useState(false);
   const [expandedClaimIdx, setExpandedClaimIdx] = useState({});
@@ -247,6 +248,8 @@ export default function ProductAssessment({
     assessment?.data_confidence_status === 'User-Verified Custom Data' ||
     assessment?.data_source === 'User / OCR Input'
   );
+
+  const isCatalogueProduct = String(assessment?.product_id || '').startsWith('IND_PKG_');
 
   const openEditModal = () => {
     const raw = assessment?.raw_input || {};
@@ -510,9 +513,11 @@ export default function ProductAssessment({
                 <span style={{ fontSize: '0.82rem', color: 'var(--color-text-subtle)' }}>
                   {assessment.category} ({assessment.sub_category})
                 </span>
-                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }} title="How far you can rely on these values">
-                  {assessment.data_confidence_status}
-                </span>
+                {!isCatalogueProduct && assessment.data_confidence_status && (
+                  <span className="badge badge-warning" style={{ fontSize: '0.7rem' }} title="How far you can rely on these values">
+                    {assessment.data_confidence_status}
+                  </span>
+                )}
               </div>
               
               <h1 style={{ fontSize: '2.1rem', color: 'var(--color-primary)', lineHeight: 1.2, marginBottom: 8 }}>
@@ -538,18 +543,13 @@ export default function ProductAssessment({
                 </span>
               </div>
 
-              {assessment.data_source && (
+              {assessment.data_source && !isCatalogueProduct && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
                   Source: <strong>{assessment.data_source}</strong>
                   {assessment.retrieved_at && ` • Retrieved: ${new Date(assessment.retrieved_at).toLocaleDateString()}`}
                 </div>
               )}
 
-              {assessment.openfoodfacts_attribution && (
-                <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'var(--color-text-muted)', background: '#f8f9fa', border: '1px solid #e9ecef', padding: '4px 10px', borderRadius: 6, display: 'inline-block' }}>
-                  {assessment.openfoodfacts_attribution}
-                </div>
-              )}
             </div>
           </div>
 
@@ -1005,10 +1005,10 @@ export default function ProductAssessment({
         </div>
       </div>
 
-      {/* Step-by-Step Transparent Score Calculation Ledger (1–100 Scale) */}
+      {/* Step-by-Step Transparent Score Calculation Ledger (1–100 Scale), collapsed until opened */}
       {l2.calculation_breakdown && l2.calculation_breakdown.steps && (
         <div className="card" style={{ marginBottom: 24, padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: showScoreLedger ? 16 : 0 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <Scale size={20} color="var(--color-primary)" />
@@ -1020,14 +1020,27 @@ export default function ProductAssessment({
                 Transparent mathematical ledger evaluated for active profile: <strong>{l2.user_goal}</strong> (Base: 70 pts).
               </p>
             </div>
+            <button
+              type="button"
+              className="btn-secondary btn-compact"
+              onClick={() => setShowScoreLedger(prev => !prev)}
+              aria-expanded={showScoreLedger}
+              aria-controls="score-ledger"
+              aria-label={showScoreLedger ? 'Hide score calculation' : 'Show score calculation'}
+              style={{ padding: 8, minWidth: 44, minHeight: 44, justifyContent: 'center', flexShrink: 0 }}
+            >
+              {showScoreLedger ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+          </div>
 
-            {/* Scale Gauge Legend */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-alt)', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>Score Scale:</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#c62828' }}>1 (Unhealthy)</span>
-              <ArrowRight size={13} color="var(--color-text-subtle)" />
-              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#2e7d32' }}>100 (Healthiest)</span>
-            </div>
+          {showScoreLedger && (
+          <div id="score-ledger">
+          {/* Scale Gauge Legend */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--color-surface-alt)', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--color-border)', marginBottom: 14 }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>Score Scale:</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#c62828' }}>1 (Unhealthy)</span>
+            <ArrowRight size={13} color="var(--color-text-subtle)" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#2e7d32' }}>100 (Healthiest)</span>
           </div>
 
           {/* Steps Table */}
@@ -1110,19 +1123,21 @@ export default function ProductAssessment({
               Personalized Nutrition Score: <span style={{ color: l2.color === 'red' ? '#c62828' : (l2.color === 'green' ? '#2e7d32' : '#e65100') }}>{l2.personalized_score} / 100</span> ({l2.suitability_badge})
             </div>
           </div>
+          </div>
+          )}
         </div>
       )}
 
-      {/* External Community Indicators (Open Food Facts) if present */}
+      {/* Community ratings (Nutri-Score, NOVA) reported with database products */}
       {assessment.source_indicators && (assessment.source_indicators.nutriscore_grade || assessment.source_indicators.nova_group) && (
         <div className="card" style={{ marginBottom: 24, padding: 18, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                External Source Ratings (Open Food Facts Community)
+                Community Ratings
               </span>
               <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
-                Supplied by Open Food Facts; separate from EATGOOD's own assessment.
+                Reported by the product database community; separate from EATGOOD's own assessment.
               </p>
             </div>
 
@@ -1201,83 +1216,6 @@ export default function ProductAssessment({
           ))}
         </div>
       </div>
-
-      {/* Packaging Photo Evidence Gallery (When Available from Open Food Facts) */}
-      {(assessment.image_url || assessment.image_ingredients_url || assessment.image_nutrition_url) && (
-        <div className="card" style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Camera size={18} color="var(--color-primary)" />
-              <h3 style={{ fontSize: '1.2rem', color: 'var(--color-primary)', margin: 0 }}>
-                Packaging Photo Evidence
-              </h3>
-            </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)', background: 'var(--color-surface-alt)', padding: '3px 8px', borderRadius: 6 }}>
-              Open Food Facts (ODbL License)
-            </span>
-          </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 16
-          }}>
-            {assessment.image_url && (
-              <div style={{ background: '#f8f9fa', border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Front of Pack
-                </span>
-                <a href={assessment.image_url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assessment.image_url}
-                    alt="Front of Pack"
-                    style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-                  />
-                </a>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'block', marginTop: 6 }}>
-                  Click to view full photo ↗
-                </span>
-              </div>
-            )}
-
-            {assessment.image_ingredients_url && (
-              <div style={{ background: '#f8f9fa', border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Ingredients Label
-                </span>
-                <a href={assessment.image_ingredients_url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assessment.image_ingredients_url}
-                    alt="Ingredients Label"
-                    style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-                  />
-                </a>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'block', marginTop: 6 }}>
-                  Click to view full photo ↗
-                </span>
-              </div>
-            )}
-
-            {assessment.image_nutrition_url && (
-              <div style={{ background: '#f8f9fa', border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-subtle)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                  Nutrition Facts Table
-                </span>
-                <a href={assessment.image_nutrition_url} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assessment.image_nutrition_url}
-                    alt="Nutrition Table"
-                    style={{ width: '100%', height: 160, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
-                  />
-                </a>
-                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'block', marginTop: 6 }}>
-                  Click to view full photo ↗
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Layer 3: Ingredients & Allergen Analysis */}
       <div className="card" style={{ marginBottom: 24 }}>
@@ -1622,101 +1560,78 @@ export default function ProductAssessment({
       )}
 
       {/* Rule-based product Q&A */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div>
-            <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-              <span>Ask about this product</span>
-              <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>Rule-based answers</span>
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-              Answers are generated by fixed rules from this product&apos;s values, the thresholds shown above and your profile. They are not written by an AI model and are not medical advice.
-            </p>
-          </div>
+      <section className="card assistant" aria-labelledby="assistant-title" style={{ marginBottom: 24 }}>
+        <div className="assistant-head">
+          <h3 id="assistant-title">Ask about this product</h3>
+          <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>Rule-based answers</span>
         </div>
+        <p className="assistant-intro">
+          Answers come from fixed rules using this product&apos;s values, its category limits and your profile. Not written by an AI model, and not medical advice.
+        </p>
 
-        {/* Quick query chips */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-          {[
-            'Is this suitable for a diabetic?',
-            'Why did this get its current score?',
-            'Is this high in sodium for blood pressure?',
-            'Can I eat this with an allergy?'
-          ].map((promptText, idx) => (
+        <div className="assistant-chips">
+          {ASSISTANT_SUGGESTIONS.map((promptText) => (
             <button
-              key={idx}
+              key={promptText}
               type="button"
-              className="btn-secondary"
+              className="assistant-chip"
+              disabled={assistantLoading}
               onClick={() => {
                 setAssistantQuestion(promptText);
                 handleAskAssistant(promptText);
               }}
-              style={{ fontSize: '0.78rem', padding: '6px 12px', borderRadius: 20 }}
             >
-              💬 {promptText}
+              {promptText}
             </button>
           ))}
         </div>
 
-        {/* Input box */}
-        <form onSubmit={(e) => { e.preventDefault(); handleAskAssistant(); }} style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+        <form className="assistant-form" onSubmit={(e) => { e.preventDefault(); handleAskAssistant(); }}>
+          <label htmlFor="assistant-input" className="sr-only">Your question about this product</label>
           <input
+            id="assistant-input"
             type="text"
-            placeholder="Ask anything about this food (e.g. Does this have too much salt? Is it good for workout recovery?)..."
+            maxLength={500}
+            placeholder="e.g. Does this have too much salt?"
             value={assistantQuestion}
             onChange={(e) => setAssistantQuestion(e.target.value)}
-            style={{
-              flex: 1,
-              padding: '10px 14px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--color-border)',
-              fontSize: '0.9rem'
-            }}
           />
           <button
             type="submit"
-            className="btn-primary"
+            className="btn-primary btn-compact"
             disabled={assistantLoading || !assistantQuestion.trim()}
-            style={{ padding: '10px 18px', fontSize: '0.9rem' }}
           >
-            {assistantLoading ? 'Evaluating...' : 'Ask Assistant'}
+            {assistantLoading ? 'Checking…' : 'Ask'}
           </button>
         </form>
 
-        {/* Answer Display */}
-        {assistantResponse?.error && (
-          <p role="alert" style={{ color: '#c62828', fontSize: '0.88rem' }}>{assistantResponse.error}</p>
-        )}
-        {assistantResponse && !assistantResponse.error && (
-          <div style={{
-            background: 'var(--color-surface-alt)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
-            padding: 16
-          }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary)', marginBottom: 8 }}>
-              Q: "{assistantResponse.question}"
+        <div aria-live="polite">
+          {assistantLoading && <p className="assistant-status">Checking the label…</p>}
+          {assistantResponse?.error && (
+            <p role="alert" className="assistant-error">{assistantResponse.error}</p>
+          )}
+          {assistantResponse && !assistantResponse.error && (
+            <div className="assistant-answer">
+              <p className="assistant-question">{assistantResponse.question}</p>
+              <p className="assistant-conclusion"><AnswerText parts={assistantResponse.conclusion} /></p>
+              {assistantResponse.details?.length === 1 && (
+                <p className="assistant-detail"><AnswerText parts={assistantResponse.details[0]} /></p>
+              )}
+              {assistantResponse.details?.length > 1 && (
+                <ul className="assistant-details">
+                  {assistantResponse.details.map((parts, i) => <li key={i}><AnswerText parts={parts} /></li>)}
+                </ul>
+              )}
+              {assistantResponse.disclaimer && <p className="assistant-disclaimer">{assistantResponse.disclaimer}</p>}
+              {assistantResponse.evidence_citations?.length > 0 && (
+                <p className="assistant-sources">
+                  <span>Based on</span> {assistantResponse.evidence_citations.join(' · ')}
+                </p>
+              )}
             </div>
-            <div style={{ fontSize: '0.88rem', color: 'var(--color-text-main)', lineHeight: 1.5, whiteSpace: 'pre-wrap', marginBottom: 12 }}>
-              {assistantResponse.answer}
-            </div>
-
-            {/* Evidence Citations */}
-            {assistantResponse.evidence_citations?.length > 0 && (
-              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)' }}>
-                  SOURCES USED:
-                </span>
-                {assistantResponse.evidence_citations.map((cite, i) => (
-                  <span key={i} className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
-                    {cite}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </section>
 
       {/* Transparency & Limitations */}
       <div style={{
@@ -1730,9 +1645,11 @@ export default function ProductAssessment({
         <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>
           Assessment Data Transparency & Evidence
         </div>
-        <div>
-          Data Source: {assessment.transparency?.data_source} • Data Quality: {assessment.data_confidence_status}
-        </div>
+        {!isCatalogueProduct && (
+          <div>
+            Data Source: {assessment.transparency?.data_source} • Data Quality: {assessment.data_confidence_status}
+          </div>
+        )}
         <div style={{ marginTop: 4 }}>
           {assessment.transparency?.assessment_disclaimer}
         </div>
@@ -1982,4 +1899,21 @@ export default function ProductAssessment({
       )}
     </div>
   );
+}
+
+const ASSISTANT_SUGGESTIONS = [
+  'Is this suitable for a diabetic?',
+  'Why did this get its current score?',
+  'Is this high in sodium for blood pressure?',
+  'Can I eat this with an allergy?',
+];
+
+// Answers arrive as plain-text parts; {value} parts are numbers worth highlighting. Rendered as
+// text nodes, so nothing in an answer is ever interpreted as markup.
+function AnswerText({ parts }) {
+  return (parts || []).map((part, i) => (
+    part.value !== undefined
+      ? <strong key={i} className="assistant-value">{part.value}</strong>
+      : <React.Fragment key={i}>{part.text}</React.Fragment>
+  ));
 }

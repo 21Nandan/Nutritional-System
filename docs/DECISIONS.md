@@ -3,29 +3,14 @@
 Each decision lists the options considered, with cost, effort and risk, and what would break if
 nothing were done. Rule applied: choose the cheapest option that works and avoid migrations.
 
-## 1. OCR hosting: **browser-side tesseract.js** (chosen)
+## 1. Label photo reading (OCR): **removed** (2026-10-29)
 
-Problem: the server used `pytesseract`, which needs a native Tesseract binary. Vercel serverless
-functions don't have one, so label scanning could never work in production. A Google Cloud Vision
-fallback existed but needed a paid API key, and it sent photos to Google.
-
-| Option | Monthly cost | Effort | Risk | Notes |
-|---|---|---|---|---|
-| **A. tesseract.js in the browser** | $0 | 1 day | first scan downloads about 7 MB (cached afterwards); slower on old phones | photo never leaves the device; same engine as before |
-| B. Free Hugging Face Space (Docker + Tesseract) | $0 | 1–2 days | free Spaces sleep after inactivity (30–60 s cold start); photos go to a third party | second service to maintain |
-| C. Docker backend on a free host (Render/Fly) | $0–7 | 2 days | free tiers sleep or have tight limits; moves the whole API off Vercel | a migration |
-| D. Google Cloud Vision | ~$0 for the first 1,000/month, then $1.50 per 1,000 | already coded | needs a billing account, spend cap and key handling; photos go to Google | best accuracy on bad photos |
-
-If nothing were done, scanning in production would keep failing.
-
-Implementation: `frontend/src/ocr.js`. Assets are copied from `node_modules` to `/ocr/v7/` at build
-time (`scripts/copy-ocr-assets.mjs`) and served with immutable caching, so no CDN is involved and the
-CSP stays `'self'`. The server only parses text (`POST /api/analyze/label-text`). Verified in a real
-browser: a rendered label was read correctly in 1–2 s, including under the production CSP.
-
-Possible later improvement (not built): add Google Vision only as an opt-in fallback when the browser
-result has low confidence. That needs the user's consent, a server-side key, a spend cap and rate
-limits.
+Label scanning first ran on the server with `pytesseract`, which cannot work on Vercel, and was then
+moved into the browser with tesseract.js. At the owner's request it was removed: the Label Scanner now
+offers product search (Open Food Facts world database, `GET /api/products/search/openfoodfacts`),
+barcode lookup and manual entry. This removed a 7 MB first-scan download, the
+`'wasm-unsafe-eval'` CSP exception and the label-text parser. The previous implementation is in git
+history (commit `2d93886` and earlier).
 
 ## 2. User data / database: **browser storage + stateless API** (chosen)
 

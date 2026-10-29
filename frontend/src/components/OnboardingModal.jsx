@@ -277,7 +277,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                     <span>Your data stays on this device</span>
                   </div>
                   <p style={{ fontSize: '0.76rem', color: '#1b5e20', margin: 0, lineHeight: 1.4 }}>
-                    Your profile, saved items and history are stored in this browser, and label photos are read on your device. To personalise results, your goal, diet and allergens are sent with each request but never stored. See the privacy policy for details.
+                    Your profile, saved items and history are stored in this browser. To personalise results, your goal, diet and allergens are sent with each request but never stored. See the privacy policy for details.
                   </p>
                 </div>
 
@@ -332,7 +332,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                   <strong>1. Informational scope:</strong> EATGOOD compares label values with thresholds informed by published reference documents (WHO SEARO Nutrient Profile Model 2017, FSSAI draft guidance). It is not endorsed by these bodies and does not certify regulatory compliance.
                 </p>
                 <p style={{ margin: '0 0 8px' }}>
-                  <strong>2. OCR & Barcode Verification:</strong> Optical text extraction from photographs and third-party barcode lookups (such as Open Food Facts) are subject to packaging clarity and community data accuracy. Users should confirm values before relying on results.
+                  <strong>2. Search & Barcode Verification:</strong> Product search and barcode lookups use a community-contributed product database whose accuracy EATGOOD does not check. Users should confirm values before relying on results.
                 </p>
                 <p style={{ margin: 0 }}>
                   <strong>3. Limitation of liability:</strong> Software is provided &quot;as is&quot;. Developers disclaim liability for individual health outcomes or consumer purchase decisions resulting from the tool.
