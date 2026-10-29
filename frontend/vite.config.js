@@ -15,10 +15,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          zxing: ['@zxing/browser', '@zxing/library'],
-          icons: ['lucide-react']
+        // Split large libraries into their own long-cached chunks.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'vendor';
+          if (id.includes('node_modules/@zxing/')) return 'zxing';
+          if (id.includes('node_modules/lucide-react/')) return 'icons';
+          return undefined;
         }
       }
     },

@@ -20,6 +20,8 @@ updates:
     groups:
       react:
         patterns: [react, react-dom]
+      vite:
+        patterns: [vite, "@vitejs/*"]
       npm-minor:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
