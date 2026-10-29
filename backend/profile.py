@@ -20,12 +20,11 @@ GOALS = {"Reduce Sugar", "Reduce Sodium", "Increase Fibre", "Increase Protein", 
 
 
 class UserProfile(BaseModel):
-    name: str = Field(default="Guest", max_length=60)
+    """Only the fields scoring needs. Name, age and activity level never leave the browser."""
+
     goal: str = Field(default="Balanced Choices", max_length=200)
     dietary_preference: Literal["No preference", "Vegetarian", "Vegan", "Lactose avoidance"] = "No preference"
     allergens_to_avoid: str = Field(default="", max_length=500)
-    age_group: str | None = Field(default=None, max_length=20)
-    activity_level: str | None = Field(default=None, max_length=40)
 
     @field_validator("goal")
     @classmethod

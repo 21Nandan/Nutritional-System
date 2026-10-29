@@ -1,9 +1,9 @@
 import React from 'react';
-import { Package, Coffee, Cookie, Sparkles, Utensils, Milk, Layers } from 'lucide-react';
+import { Package, Coffee, Cookie, Utensils, Milk, Layers } from 'lucide-react';
 
 export default function ProductImageFallback({
   category = 'Food',
-  brand = '',
+  brand: _brand = '',
   productName = '',
   height = 140,
   width = '100%',

@@ -433,3 +433,41 @@ def test_uncalibrated_category_user_friendly_wording():
     assert "PENDING" not in res["standards_version"]
     assert "EXCLUSION" not in res["standards_version"]
     assert len(res["explanation"].split(".")) <= 3  # concise, short sentences
+
+
+def test_catalogue_nutrient_flags_use_category_thresholds():
+    """Card colour coding comes from the same thresholds as the grade (single source of truth)."""
+    from backend.core.standards_registry import CATEGORY_CALIBRATION_SPECS, nutrient_flags
+
+    snack_limit = CATEGORY_CALIBRATION_SPECS["Snacks"]["thresholds"]["sodium_mg"]
+    high = nutrient_flags({"category": "Snacks", "sodium_mg": snack_limit + 1, "sugars_g": None, "saturated_fat_g": 1.0})
+    assert high["sodium_mg"] == {"level": "high", "threshold": snack_limit, "basis": "per 100g"}
+    assert high["sugars_g"]["level"] == "missing"
+    assert high["saturated_fat_g"]["level"] == "ok"
+    ok = nutrient_flags({"category": "Snacks", "sodium_mg": snack_limit, "sugars_g": 1, "saturated_fat_g": 1})
+    assert ok["sodium_mg"]["level"] == "ok"
+    beverage = nutrient_flags({"category": "Packaged Beverages", "sugars_g": 6, "sodium_mg": 10, "saturated_fat_g": 0})
+    assert beverage["sugars_g"]["basis"] == "per 100ml"
+    assert nutrient_flags({"category": "Chocolates & Sweets", "sugars_g": 50}) == {}
+
+
+def test_catalogue_records_carry_flags():
+    from backend.core.data_loader import data_loader
+
+    rec = data_loader.search_products(category="Snacks", limit=1)["products"][0]
+    assert set(rec["nutrient_flags"]) == {"sugars_g", "saturated_fat_g", "sodium_mg"}
+
+
+def test_unstated_measurement_basis_is_not_graded():
+    """Values with no stated basis cannot be compared with per-100 g thresholds, so no grade is given."""
+    from backend.core.nutrition_scoring import assess_general_nutrition
+
+    product = {
+        "category": "Snacks", "measurement_basis": "unspecified", "energy_kcal": 500, "sugars_g": 4,
+        "saturated_fat_g": 10, "sodium_mg": 900, "carbohydrates_g": 50, "protein_g": 6, "total_fat_g": 28,
+    }
+    result = assess_general_nutrition(product)
+    assert result["grade"] == "Data Contradiction"
+    assert "per 100 g" in result["explanation"]
+    product["measurement_basis"] = "per 100g"
+    assert assess_general_nutrition(product)["grade"] in {"A", "B", "C", "D", "E"}

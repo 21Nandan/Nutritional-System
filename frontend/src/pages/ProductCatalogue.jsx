@@ -1,28 +1,89 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Filter, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, ChevronUp, Bookmark, ArrowLeftRight, Shield, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, Filter, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, Bookmark, ArrowLeftRight, Image as ImageIcon } from 'lucide-react';
 import ProductImageFallback from '../components/ProductImageFallback';
+import { apiFetch } from '../api';
+import { loadSavedProducts, toggleSavedProduct } from '../storage';
+import { formatNutrient } from '../format';
 
-export default function ProductCatalogue({ onSelectProduct, onCompareProduct, activeProfile }) {
+const PAGE_SIZES = [30, 60, 100];
+const FILTER_KEYS = ['sugar', 'sodium', 'satfat', 'fibre', 'protein'];
+
+// Filters live in the URL so a filtered view can be bookmarked, shared and survives refresh.
+function readUrlState() {
+  const p = new URLSearchParams(window.location.search);
+  const size = Number(p.get('size'));
+  return {
+    query: p.get('q') || '',
+    category: p.get('category') || 'All',
+    page: Math.max(0, Number(p.get('page') || 1) - 1),
+    pageSize: PAGE_SIZES.includes(size) ? size : 30,
+    photos: p.get('photos') === '1',
+    filters: Object.fromEntries(FILTER_KEYS.map((k) => [k, p.get(k) || 'all'])),
+  };
+}
+
+function writeUrlState(state) {
+  const p = new URLSearchParams();
+  if (state.query) p.set('q', state.query);
+  if (state.category !== 'All') p.set('category', state.category);
+  if (state.page > 0) p.set('page', String(state.page + 1));
+  if (state.pageSize !== 30) p.set('size', String(state.pageSize));
+  if (state.photos) p.set('photos', '1');
+  FILTER_KEYS.forEach((k) => {
+    if (state.filters[k] !== 'all') p.set(k, state.filters[k]);
+  });
+  const qs = p.toString();
+  window.history.replaceState(window.history.state, '', `/catalogue${qs ? `?${qs}` : ''}`);
+}
+
+const FLAG_STYLE = {
+  high: { color: '#b3261e', marker: '▲', label: 'above the limit' },
+  ok: { color: 'inherit', marker: '', label: 'within the limit' },
+  missing: { color: 'var(--color-text-subtle)', marker: '', label: 'not stated on the label' },
+};
+
+function NutrientValue({ label, field, prod }) {
+  const flag = prod.nutrient_flags?.[field];
+  const style = FLAG_STYLE[flag?.level] || FLAG_STYLE.ok;
+  const value = formatNutrient(field, prod[field]);
+  const title = flag
+    ? `${label} ${value} ${flag.basis}: ${style.label} for this category (limit ${formatNutrient(field, flag.threshold)})`
+    : `${label} ${value}`;
+  return (
+    <div title={title}>
+      <span style={{ color: 'var(--color-text-subtle)', display: 'block' }}>{label}</span>
+      <strong style={{ color: style.color }}>
+        {style.marker && <span aria-hidden="true">{style.marker} </span>}
+        {value}
+        {flag?.level === 'high' && <span className="sr-only"> (above the limit for this category)</span>}
+      </strong>
+    </div>
+  );
+}
+
+export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) {
+  const initial = readUrlState();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoriesError, setCategoriesError] = useState(null);
   const [total, setTotal] = useState(0);
-  const [query, setQuery] = useState('');
-  const [selectedCat, setSelectedCat] = useState('All');
+  const [query, setQuery] = useState(initial.query);
+  const [selectedCat, setSelectedCat] = useState(initial.category);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [savedIds, setSavedIds] = useState([]);
-  const [pageSize, setPageSize] = useState('All');
-  const [hasImageFilter, setHasImageFilter] = useState(false);
+  const [page, setPage] = useState(initial.page);
+  const [savedIds, setSavedIds] = useState(() => loadSavedProducts().map((p) => p.product_id));
+  const [pageSize, setPageSize] = useState(initial.pageSize);
+  const [hasImageFilter, setHasImageFilter] = useState(initial.photos);
   const [semanticIntent, setSemanticIntent] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
-  // Filter Drawer State & Nutritional Filter States (Default: show everything / all products)
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [sugarFilter, setSugarFilter] = useState('all'); // 'all', 'healthy' (<= 10g), 'low' (<= 5g)
-  const [sodiumFilter, setSodiumFilter] = useState('all'); // 'all', 'healthy' (<= 400mg), 'low' (<= 140mg)
-  const [satFatFilter, setSatFatFilter] = useState('all'); // 'all', 'healthy' (<= 4g), 'low' (<= 1.5g)
-  const [fibreFilter, setFibreFilter] = useState('all'); // 'all', 'good' (>= 3g), 'high' (>= 6g)
-  const [proteinFilter, setProteinFilter] = useState('all'); // 'all', 'good' (>= 7g), 'high' (>= 12g)
+  const [isFilterOpen, setIsFilterOpen] = useState(FILTER_KEYS.some((k) => initial.filters[k] !== 'all'));
+  const [sugarFilter, setSugarFilter] = useState(initial.filters.sugar); // 'all', 'healthy' (<= 10g), 'low' (<= 5g)
+  const [sodiumFilter, setSodiumFilter] = useState(initial.filters.sodium); // 'all', 'healthy' (<= 400mg), 'low' (<= 140mg)
+  const [satFatFilter, setSatFatFilter] = useState(initial.filters.satfat); // 'all', 'healthy' (<= 4g), 'low' (<= 1.5g)
+  const [fibreFilter, setFibreFilter] = useState(initial.filters.fibre); // 'all', 'good' (>= 3g), 'high' (>= 6g)
+  const [proteinFilter, setProteinFilter] = useState(initial.filters.protein); // 'all', 'good' (>= 7g), 'high' (>= 12g)
 
   const isHealthyLevel = sugarFilter === 'healthy' && sodiumFilter === 'healthy' && satFatFilter === 'healthy' && fibreFilter === 'all' && proteinFilter === 'all';
   const isFiltered = sugarFilter !== 'all' || sodiumFilter !== 'all' || satFatFilter !== 'all' || fibreFilter !== 'all' || proteinFilter !== 'all';
@@ -46,93 +107,81 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
     setPage(0);
   };
 
-  useEffect(() => {
-    fetch('/api/products/categories')
-      .then(res => res.json())
-      .then(data => {
-        setCategories(data.categories || []);
-      })
-      .catch(err => console.error(err));
-
-    fetch('/api/saved')
-      .then(res => res.json())
-      .then(data => {
-        const ids = (data.saved_products || []).map(p => p.product_id);
-        setSavedIds(ids);
-      })
-      .catch(err => console.error(err));
+  const loadCategories = useCallback(() => {
+    setCategoriesError(null);
+    apiFetch('/api/products/categories')
+      .then((data) => setCategories(data.categories))
+      .catch((err) => setCategoriesError(err.message));
   }, []);
 
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
   const toggleSaveInCatalogue = (prod) => {
-    fetch(`/api/saved/${prod.product_id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(prod)
-    })
-      .then(res => res.json())
-      .then(data => {
-        setSavedIds(prev => 
-          data.is_saved ? [...prev, prod.product_id] : prev.filter(id => id !== prod.product_id)
-        );
-      })
-      .catch(err => console.error(err));
+    try {
+      const nowSaved = toggleSavedProduct({
+        product_id: prod.product_id,
+        product_name: prod.product_name,
+        brand: prod.brand,
+        category: prod.category,
+        image_small_url: prod.image_small_url || prod.image_url || null,
+      });
+      setSavedIds((prev) => (nowSaved ? [...prev, prod.product_id] : prev.filter((id) => id !== prod.product_id)));
+    } catch (err) {
+      window.alert(err.message);
+    }
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter]);
-
-  const fetchProducts = () => {
-    setLoading(true);
-    const limitNum = pageSize === 'All' ? 1000 : Number(pageSize);
-    const offsetNum = pageSize === 'All' ? 0 : page * limitNum;
-    const params = new URLSearchParams({
+    writeUrlState({
       query,
       category: selectedCat,
-      limit: limitNum,
-      offset: offsetNum
+      page,
+      pageSize,
+      photos: hasImageFilter,
+      filters: { sugar: sugarFilter, sodium: sodiumFilter, satfat: satFatFilter, fibre: fibreFilter, protein: proteinFilter },
     });
 
+    const params = new URLSearchParams({ query, category: selectedCat, limit: pageSize, offset: page * pageSize });
     if (hasImageFilter) params.append('has_image', 'true');
-
     if (sugarFilter === 'healthy') params.append('max_sugars', '10');
     else if (sugarFilter === 'low') params.append('max_sugars', '5');
-
     if (sodiumFilter === 'healthy') params.append('max_sodium', '400');
     else if (sodiumFilter === 'low') params.append('max_sodium', '140');
-
     if (satFatFilter === 'healthy') params.append('max_sat_fat', '4');
     else if (satFatFilter === 'low') params.append('max_sat_fat', '1.5');
-
     if (fibreFilter === 'good') params.append('min_fibre', '3');
     else if (fibreFilter === 'high') params.append('min_fibre', '6');
-
     if (proteinFilter === 'good') params.append('min_protein', '7');
     else if (proteinFilter === 'high') params.append('min_protein', '12');
 
-    const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
-    fetch(`/api/products?${params.toString()}&user_id=${encodeURIComponent(cid)}`, {
-      headers: { 'X-User-Id': cid }
-    })
-      .then(res => {
-        if (!res.ok) {
-          throw new Error(`Catalogue API returned ${res.status}`);
-        }
-        return res.json();
-      })
-      .then(data => {
-        setProducts(data.products || []);
-        setTotal(data.total || 0);
-        setSemanticIntent(data.interpreted_intent || null);
-        setApiError(null);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setApiError('Unable to load catalogue products right now. Please check your connection or retry.');
-        setLoading(false);
-      });
-  };
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setLoading(true);
+      setApiError(null);
+      apiFetch(`/api/products?${params.toString()}`, { signal: controller.signal })
+        .then((data) => {
+          setProducts(data.products);
+          setTotal(data.total);
+          setSemanticIntent(data.interpreted_intent || null);
+          setLoading(false);
+        })
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          setApiError(err.message);
+          setProducts([]);
+          setTotal(0);
+          setLoading(false);
+        });
+    }, query ? 250 : 0);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter, reloadToken]);
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div className="product-catalogue">
@@ -141,7 +190,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           Indian Packaged Food Catalogue
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Explore audited retail products across categories with authentic nutritional and ingredient profiles.
+          Browse products by category, search by name, brand, ingredient or barcode, and filter by nutrient limits.
         </p>
       </div>
 
@@ -188,6 +237,14 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-subtle)', marginRight: 4 }}>
             CATEGORY:
           </span>
+          {categoriesError && (
+            <span role="alert" style={{ fontSize: '0.8rem', color: '#c62828', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+              Categories couldn't be loaded: {categoriesError}
+              <button type="button" className="btn-secondary" style={{ padding: '3px 10px', fontSize: '0.75rem' }} onClick={loadCategories}>
+                Retry
+              </button>
+            </span>
+          )}
           {categories.map(cat => {
             const isSelected = selectedCat === cat;
             return (
@@ -313,6 +370,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                   e.stopPropagation();
                   applyHealthyDefaults();
                 }}
+                title="Show only products with sugar ≤ 10 g, sodium ≤ 400 mg and saturated fat ≤ 4 g per 100 g/ml"
                 style={{
                   padding: '5px 12px',
                   fontSize: '0.76rem',
@@ -327,7 +385,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                   gap: 4
                 }}
               >
-                <span>🌿 Reset to Healthy Level</span>
+                <span>🌿 Healthier preset</span>
               </button>
 
               <button
@@ -586,7 +644,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}>
               <span style={{ color: 'var(--color-text-subtle)' }}>Show:</span>
-              {[30, 60, 'All'].map(size => (
+              {PAGE_SIZES.map(size => (
                 <button
                   key={size}
                   onClick={() => { setPageSize(size); setPage(0); }}
@@ -614,6 +672,13 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
         </div>
       </div>
 
+      <p className="catalogue-legend">
+        <span style={{ color: '#b3261e', fontWeight: 700 }}>▲ Red value</span> = above the limit used for that
+        product&apos;s category (for example, sodium above 400 mg per 100 g for snacks). Hover a value to see the limit.
+        &ldquo;Not stated&rdquo; means the value is missing, which is never counted as zero. Chocolates &amp; sweets and
+        condiments have no limits, so they are never marked.
+      </p>
+
       {/* Product Grid */}
       {loading ? (
         <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--color-text-muted)' }}>
@@ -622,16 +687,16 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       ) : apiError ? (
         <div style={{ padding: '48px 20px', textAlign: 'center', background: '#fff9fa', borderRadius: 12, border: '1px solid #ffcdd2' }}>
           <AlertCircle size={36} color="#d32f2f" style={{ margin: '0 auto 12px' }} />
-          <h3 style={{ fontSize: '1.2rem', color: '#c62828', marginBottom: 6 }}>Unable to Connect to Product Catalogue</h3>
+          <h3 style={{ fontSize: '1.2rem', color: '#c62828', marginBottom: 6 }}>We couldn't load the catalogue</h3>
           <p style={{ color: '#555', fontSize: '0.9rem', maxWidth: 480, margin: '0 auto 16px' }}>
             {apiError}
           </p>
           <button
             className="btn-primary"
-            onClick={fetchProducts}
+            onClick={() => setReloadToken((t) => t + 1)}
             style={{ padding: '8px 20px', fontSize: '0.88rem' }}
           >
-            Retry Connection
+            Try again
           </button>
         </div>
       ) : products.length === 0 ? (
@@ -693,8 +758,11 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                     {prod.image_small_url || prod.image_url ? (
                       <img
                         src={prod.image_small_url || prod.image_url}
-                        alt={prod.product_name}
+                        alt={`${prod.brand} ${prod.product_name} pack`}
                         loading="lazy"
+                        decoding="async"
+                        width={240}
+                        height={140}
                         onError={(e) => {
                           e.currentTarget.style.display = 'none';
                           const fallback = e.currentTarget.parentElement.querySelector('.image-fallback-container');
@@ -732,7 +800,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: '1.05rem', color: 'var(--color-primary)', marginBottom: 8, lineHeight: 1.3 }}>
+                  <h3 className="line-clamp-2" title={prod.product_name} style={{ fontSize: '1.05rem', color: 'var(--color-primary)', marginBottom: 8, lineHeight: 1.3 }}>
                     {prod.product_name}
                   </h3>
 
@@ -759,20 +827,10 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
                   }}>
                     <div>
                       <span style={{ color: 'var(--color-text-subtle)', display: 'block' }}>Energy</span>
-                      <strong>{prod.energy_kcal != null ? `${prod.energy_kcal} kcal` : 'N/A'}</strong>
+                      <strong>{formatNutrient('energy_kcal', prod.energy_kcal)}</strong>
                     </div>
-                    <div>
-                      <span style={{ color: 'var(--color-text-subtle)', display: 'block' }}>Sugars</span>
-                      <strong style={{ color: prod.sugars_g > 15 ? '#c62828' : 'inherit' }}>
-                        {prod.sugars_g != null ? `${prod.sugars_g}g` : 'Missing'}
-                      </strong>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--color-text-subtle)', display: 'block' }}>Sodium</span>
-                      <strong style={{ color: prod.sodium_mg > 600 ? '#e65100' : 'inherit' }}>
-                        {prod.sodium_mg != null ? `${int(prod.sodium_mg)}mg` : 'Missing'}
-                      </strong>
-                    </div>
+                    <NutrientValue label="Sugars" field="sugars_g" prod={prod} />
+                    <NutrientValue label="Sodium" field="sodium_mg" prod={prod} />
                   </div>
                 </div>
 
@@ -815,8 +873,8 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
       )}
 
       {/* Pagination */}
-      {pageSize !== 'All' && (page > 0 || products.length >= Number(pageSize)) && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, marginTop: 32 }}>
+      {!loading && !apiError && total > pageSize && (
+        <nav aria-label="Catalogue pages" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, marginTop: 32 }}>
           <button
             className="btn-secondary"
             disabled={page === 0}
@@ -826,22 +884,18 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct, ac
             Previous
           </button>
           <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-            Page {page + 1}
+            Page {page + 1} of {pageCount} · {total} products
           </span>
           <button
             className="btn-secondary"
-            disabled={products.length < Number(pageSize)}
+            disabled={page + 1 >= pageCount}
             onClick={() => setPage(p => p + 1)}
-            style={{ opacity: products.length < Number(pageSize) ? 0.5 : 1 }}
+            style={{ opacity: page + 1 >= pageCount ? 0.5 : 1 }}
           >
             Next
           </button>
-        </div>
+        </nav>
       )}
     </div>
   );
-}
-
-function int(val) {
-  return Math.round(val || 0);
 }

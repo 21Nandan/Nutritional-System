@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from backend.core.standards_registry import nutrient_flags
+
 CATEGORY_SYNONYMS: dict[str, list[str]] = {
     "Snacks": ["snack", "snacks", "namkeen", "chips", "crisps", "bhujia", "mixture", "sev", "wafers"],
     "Breakfast Cereals": ["cereal", "cereals", "corn flakes", "muesli", "oats", "granola", "breakfast"],
@@ -308,6 +310,7 @@ def execute_semantic_search(
         p_dict["semantic_score"] = round(min(max(score, 5.0), 99.0), 1)
         p_dict["semantic_reason"] = " • ".join(explanations)
         clean_item = {k: (None if pd.isna(v) else v) for k, v in p_dict.items()}
+        clean_item["nutrient_flags"] = nutrient_flags(clean_item)
         scored_items.append(clean_item)
 
     # Sort descending by semantic score

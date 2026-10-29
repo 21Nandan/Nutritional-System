@@ -14,7 +14,7 @@ export default function Navbar({ activePage, setActivePage }) {
     { id: 'catalogue', label: 'Catalogue', labelSub: 'Products', icon: Search },
     { id: 'compare', label: 'Compare', icon: ArrowLeftRight },
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'audit', label: 'Data Quality Audit', icon: ShieldCheck }
+    { id: 'audit', label: 'About the Data', icon: ShieldCheck }
   ];
 
   const handleNavClick = (id) => {

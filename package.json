@@ -1,9 +1,9 @@
 {
-  "name": "eatgood-nutrition-system",
-  "version": "1.0.0",
+  "name": "eatgood",
+  "version": "1.1.0",
   "private": true,
+  "description": "Workspace root. The frontend lives in frontend/, the API in backend/. See the Makefile.",
   "scripts": {
-    "build": "cd frontend && (unset npm_config_cache_dir NPM_CONFIG_CACHE_DIR 2>/dev/null || true) && npm install && npm run build",
-    "start": "python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    "build": "cd frontend && npm ci && npm run build"
   }
 }

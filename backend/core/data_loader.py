@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from backend.config import DATA_DIR
+from backend.core.standards_registry import nutrient_flags
 
 # Common stem and synonym expansions for Indian packaged foods search
 COMMON_STEMS = {
@@ -255,6 +256,7 @@ class DataLoaderService:
 
         # Enrich local records with consistent local metadata and nutrition summaries
         for rec in records:
+            rec["nutrient_flags"] = nutrient_flags(rec)
             rec["is_local"] = True
             rec["source"] = "Local Indian Catalogue"
             rec["nutrition_summary"] = {

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, FileText, Check, ArrowRight, ArrowLeft, 
-  AlertTriangle, Lock, Sparkles, Heart, ShieldAlert, User, 
-  CheckCircle2, Info, Activity, AlertCircle
+  Check, ArrowRight, ArrowLeft, 
+  AlertTriangle, Lock, ShieldAlert, CheckCircle2, Info, AlertCircle
 } from 'lucide-react';
 import { useLockBodyScroll } from './useLockBodyScroll';
 import logoImg from '../assets/logo.png';
@@ -211,7 +210,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                 </span>
               </div>
               <p style={{ fontSize: '0.78rem', color: '#b0c9bb', margin: '2px 0 0' }}>
-                AI-Powered Personalized Food Safety & Nutrition Assessment
+                Understand Indian packaged food labels
               </p>
             </div>
           </div>
@@ -275,10 +274,10 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#2e7d32', fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>
                     <Lock size={16} />
-                    <span>100% Local-First Privacy</span>
+                    <span>Your data stays on this device</span>
                   </div>
                   <p style={{ fontSize: '0.76rem', color: '#1b5e20', margin: 0, lineHeight: 1.4 }}>
-                    Your health goals, allergen restrictions, and food photographs stay entirely on your device. Zero cloud egress of personal information.
+                    Your profile, saved items and history are stored in this browser, and label photos are read on your device. To personalise results, your goal, diet and allergens are sent with each request but never stored. See the privacy policy for details.
                   </p>
                 </div>
 
@@ -293,7 +292,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                     <span>Not Medical Advice</span>
                   </div>
                   <p style={{ fontSize: '0.76rem', color: '#b73800', margin: 0, lineHeight: 1.4 }}>
-                    EATGOOD provides computational nutritional assessments based on WHO/FSSAI reference models. It does not replace medical consultation.
+                    EATGOOD gives informational assessments using thresholds informed by WHO and FSSAI reference documents. It is not medical advice. The catalogue currently uses demo nutrition data.
                   </p>
                 </div>
 
@@ -330,16 +329,13 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                   Summary of Terms of Service & Data Ethics:
                 </h4>
                 <p style={{ margin: '0 0 8px' }}>
-                  <strong>1. Educational Scope:</strong> EATGOOD evaluates food labels against published reference criteria (WHO SEARO Nutrient Profile Model 2017 and FSSAI guidelines). It does not issue official statutory compliance or certification.
+                  <strong>1. Informational scope:</strong> EATGOOD compares label values with thresholds informed by published reference documents (WHO SEARO Nutrient Profile Model 2017, FSSAI draft guidance). It is not endorsed by these bodies and does not certify regulatory compliance.
                 </p>
                 <p style={{ margin: '0 0 8px' }}>
                   <strong>2. OCR & Barcode Verification:</strong> Optical text extraction from photographs and third-party barcode lookups (such as Open Food Facts) are subject to packaging clarity and community data accuracy. Users should confirm values before relying on results.
                 </p>
-                <p style={{ margin: '0 0 8px' }}>
-                  <strong>3. Experimental Machine Learning:</strong> Any integrated suitability prediction operates as an experimental secondary perspective trained on synthetic benchmarks; deterministic evidence-based standards remain primary ground truth.
-                </p>
                 <p style={{ margin: 0 }}>
-                  <strong>4. Limitation of Liability:</strong> Software is provided &quot;as is&quot;. Developers disclaim liability for individual health outcomes or consumer purchase decisions resulting from the tool.
+                  <strong>3. Limitation of liability:</strong> Software is provided &quot;as is&quot;. Developers disclaim liability for individual health outcomes or consumer purchase decisions resulting from the tool.
                 </p>
               </div>
 

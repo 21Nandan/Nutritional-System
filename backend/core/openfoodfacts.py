@@ -23,6 +23,7 @@ import certifi
 import httpx
 
 from backend.config import OFF_BASE_URL, OFF_TIMEOUT_SECONDS, OFF_USER_AGENT
+from backend.core.standards_registry import nutrient_flags
 
 logger = logging.getLogger("eatgood.openfoodfacts")
 
@@ -563,6 +564,7 @@ def search_openfoodfacts_text(query: str, limit: int = 6, client: httpx.Client |
         if not code or not p_name or not str(p_name).strip():
             continue
         mapped = map_off_product_to_eatgood(code, raw)
+        mapped["nutrient_flags"] = nutrient_flags(mapped)
         mapped["is_local"] = False
         mapped["source"] = "Open Food Facts"
         mapped["nutrition_summary"] = {

@@ -101,7 +101,12 @@ def validate_and_normalize_nutrition(
     basis_converted = False
     conversion_factor = 1.0
 
-    if "serving" in raw_basis:
+    if raw_basis.replace(" ", "") not in ("per100g", "per100ml") and "serving" not in raw_basis:
+        # Without a stated basis the values cannot be compared with per-100 g/ml thresholds.
+        contradictions.append(
+            "The label does not say whether values are per 100 g, per 100 ml or per serving, so they cannot be graded."
+        )
+    elif "serving" in raw_basis:
         if raw_serving_size and raw_serving_size > 0:
             # Convert per-serving values to per-100g or per-100ml
             target_denom = 100.0

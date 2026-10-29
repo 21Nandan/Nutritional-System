@@ -37,3 +37,6 @@ yarn-error.log*
 
 # OCR assets copied from node_modules at build time
 frontend/public/ocr/
+
+# Build output (Vercel and local runs rebuild it)
+frontend/dist/

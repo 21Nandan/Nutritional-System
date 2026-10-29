@@ -6,6 +6,7 @@ No invented thresholds. Every reference is cited and verifiable.
 Distinguishes voluntary front-of-pack nutrition profiling from mandatory statutory labeling.
 """
 
+from collections.abc import Mapping
 from typing import Any
 
 STANDARDS_REGISTRY_VERSION = "2026.2"
@@ -719,3 +720,31 @@ def get_applicable_standards(category: str) -> list[dict[str, Any]]:
         if std["applicable_category"] in [canonical, category, "All Packaged Foods"]:
             standards.append(std)
     return standards
+
+
+FLAGGED_NUTRIENTS = ("sugars_g", "saturated_fat_g", "sodium_mg")
+
+
+def nutrient_flags(product: Mapping[Any, Any]) -> dict[str, dict[str, Any]]:
+    """Per-nutrient 'high' / 'ok' / 'missing' flags using the same category thresholds as the grade.
+
+    This is the single source for colour coding on catalogue cards, so a card can never disagree
+    with the assessment page. Uncalibrated categories return no flags.
+    """
+    spec = get_category_spec(product.get("category") or "")
+    if spec is None or "thresholds" not in spec:
+        return {}
+    flags = {}
+    for nutrient in FLAGGED_NUTRIENTS:
+        threshold = spec["thresholds"].get(nutrient)
+        if threshold is None:
+            continue
+        value = product.get(nutrient)
+        if value is None or value != value:  # None or NaN: missing, never treated as 0
+            level = "missing"
+        elif value > threshold:
+            level = "high"
+        else:
+            level = "ok"
+        flags[nutrient] = {"level": level, "threshold": threshold, "basis": spec["reference_basis"]}
+    return flags

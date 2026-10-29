@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, ShieldCheck, AlertTriangle, CheckCircle2, Bookmark, 
-  ArrowRight, Heart, Sparkles, Scale, AlertCircle, Info, ChevronRight, ChevronDown, ChevronUp, Award,
-  Edit3, X, Sliders, RefreshCw, Camera, Image as ImageIcon, ZoomIn
+  ArrowLeft, AlertTriangle, CheckCircle2, Bookmark, 
+  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, Sliders, RefreshCw, Camera
 } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
+import { apiFetch } from '../api';
+import { isSaved as isProductSaved, recordHistory, toggleSavedProduct } from '../storage';
+
+// Every custom scan shares the id CUSTOM_SCAN, so saved scans are keyed by name and brand instead.
+const saveKeyFor = (a) => (a.is_custom ? `CUSTOM:${a.product_name}|${a.brand || ''}` : a.product_id);
 
 // Layer 1 Presentation Helper Functions
 const getGradeSummary = (l1) => {
@@ -53,7 +57,7 @@ const getNutrientLabel = (nutKey) => {
 const cleanHighlightText = (text) => {
   if (!text) return '';
   return text
-    .replace(/\s*—\s*meets Codex[^\.]*/gi, '')
+    .replace(/\s*—\s*meets Codex[^.]*/gi, '')
     .replace(/\s*relative to regional nutrient guidelines\s*\([^)]*\)/gi, '')
     .replace(/\s*relative to category guidelines\s*\([^)]*\)/gi, '')
     .replace(/\s*above WHO SEARO recommended benchmark\s*\([^)]*\)/gi, ' above benchmark')
@@ -93,7 +97,6 @@ export default function ProductAssessment({
   const [isSaved, setIsSaved] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [showGradeWhy, setShowGradeWhy] = useState(false);
   const [showDetailedL1, setShowDetailedL1] = useState(false);
   const [expandedClaimIdx, setExpandedClaimIdx] = useState({});
 
@@ -106,28 +109,11 @@ export default function ProductAssessment({
     const q = (qText || assistantQuestion).trim();
     if (!q || !assessment?.product_id) return;
     setAssistantLoading(true);
-    const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
-    fetch('/api/assistant/ask', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': cid
-      },
-      body: JSON.stringify({
-        product_id: assessment.product_id,
-        question: q,
-        user_id: cid
-      })
-    })
-      .then(res => res.json())
-      .then(data => {
-        setAssistantResponse(data);
-        setAssistantLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setAssistantLoading(false);
-      });
+    setAssistantResponse(null);
+    apiFetch('/api/assistant/ask', { method: 'POST', body: { product_id: assessment.product_id, question: q } })
+      .then((data) => setAssistantResponse(data))
+      .catch((err) => setAssistantResponse({ error: err.message }))
+      .finally(() => setAssistantLoading(false));
   };
 
   const formatBasis = (b) => {
@@ -162,103 +148,66 @@ export default function ProductAssessment({
     marketing_claims: ''
   });
 
-  const recordLocalInteraction = (data) => {
-    if (!data || !data.product_id) return;
-    try {
-      const stored = localStorage.getItem('eatgood_interaction_history');
-      let hist = stored ? JSON.parse(stored) : [];
-      hist = hist.filter(h => h.product_id !== data.product_id);
-      hist.unshift({
-        id: Date.now(),
-        product_id: data.product_id,
-        product_name: data.product_name || 'Food Product',
-        brand: data.brand || 'General',
-        category: data.category || 'Food Item',
-        personalized_score: data.layer2_personalized?.personalized_score ?? null,
-        general_grade: data.layer1_general?.grade || 'N/A',
-        analysis_source: data.is_custom ? 'Custom Label Scan' : (data.data_source || 'Catalogue Assessment'),
-        timestamp: new Date().toISOString()
-      });
-      localStorage.setItem('eatgood_interaction_history', JSON.stringify(hist.slice(0, 30)));
-    } catch (e) {}
-  };
+  const [loadError, setLoadError] = useState(null);
+  const [alternativesError, setAlternativesError] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
-    if (productId && !initialAssessment) {
-      setLoading(true);
-      const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
-      fetch(`/api/products/${productId}?user_id=${encodeURIComponent(cid)}`, {
-        headers: { 'X-User-Id': cid }
-      })
-        .then(res => res.json())
-        .then(data => {
-          setAssessment(data);
-          recordLocalInteraction(data);
-          if (data.is_saved !== undefined) {
-            setIsSaved(data.is_saved);
-          }
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoading(false);
-        });
-
-      // Fetch healthier alternatives
-      fetch(`/api/alternatives/${productId}?user_id=${encodeURIComponent(cid)}`, {
-        headers: { 'X-User-Id': cid }
-      })
-        .then(res => res.json())
-        .then(data => setAlternatives(data.alternatives || []))
-        .catch(err => console.error(err));
-    } else if (initialAssessment) {
+    if (initialAssessment) {
       setAssessment(initialAssessment);
-      recordLocalInteraction(initialAssessment);
-      if (initialAssessment.is_saved !== undefined) {
-        setIsSaved(initialAssessment.is_saved);
-      }
+      recordHistory(initialAssessment);
+      setIsSaved(isProductSaved(saveKeyFor(initialAssessment)));
       setLoading(false);
+      return undefined;
     }
-  }, [productId, initialAssessment, activeProfile]);
+    if (!productId) return undefined;
 
-  useEffect(() => {
-    const pid = productId || initialAssessment?.product_id;
-    if (pid) {
-      fetch(`/api/saved/check/${pid}`)
-        .then(res => res.json())
-        .then(data => setIsSaved(Boolean(data.is_saved)))
-        .catch(err => console.error(err));
-    }
-  }, [productId, initialAssessment]);
+    const controller = new AbortController();
+    setLoading(true);
+    setLoadError(null);
+    setAlternativesError(null);
+    apiFetch(`/api/products/${encodeURIComponent(productId)}`, { signal: controller.signal })
+      .then((data) => {
+        setAssessment(data);
+        recordHistory(data);
+        setIsSaved(isProductSaved(saveKeyFor(data)));
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        setLoadError(err.message);
+        setLoading(false);
+      });
+    apiFetch(`/api/alternatives/${encodeURIComponent(productId)}`, { signal: controller.signal })
+      .then((data) => setAlternatives(data.alternatives))
+      .catch((err) => {
+        if (err.name !== 'AbortError') setAlternativesError(err.message);
+      });
+    return () => controller.abort();
+  }, [productId, initialAssessment, activeProfile, reloadToken]);
 
   const handleToggleSave = () => {
     if (!assessment?.product_id) return;
-    fetch(`/api/saved/${assessment.product_id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product_id: assessment.product_id,
-        product_name: assessment.product_name,
-        brand: assessment.brand,
-        category: assessment.category,
-        sub_category: assessment.sub_category,
-        energy_kcal: assessment.nutrition_facts?.energy_kcal ?? assessment.energy_kcal,
-        sugars_g: assessment.nutrition_facts?.sugars_g ?? assessment.sugars_g,
-        sodium_mg: assessment.nutrition_facts?.sodium_mg ?? assessment.sodium_mg,
-        protein_g: assessment.nutrition_facts?.protein_g ?? assessment.protein_g,
-        dietary_fibre_g: assessment.nutrition_facts?.dietary_fibre_g ?? assessment.dietary_fibre_g,
-        saturated_fat_g: assessment.nutrition_facts?.saturated_fat_g ?? assessment.saturated_fat_g,
-        ingredients: assessment.ingredients,
-        allergens_declared: assessment.allergens_declared,
-        measurement_basis: assessment.measurement_basis,
-        serving_size: assessment.serving_size,
-        serving_size_unit: assessment.serving_size_unit,
-        data_confidence_status: assessment.data_confidence_status
-      })
-    })
-      .then(res => res.json())
-      .then(data => setIsSaved(data.is_saved))
-      .catch(err => console.error(err));
+    const nf = assessment.nutrition_facts || {};
+    try {
+      setIsSaved(
+        toggleSavedProduct({
+          product_id: saveKeyFor(assessment),
+          product_name: assessment.product_name,
+          brand: assessment.brand,
+          category: assessment.category,
+          image_small_url: assessment.image_small_url || assessment.image_url || null,
+          is_custom: Boolean(assessment.is_custom),
+          // Custom scans have no server record, so keep the confirmed values to re-assess later.
+          raw_input: assessment.is_custom ? assessment.raw_input : undefined,
+          energy_kcal: nf.energy_kcal ?? null,
+          sugars_g: nf.sugars_g ?? null,
+          sodium_mg: nf.sodium_mg ?? null,
+        })
+      );
+    } catch (err) {
+      window.alert(err.message);
+    }
   };
 
   if (loading) {
@@ -269,11 +218,17 @@ export default function ProductAssessment({
     );
   }
 
-  if (!assessment) {
+  if (loadError || !assessment) {
     return (
-      <div style={{ padding: '60px 0', textAlign: 'center' }}>
-        <h3>Assessment not available</h3>
-        <button className="btn-secondary" onClick={onBack} style={{ marginTop: 16 }}>Back</button>
+      <div role="alert" style={{ padding: '60px 0', textAlign: 'center' }}>
+        <h3>We couldn't load this assessment</h3>
+        {loadError && <p style={{ color: 'var(--color-text-muted)', marginTop: 8 }}>{loadError}</p>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
+          {loadError && (
+            <button className="btn-primary" onClick={() => setReloadToken((t) => t + 1)}>Try again</button>
+          )}
+          <button className="btn-secondary" onClick={onBack}>Back to catalogue</button>
+        </div>
       </div>
     );
   }
@@ -283,7 +238,6 @@ export default function ProductAssessment({
   const l3_allg = assessment.layer3_allergens || {};
   const l3_add = assessment.layer3_additives || {};
   const claims = assessment.marketing_claims_analysis || [];
-  const ml_exp = assessment.ml_experimental_insight || {};
   const nuts = assessment.nutrition_facts || {};
 
   const isCustom = Boolean(
@@ -324,7 +278,7 @@ export default function ProductAssessment({
   const handleSaveEditedData = async (e) => {
     e.preventDefault();
     if (!editForm.product_name.trim()) {
-      alert('Please enter a product name.');
+      window.alert('Please enter a product name.');
       return;
     }
     setSavingEdit(true);
@@ -352,26 +306,17 @@ export default function ProductAssessment({
     };
 
     try {
-      const cid = localStorage.getItem('eatgood_client_id') || activeProfile?.user_id || 'USR_DEFAULT';
-      const res = await fetch(`/api/products/assess?user_id=${encodeURIComponent(cid)}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-User-Id': cid
-        },
-        body: JSON.stringify(payload)
-      });
-      const newAssessment = await res.json();
+      const newAssessment = await apiFetch('/api/products/assess', { method: 'POST', body: payload });
       setAssessment(newAssessment);
+      recordHistory(newAssessment);
       if (onUpdateAssessment) {
         onUpdateAssessment(newAssessment, editForm);
       }
-      setSavingEdit(false);
       setShowEditModal(false);
     } catch (err) {
-      console.error(err);
+      window.alert(err.message);
+    } finally {
       setSavingEdit(false);
-      alert('Failed to recalculate assessment.');
     }
   };
 
@@ -429,6 +374,48 @@ export default function ProductAssessment({
           </button>
         </div>
       </div>
+
+      {/* Hard Safety Alert Banner (Layer 3 Critical Allergen Conflict) */}
+      {assessment.safety_override?.allergen_conflict && (
+        <div role="alert" style={{
+          background: '#ffebee',
+          border: '2px solid #c62828',
+          borderRadius: 12,
+          padding: '18px 24px',
+          marginBottom: 24,
+          display: 'flex',
+          gap: 16,
+          alignItems: 'center'
+        }}>
+          <AlertTriangle size={32} color="#c62828" style={{ flexShrink: 0 }} aria-hidden="true" />
+          <div>
+            <h3 style={{ color: '#c62828', fontSize: '1.15rem', marginBottom: 4 }}>
+              Not suitable for you: contains {assessment.safety_override.allergens.join(', ')}
+            </h3>
+            <p style={{ color: '#b71c1c', fontSize: '0.88rem', margin: 0 }}>
+              {l2.allergen_conflicts.map(c => `${c.allergen}: ${c.status}`).join(' · ')}. You listed{' '}
+              {assessment.safety_override.allergens.length > 1 ? 'these' : 'this'} in your profile, so your personal
+              score is set to 0 regardless of the nutrition grade.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {assessment.safety_override?.allergen_check_incomplete && !assessment.safety_override?.allergen_conflict && (
+        <div role="alert" style={{ background: 'var(--color-warning-bg)', border: '2px solid var(--color-warning)', borderRadius: 12, padding: '14px 20px', marginBottom: 24, display: 'flex', gap: 14, alignItems: 'center' }}>
+          <AlertTriangle size={26} color="var(--color-warning)" style={{ flexShrink: 0 }} aria-hidden="true" />
+          <p style={{ margin: 0, fontSize: '0.9rem', color: '#7a3300' }}>
+            <strong>Allergen information is missing for this product.</strong> We can&apos;t check it against the
+            allergens in your profile. Read the pack before eating it.
+          </p>
+        </div>
+      )}
+
+      {assessment.profile_source === 'default' && (
+        <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>
+          You haven&apos;t set up a profile on this device, so no allergens or personal goals were applied.
+        </p>
+      )}
 
       {/* Quick Edit Banner for Custom Scans */}
       {isCustom && (
@@ -523,7 +510,7 @@ export default function ProductAssessment({
                 <span style={{ fontSize: '0.82rem', color: 'var(--color-text-subtle)' }}>
                   {assessment.category} ({assessment.sub_category})
                 </span>
-                <span className="badge badge-verified" style={{ fontSize: '0.7rem' }}>
+                <span className="badge badge-warning" style={{ fontSize: '0.7rem' }} title="How far you can rely on these values">
                   {assessment.data_confidence_status}
                 </span>
               </div>
@@ -606,31 +593,6 @@ export default function ProductAssessment({
           </div>
         </div>
       </div>
-
-      {/* Hard Safety Alert Banner (Layer 3 Critical Allergen Conflict) */}
-      {l2.has_critical_allergen_conflict && (
-        <div style={{
-          background: '#ffebee',
-          border: '2px solid #c62828',
-          borderRadius: 12,
-          padding: '18px 24px',
-          marginBottom: 24,
-          display: 'flex',
-          gap: 16,
-          alignItems: 'center'
-        }}>
-          <AlertTriangle size={32} color="#c62828" style={{ flexShrink: 0 }} />
-          <div>
-            <h3 style={{ color: '#c62828', fontSize: '1.15rem', marginBottom: 4 }}>
-              CRITICAL SAFETY WARNING — Allergen Conflict Detected
-            </h3>
-            <p style={{ color: '#b71c1c', fontSize: '0.88rem', margin: 0 }}>
-              This product contains or declared: <strong>{l2.allergen_conflicts.map(c => c.allergen).join(', ')}</strong>, 
-              which violates the strict safety exclusions set in your active profile. Suitability score is overridden to 0.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Grid: Layer 1 (General) & Layer 2 (Personalized) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 24 }}>
@@ -1160,7 +1122,7 @@ export default function ProductAssessment({
                 External Source Ratings (Open Food Facts Community)
               </span>
               <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
-                Supplied by Open Food Facts; distinct from EATGOOD's evidence-based clinical and FSSAI assessment.
+                Supplied by Open Food Facts; separate from EATGOOD's own assessment.
               </p>
             </div>
 
@@ -1401,7 +1363,7 @@ export default function ProductAssessment({
                 Front-of-Pack Marketing Claim Auditor
               </h3>
               <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
-                Evaluates declared package marketing claims against verified nutritional facts and FSSAI / Codex reference schedules.
+                Compares the claims printed on the pack with the nutrition values, using criteria informed by FSSAI and Codex documents.
               </p>
             </div>
           </div>
@@ -1565,6 +1527,11 @@ export default function ProductAssessment({
       )}
 
       {/* Healthier Alternatives */}
+      {alternativesError && (
+        <div role="alert" className="card" style={{ marginBottom: 24, color: '#c62828', fontSize: '0.88rem' }}>
+          Healthier alternatives couldn&apos;t be loaded: {alternativesError}
+        </div>
+      )}
       {alternatives.length > 0 && (
         <div className="card" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -1654,16 +1621,16 @@ export default function ProductAssessment({
         </div>
       )}
 
-      {/* Grounded AI Food Assistant */}
+      {/* Rule-based product Q&A */}
       <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-              <span>AI Food Safety & Nutrition Assistant</span>
-              <span className="badge badge-verified" style={{ fontSize: '0.7rem' }}>Grounded in Facts</span>
+              <span>Ask about this product</span>
+              <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>Rule-based answers</span>
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-              Ask questions about this product. Answers are evaluated strictly against verified label facts, statutory thresholds, and your active profile.
+              Answers are generated by fixed rules from this product&apos;s values, the thresholds shown above and your profile. They are not written by an AI model and are not medical advice.
             </p>
           </div>
         </div>
@@ -1717,7 +1684,10 @@ export default function ProductAssessment({
         </form>
 
         {/* Answer Display */}
-        {assistantResponse && (
+        {assistantResponse?.error && (
+          <p role="alert" style={{ color: '#c62828', fontSize: '0.88rem' }}>{assistantResponse.error}</p>
+        )}
+        {assistantResponse && !assistantResponse.error && (
           <div style={{
             background: 'var(--color-surface-alt)',
             borderRadius: 'var(--radius-md)',
@@ -1735,7 +1705,7 @@ export default function ProductAssessment({
             {assistantResponse.evidence_citations?.length > 0 && (
               <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)' }}>
-                  VERIFIED CITATIONS:
+                  SOURCES USED:
                 </span>
                 {assistantResponse.evidence_citations.map((cite, i) => (
                   <span key={i} className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
