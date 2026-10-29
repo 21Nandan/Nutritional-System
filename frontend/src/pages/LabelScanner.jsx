@@ -6,7 +6,7 @@ import {
   PlusCircle, ShieldCheck
 } from 'lucide-react';
 import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
-import OpenFoodFactsSearch from '../components/OpenFoodFactsSearch';
+import ProductSearch from '../components/ProductSearch';
 import ProductContributionModal from '../components/ProductContributionModal';
 
 export default function LabelScanner({ 
@@ -68,7 +68,7 @@ export default function LabelScanner({
     }
     setBarcodeError('');
     setBarcodeSearching(true);
-    setBarcodeLookupStep('Querying local catalogue & Open Food Facts...');
+    setBarcodeLookupStep('Searching the catalogue and product database...');
     setBarcodeFoundResult(null);
     setBarcodeNotFoundInfo(null);
     setIsCameraActive(false);
@@ -209,7 +209,7 @@ export default function LabelScanner({
         </button>
       </div>
 
-      {mode === 'search' && <OpenFoodFactsSearch onSelectProduct={onSelectProduct} />}
+      {mode === 'search' && <ProductSearch onSelectProduct={onSelectProduct} />}
 
       {/* Barcode Lookup & Camera Scanner */}
       {mode === 'barcode' && (
@@ -243,7 +243,7 @@ export default function LabelScanner({
                 Searching Product Barcode...
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                {barcodeLookupStep || 'Checking local database and Open Food Facts...'}
+                {barcodeLookupStep || 'Searching the catalogue and product database...'}
               </p>
             </div>
           )}
@@ -272,7 +272,7 @@ export default function LabelScanner({
                       <ShieldCheck size={13} />
                       {barcodeFoundResult.source === 'local_database' ? 'Local EATGOOD Catalogue' :
                        barcodeFoundResult.source === 'user_contributed' ? 'User Contributed (Pending Review)' :
-                       'Open Food Facts (v3 API)'}
+                       'Product Database'}
                     </span>
 
                     <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', background: '#f5f5f5', padding: '3px 8px', borderRadius: 4 }}>
@@ -313,7 +313,7 @@ export default function LabelScanner({
                 </div>
               </div>
 
-              {/* Product Thumbnail if available from OFF */}
+              {/* Product thumbnail, when the database has one */}
               {barcodeFoundResult.product?.image_url && (
                 <div style={{ marginBottom: 14, textAlign: 'center' }}>
                   <img 
@@ -321,21 +321,6 @@ export default function LabelScanner({
                     alt={barcodeFoundResult.product.product_name} 
                     style={{ maxHeight: 140, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--color-border)' }} 
                   />
-                </div>
-              )}
-
-              {/* Open Food Facts Attribution Notice */}
-              {barcodeFoundResult.openfoodfacts_attribution && (
-                <div style={{
-                  background: '#f8f9fa',
-                  border: '1px solid #e9ecef',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  fontSize: '0.75rem',
-                  color: 'var(--color-text-muted)',
-                  marginBottom: 16
-                }}>
-                  {barcodeFoundResult.openfoodfacts_attribution}
                 </div>
               )}
 
@@ -493,7 +478,7 @@ export default function LabelScanner({
                 Barcode Scanner & Product Discovery
               </h2>
               <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', maxWidth: 500, margin: '0 auto 20px', lineHeight: 1.4 }}>
-                Scan retail food barcodes with your camera or enter the digits. Matches against our local Indian catalogue, then Open Food Facts.
+                Scan retail food barcodes with your camera or enter the digits. Matches against our Indian catalogue, then a world product database.
               </p>
 
               {/* Main Camera Scan Button */}

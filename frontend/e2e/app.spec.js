@@ -42,40 +42,55 @@ test('profile page lists saved products from this device', async ({ page }) => {
   await expect(page.getByText('1 saved')).toBeVisible();
 });
 
-test('product search queries Open Food Facts and opens the chosen product', async ({ page }) => {
+const KURKURE_RESULTS = {
+  query: 'kurkure', page: 1, page_size: 24, count: 1, has_more: false,
+  products: [{ barcode: '8901491101837', product_name: 'Kurkure Masala Munch', brand: 'PepsiCo',
+    category: 'Snacks', measurement_basis: 'per 100g', image_url: null, nutrition_summary: { energy_kcal: 554 } }],
+};
+
+test('matching products appear while typing and open the chosen product', async ({ page }) => {
   const requests = [];
   await page.route('**/api/products/search/openfoodfacts**', (route) => {
     requests.push(new URL(route.request().url()).searchParams.get('q'));
-    return route.fulfill({
-      json: {
-        query: 'kurkure', page: 1, page_size: 24, count: 1, has_more: false, attribution: 'Open Food Facts',
-        products: [{ barcode: '8901491101837', product_name: 'Kurkure Masala Munch', brand: 'PepsiCo',
-          category: 'Snacks', measurement_basis: 'per 100g', image_url: null, nutrition_summary: { energy_kcal: 554 } }],
-      },
-    });
+    return route.fulfill({ json: KURKURE_RESULTS });
   });
   await page.route('**/api/products/OFF_8901491101837', (route) => route.abort());
   await page.goto('/scanner');
   await expect(page.getByText('Upload Label (OCR)')).toHaveCount(0);
-  await page.getByLabel('Product or brand name').fill('kurkure');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByLabel('Product or brand name').pressSequentially('kurkure', { delay: 40 });
+  await expect(page.getByRole('button', { name: /Kurkure Masala Munch/ })).toBeVisible();
+  await expect(page.locator('main').getByText(/open food facts/i)).toHaveCount(0);
   await page.getByRole('button', { name: /Kurkure Masala Munch/ }).click();
   await expect(page).toHaveURL(/\/product\/OFF_8901491101837$/);
   expect(requests).toEqual(['kurkure']);
 });
 
-test.describe('when Open Food Facts is busy', () => {
+test('the Search button searches immediately, once', async ({ page }) => {
+  const requests = [];
+  await page.route('**/api/products/search/openfoodfacts**', (route) => {
+    requests.push(new URL(route.request().url()).searchParams.get('q'));
+    return route.fulfill({ json: KURKURE_RESULTS });
+  });
+  await page.goto('/scanner');
+  await page.getByLabel('Product or brand name').fill('kurkure');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Kurkure Masala Munch/ })).toBeVisible();
+  await page.waitForTimeout(600);
+  expect(requests).toEqual(['kurkure']);
+});
+
+test.describe('when the product database is busy', () => {
   test.use({ allowedFailures: ['/api/products/search/openfoodfacts'] });
 
   test('a failed product search is shown as an error, not as no results', async ({ page }) => {
     await page.route('**/api/products/search/openfoodfacts**', (route) => route.fulfill({
-      status: 429, json: { detail: { error_code: 'OFF_RATE_LIMITED', message: 'Open Food Facts is receiving too many requests.' } },
+      status: 429, json: { detail: { error_code: 'OFF_RATE_LIMITED', message: 'The product database is receiving too many requests.' } },
     }));
     await page.goto('/scanner');
     await page.getByLabel('Product or brand name').fill('maggi');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('too many requests');
-    await expect(page.getByText(/has no products matching/)).toHaveCount(0);
+    await expect(page.getByText(/No products match/)).toHaveCount(0);
   });
 });
 

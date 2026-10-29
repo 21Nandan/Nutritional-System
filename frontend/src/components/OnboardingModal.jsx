@@ -332,7 +332,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                   <strong>1. Informational scope:</strong> EATGOOD compares label values with thresholds informed by published reference documents (WHO SEARO Nutrient Profile Model 2017, FSSAI draft guidance). It is not endorsed by these bodies and does not certify regulatory compliance.
                 </p>
                 <p style={{ margin: '0 0 8px' }}>
-                  <strong>2. Search & Barcode Verification:</strong> Product search and barcode lookups use Open Food Facts, a community database whose accuracy EATGOOD does not check. Users should confirm values before relying on results.
+                  <strong>2. Search & Barcode Verification:</strong> Product search and barcode lookups use a community-contributed product database whose accuracy EATGOOD does not check. Users should confirm values before relying on results.
                 </p>
                 <p style={{ margin: 0 }}>
                   <strong>3. Limitation of liability:</strong> Software is provided &quot;as is&quot;. Developers disclaim liability for individual health outcomes or consumer purchase decisions resulting from the tool.

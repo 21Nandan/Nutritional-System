@@ -296,7 +296,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
               Limits you should know about
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              • <strong>Data sources:</strong> barcode lookups and product search use Open Food Facts, a community database. Always check values against the pack.
+              • <strong>Data sources:</strong> barcode lookups and product search use a community-contributed product database. Always check values against the pack.
               <br />
               • <strong>Thresholds:</strong> grades use category thresholds informed by WHO and FSSAI reference documents; these bodies have not reviewed or endorsed EATGOOD. Chocolates, sweets and condiments get no grade.
               <br />

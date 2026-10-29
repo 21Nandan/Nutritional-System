@@ -73,7 +73,7 @@ No secrets are required.
 | `GET /api/dataset` | dataset version, provenance and counts |
 | `GET /api/products` | catalogue: `query`, `category`, nutrient filters, `limit` (≤ 100), `offset` |
 | `GET /api/products/search?q=` | catalogue first, then Open Food Facts; external errors are reported |
-| `GET /api/products/search/openfoodfacts?q=&page=` | Open Food Facts world database only, 24 per page; a failed search is an HTTP error |
+| `GET /api/products/search/openfoodfacts?q=&page=` | Open Food Facts world database only (search.openfoodfacts.org), 24 per page; a failed search is an HTTP error |
 | `GET /api/products/categories` | categories |
 | `GET /api/products/{id}` | full assessment (catalogue ID, `OFF_<barcode>`, `USER_SUB_<barcode>` or barcode) |
 | `GET /api/products/barcode/{code}` | barcode lookup with assessment and alternatives |

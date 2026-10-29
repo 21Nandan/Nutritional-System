@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, RefreshCw, Package, ArrowRight, Globe, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../api';
 
-// Searches the Open Food Facts world database through the EATGOOD API. Each search is one
-// request made when the user presses Search; failures are shown, never turned into "no results".
-export default function OpenFoodFactsSearch({ onSelectProduct }) {
+const SUGGEST_DELAY_MS = 350;
+
+// Product search over the world packaged-food database behind the EATGOOD API. Results update
+// while the user types (debounced, stale requests cancelled); Search runs it immediately.
+// Failures are shown, never turned into "no results".
+export default function ProductSearch({ onSelectProduct }) {
   const [query, setQuery] = useState('');
   const [searchedQuery, setSearchedQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -13,30 +16,56 @@ export default function OpenFoodFactsSearch({ onSelectProduct }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const controllerRef = useRef(null);
+  const timerRef = useRef(null);
 
-  const runSearch = async (term, nextPage) => {
+  const runSearch = useCallback(async (term, nextPage) => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch(`/api/products/search/openfoodfacts?q=${encodeURIComponent(term)}&page=${nextPage}`);
+      const data = await apiFetch(
+        `/api/products/search/openfoodfacts?q=${encodeURIComponent(term)}&page=${nextPage}`,
+        { signal: controller.signal }
+      );
       setResults(prev => (nextPage === 1 ? data.products : [...prev, ...data.products]));
       setPage(nextPage);
       setCount(data.count);
       setHasMore(data.has_more);
       setSearchedQuery(term);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       if (nextPage === 1) {
         setResults([]);
         setSearchedQuery(term);
       }
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (controllerRef.current === controller) setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2) {
+      controllerRef.current?.abort();
+      setResults([]);
+      setSearchedQuery('');
+      setError(null);
+      setLoading(false);
+      return undefined;
+    }
+    timerRef.current = setTimeout(() => runSearch(term, 1), SUGGEST_DELAY_MS);
+    return () => clearTimeout(timerRef.current);
+  }, [query, runSearch]);
+
+  useEffect(() => () => controllerRef.current?.abort(), []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    clearTimeout(timerRef.current);
     const term = query.trim();
     if (term.length < 2) {
       setError('Type at least 2 characters to search.');
@@ -48,19 +77,19 @@ export default function OpenFoodFactsSearch({ onSelectProduct }) {
   const finishedEmpty = !loading && !error && searchedQuery && results.length === 0;
 
   return (
-    <div className="card off-search" style={{ maxWidth: 760, margin: '0 auto 30px' }}>
+    <div className="card product-search" style={{ maxWidth: 760, margin: '0 auto 30px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <Globe size={22} color="var(--color-primary)" aria-hidden="true" />
         <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: 0 }}>Search products</h2>
       </div>
       <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>
-        Searches Open Food Facts, a free world database of millions of packaged foods. Try a product or brand name.
+        Search millions of packaged foods by product or brand name. Matches appear as you type.
       </p>
 
-      <form onSubmit={handleSubmit} className="off-search-form" role="search">
-        <label htmlFor="off-search-input" className="sr-only">Product or brand name</label>
+      <form onSubmit={handleSubmit} className="product-search-form" role="search">
+        <label htmlFor="product-search-input" className="sr-only">Product or brand name</label>
         <input
-          id="off-search-input"
+          id="product-search-input"
           type="search"
           inputMode="search"
           enterKeyHint="search"
@@ -69,9 +98,10 @@ export default function OpenFoodFactsSearch({ onSelectProduct }) {
           placeholder="e.g. Kurkure, Maggi noodles, Amul butter"
           value={query}
           onChange={e => setQuery(e.target.value)}
+          aria-controls="product-search-results"
         />
-        <button type="submit" className="btn-primary btn-compact" disabled={loading}>
-          {loading && page === 0 ? <RefreshCw size={16} className="spin" aria-hidden="true" /> : <Search size={16} aria-hidden="true" />}
+        <button type="submit" className="btn-primary btn-compact" disabled={loading && page === 0}>
+          {loading && results.length === 0 ? <RefreshCw size={16} className="spin" aria-hidden="true" /> : <Search size={16} aria-hidden="true" />}
           <span>Search</span>
         </button>
       </form>
@@ -85,33 +115,34 @@ export default function OpenFoodFactsSearch({ onSelectProduct }) {
 
       {loading && results.length === 0 && (
         <p role="status" style={{ marginTop: 16, fontSize: '0.88rem', color: 'var(--color-text-muted)', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <RefreshCw size={15} className="spin" aria-hidden="true" /> Searching Open Food Facts…
+          <RefreshCw size={15} className="spin" aria-hidden="true" /> Searching…
         </p>
       )}
 
       {finishedEmpty && (
         <p role="status" style={{ marginTop: 16, fontSize: '0.88rem', color: 'var(--color-text-muted)' }}>
-          Open Food Facts has no products matching &ldquo;{searchedQuery}&rdquo;. Try another spelling, or scan the barcode.
+          No products match &ldquo;{searchedQuery}&rdquo;. Try another spelling, or scan the barcode.
         </p>
       )}
 
       {results.length > 0 && (
-        <>
-          <p role="status" style={{ marginTop: 16, marginBottom: 8, fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
-            Showing {results.length}{count != null ? ` of ${count.toLocaleString()}` : ''} results for &ldquo;{searchedQuery}&rdquo;
+        <div id="product-search-results">
+          <p role="status" style={{ marginTop: 16, marginBottom: 8, fontSize: '0.8rem', color: 'var(--color-text-subtle)', display: 'flex', gap: 6, alignItems: 'center' }}>
+            {loading && <RefreshCw size={13} className="spin" aria-hidden="true" />}
+            Showing {results.length}{count != null ? ` of ${count.toLocaleString()}` : ''} matches for &ldquo;{searchedQuery}&rdquo;
           </p>
-          <ul className="off-results">
+          <ul className="product-results">
             {results.map(prod => (
               <li key={prod.barcode}>
-                <button type="button" className="off-result" onClick={() => onSelectProduct(`OFF_${prod.barcode}`)}>
-                  <span className="off-result-thumb">
+                <button type="button" className="product-result" onClick={() => onSelectProduct(`OFF_${prod.barcode}`)}>
+                  <span className="product-result-thumb">
                     {prod.image_url ? (
                       <img src={prod.image_url} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
                     ) : (
                       <Package size={20} color="var(--color-text-muted)" aria-hidden="true" />
                     )}
                   </span>
-                  <span className="off-result-text">
+                  <span className="product-result-text">
                     <strong>{prod.product_name}</strong>
                     <span>{[prod.brand, prod.category].filter(Boolean).join(' · ')}</span>
                     {prod.nutrition_summary?.energy_kcal != null && (
@@ -135,10 +166,9 @@ export default function OpenFoodFactsSearch({ onSelectProduct }) {
             </button>
           )}
           <p style={{ marginTop: 12, fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>
-            Data from <a href="https://world.openfoodfacts.org" target="_blank" rel="noreferrer">Open Food Facts</a> (ODbL).
-            Community-contributed: check values against the pack.
+            Product data is community-contributed: check values against the pack.
           </p>
-        </>
+        </div>
       )}
     </div>
   );

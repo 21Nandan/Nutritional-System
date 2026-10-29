@@ -27,7 +27,9 @@ from backend.core.standards_registry import nutrient_flags
 
 logger = logging.getLogger("eatgood.openfoodfacts")
 
-OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+# Open Food Facts' search service (search-a-licious). The older cgi/search.pl endpoint answers
+# 503 "unusually high demand" to most clients, so it is not used.
+OFF_SEARCH_URL = "https://search.openfoodfacts.org/search"
 RETRY_BACKOFF_SECONDS = 0.5
 
 _client: httpx.Client | None = None
@@ -80,13 +82,13 @@ def _get_with_retry(client: httpx.Client, url: str, params: dict) -> httpx.Respo
 
 
 ERROR_MESSAGES = {
-    "OFF_TIMEOUT": "Open Food Facts took too long to answer. Please try again in a moment, or enter the nutrition facts manually.",
-    "OFF_TLS_ERROR": "We couldn't open a secure connection to Open Food Facts. Please try again later, or enter the nutrition facts manually.",
-    "OFF_NETWORK_ERROR": "We couldn't reach Open Food Facts right now. Check your connection and try again, or enter the nutrition facts manually.",
-    "OFF_RATE_LIMITED": "Open Food Facts is receiving too many requests. Please wait a minute and try again.",
-    "OFF_UPSTREAM_ERROR": "Open Food Facts is having problems right now. Please try again later, or enter the nutrition facts manually.",
-    "OFF_BAD_RESPONSE": "Open Food Facts sent an answer we couldn't understand. Please try again later, or enter the nutrition facts manually.",
-    "OFF_BARCODE_MISMATCH": "Open Food Facts returned a different product for this barcode, so we did not use it.",
+    "OFF_TIMEOUT": "The product database took too long to answer. Please try again in a moment, or enter the nutrition facts manually.",
+    "OFF_TLS_ERROR": "We couldn't open a secure connection to the product database. Please try again later, or enter the nutrition facts manually.",
+    "OFF_NETWORK_ERROR": "We couldn't reach the product database right now. Check your connection and try again, or enter the nutrition facts manually.",
+    "OFF_RATE_LIMITED": "The product database is receiving too many requests. Please wait a minute and try again.",
+    "OFF_UPSTREAM_ERROR": "The product database is having problems right now. Please try again later, or enter the nutrition facts manually.",
+    "OFF_BAD_RESPONSE": "The product database sent an answer we couldn't understand. Please try again later, or enter the nutrition facts manually.",
+    "OFF_BARCODE_MISMATCH": "The product database returned a different product for this barcode, so we did not use it.",
 }
 
 
@@ -460,10 +462,10 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
             "nutriscore_score": off_product.get("nutriscore_score"),
             "nova_group": nova_group,
             "data_completeness": completeness,
-            "notice": "Source-reported metrics from Open Food Facts community database; distinct from EATGOOD calculated assessment."
+            "notice": "Community-reported ratings; separate from the EATGOOD assessment."
         },
-        "data_source": "Open Food Facts (v3 API)",
-        "data_confidence_status": "Community Sourced (Open Food Facts)",
+        "data_source": "Product database (community-contributed)",
+        "data_confidence_status": "Community-contributed",
         "retrieved_at": now_iso,
         "openfoodfacts_attribution": "Nutritional and ingredient information retrieved from Open Food Facts under Open Database License (ODbL)."
     }
@@ -490,7 +492,7 @@ def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None =
         "product": None,
         "barcode": clean_barcode,
         "source": "openfoodfacts",
-        "message": f"Barcode {clean_barcode} is not in Open Food Facts yet. You can add it, or enter the nutrition facts manually.",
+        "message": f"Barcode {clean_barcode} is not in the product database yet. You can add it, or enter the nutrition facts manually.",
     }
     if response.status_code == 404:
         return not_found
@@ -521,7 +523,7 @@ def fetch_product_from_openfoodfacts(barcode: str, client: httpx.Client | None =
         "product": map_off_product_to_eatgood(clean_barcode, raw_prod),
         "barcode": clean_barcode,
         "source": "openfoodfacts",
-        "message": "Product retrieved from Open Food Facts.",
+        "message": "Product found in the product database.",
     }
 
 
@@ -559,10 +561,8 @@ def search_openfoodfacts_text(
         return {"status": "ok", "products": cached[1], "count": cached[2]}
 
     params = {
-        "search_terms": clean_q,
-        "search_simple": "1",
-        "action": "process",
-        "json": "1",
+        "q": clean_q,
+        "langs": "en",
         "page": page,
         "page_size": limit,
         "fields": OFF_REQUEST_FIELDS,
@@ -580,9 +580,9 @@ def search_openfoodfacts_text(
         return _search_error("OFF_UPSTREAM_ERROR" if response.status_code >= 500 else "OFF_BAD_RESPONSE", 502)
     try:
         body = response.json()
-        raw_list = body.get("products", [])
+        raw_list = body["hits"]
         count = int(body["count"]) if body.get("count") is not None else None
-    except (ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError, AttributeError, KeyError):
         return _search_error("OFF_BAD_RESPONSE", 502)
 
     mapped_products = []
@@ -591,6 +591,9 @@ def search_openfoodfacts_text(
         p_name = raw.get("product_name") or raw.get("product_name_en")
         if not code or not p_name or not str(p_name).strip():
             continue
+        if isinstance(raw.get("brands"), list):
+            # The search service returns brands as a list; the product API returns a comma-separated string.
+            raw = {**raw, "brands": ", ".join(str(b) for b in raw["brands"])}
         mapped = map_off_product_to_eatgood(code, raw)
         mapped["nutrient_flags"] = nutrient_flags(mapped)
         mapped["is_local"] = False

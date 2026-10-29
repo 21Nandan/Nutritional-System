@@ -80,6 +80,6 @@ OFF_CACHE_TTL_HOURS = _env_int("OFF_CACHE_TTL_HOURS", 168)
 
 # Rate limiting (requests per minute per client IP, per server instance)
 RATE_LIMIT_ENABLED = _env_bool("EATGOOD_RATE_LIMIT", True)
-RATE_LIMIT_OFF_SEARCH_RPM = _env_int("RATE_LIMIT_OFF_SEARCH_RPM", 20)
+RATE_LIMIT_OFF_SEARCH_RPM = _env_int("RATE_LIMIT_OFF_SEARCH_RPM", 60)  # search-as-you-type
 RATE_LIMIT_OFF_RPM = _env_int("RATE_LIMIT_OFF_RPM", 45)
 RATE_LIMIT_CONTRIB_RPM = _env_int("RATE_LIMIT_CONTRIB_RPM", 30)

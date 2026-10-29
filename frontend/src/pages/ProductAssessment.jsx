@@ -550,11 +550,6 @@ export default function ProductAssessment({
                 </div>
               )}
 
-              {assessment.openfoodfacts_attribution && (
-                <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'var(--color-text-muted)', background: '#f8f9fa', border: '1px solid #e9ecef', padding: '4px 10px', borderRadius: 6, display: 'inline-block' }}>
-                  {assessment.openfoodfacts_attribution}
-                </div>
-              )}
             </div>
           </div>
 
@@ -1133,16 +1128,16 @@ export default function ProductAssessment({
         </div>
       )}
 
-      {/* External Community Indicators (Open Food Facts) if present */}
+      {/* Community ratings (Nutri-Score, NOVA) reported with database products */}
       {assessment.source_indicators && (assessment.source_indicators.nutriscore_grade || assessment.source_indicators.nova_group) && (
         <div className="card" style={{ marginBottom: 24, padding: 18, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                External Source Ratings (Open Food Facts Community)
+                Community Ratings
               </span>
               <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
-                Supplied by Open Food Facts; separate from EATGOOD's own assessment.
+                Reported by the product database community; separate from EATGOOD's own assessment.
               </p>
             </div>
 

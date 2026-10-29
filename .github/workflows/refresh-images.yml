@@ -1,5 +1,8 @@
 name: Refresh product images
 
+# Looks up current production Open Food Facts photo URLs for data/product_images.csv.
+# The refreshed CSV is printed in the log and uploaded as an artifact for review;
+# nothing is committed automatically.
 on:
   workflow_dispatch:
 
@@ -10,24 +13,18 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
       - run: pip install httpx
-      - name: Probe Open Food Facts search endpoints (temporary)
-        shell: python
+      - run: python scripts/refresh_product_images.py
+      - name: Print refreshed CSV
         run: |
-          import httpx, json
-          ua = {"User-Agent": "EATGOOD/1.1 (+https://github.com/21Nandan/Nutritional-System)"}
-          c = httpx.Client(headers=ua, timeout=20)
-          tests = [
-            ("legacy", "https://world.openfoodfacts.org/cgi/search.pl", {"search_terms": "ice cream", "search_simple": "1", "action": "process", "json": "1", "page_size": 3, "fields": "code,product_name,brands"}),
-            ("salicious", "https://search.openfoodfacts.org/search", {"q": "ice cream", "page_size": 3, "page": 1}),
-            ("salicious_fields", "https://search.openfoodfacts.org/search", {"q": "kurkure", "page_size": 2, "page": 1, "langs": "en", "fields": "code,product_name,brands,categories_tags,image_front_url,image_front_small_url,nutriments,nutrition_data_per,serving_size,serving_quantity,ingredients_text,allergens_tags,traces_tags,additives_tags,nutriscore_grade,nova_group,quantity"}),
-            ("salicious_typo", "https://search.openfoodfacts.org/search", {"q": "ice crwam", "page_size": 3}),
-          ]
-          for name, url, params in tests:
-              for i in range(2):
-                  try:
-                      r = c.get(url, params=params)
-                      print("====", name, i, r.status_code, r.headers.get("content-type"), r.elapsed.total_seconds())
-                      print(r.text[:3500])
-                  except Exception as e:
-                      print("====", name, i, "EXC", repr(e))
+          echo "----- BEGIN product_images.csv -----"
+          cat data/product_images.csv
+          echo "----- END product_images.csv -----"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product_images
+          path: data/product_images.csv

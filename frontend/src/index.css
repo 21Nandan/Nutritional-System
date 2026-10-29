@@ -713,12 +713,12 @@ textarea:focus-visible {
   animation: spin 1s linear infinite;
 }
 
-/* Open Food Facts product search */
-.off-search-form {
+/* Product search */
+.product-search-form {
   display: flex;
   gap: 8px;
 }
-.off-search-form input {
+.product-search-form input {
   flex: 1;
   min-width: 0;
   min-height: 46px;
@@ -727,12 +727,12 @@ textarea:focus-visible {
   border: 1px solid var(--color-border);
   font-size: 1rem; /* 16px keeps iOS from zooming into the field */
 }
-.off-search-form button {
+.product-search-form button {
   min-height: 46px;
   padding: 10px 20px;
   flex-shrink: 0;
 }
-.off-results {
+.product-results {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -740,10 +740,10 @@ textarea:focus-visible {
   border-radius: 10px;
   overflow: hidden;
 }
-.off-results li + li {
+.product-results li + li {
   border-top: 1px solid var(--color-border);
 }
-.off-result {
+.product-result {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -756,11 +756,11 @@ textarea:focus-visible {
   font: inherit;
   color: inherit;
 }
-.off-result:hover,
-.off-result:focus-visible {
+.product-result:hover,
+.product-result:focus-visible {
   background: var(--color-surface-alt);
 }
-.off-result-thumb {
+.product-result-thumb {
   width: 48px;
   height: 48px;
   flex-shrink: 0;
@@ -772,12 +772,12 @@ textarea:focus-visible {
   justify-content: center;
   overflow: hidden;
 }
-.off-result-thumb img {
+.product-result-thumb img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
-.off-result-text {
+.product-result-text {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -786,7 +786,7 @@ textarea:focus-visible {
   font-size: 0.78rem;
   color: var(--color-text-subtle);
 }
-.off-result-text strong {
+.product-result-text strong {
   font-size: 0.92rem;
   color: var(--color-primary);
   overflow-wrap: anywhere;

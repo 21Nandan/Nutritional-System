@@ -56,11 +56,6 @@ export default function Footer({ setActivePage }) {
             <h4>Standards & Data</h4>
             <ul>
               <li>
-                <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener noreferrer">
-                  Open Food Facts (ODbL) ↗
-                </a>
-              </li>
-              <li>
                 <a 
                   href="https://www.who.int/news-room/fact-sheets/detail/healthy-diet" 
                   target="_blank"

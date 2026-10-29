@@ -71,7 +71,7 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
 
     result = fetch_off_product(code)
     if result["status"] == "success":
-        return _found("openfoodfacts", result["product"], profile, val, "Product found on Open Food Facts.")
+        return _found("openfoodfacts", result["product"], profile, val, "Product found in the product database.")
     if result["status"] == "not_found":
         raise HTTPException(
             status_code=404,
@@ -80,7 +80,7 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
                 "barcode": code,
                 "barcode_format": val["format"],
                 "check_digit_valid": val["check_digit_valid"],
-                "message": f"Barcode {code} isn't in our catalogue or on Open Food Facts yet.",
+                "message": f"Barcode {code} isn't in our catalogue or the product database yet.",
             },
         )
     raise off_unavailable_error(result)

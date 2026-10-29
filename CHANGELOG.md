@@ -3,7 +3,11 @@
 ## Unreleased
 
 - Label Scanner: removed the photo (OCR) option. Added "Search products", which searches the Open
-  Food Facts world database through a new paginated endpoint; failures are shown as errors.
+  Food Facts world database through a new paginated endpoint, with results updating as you type;
+  failures are shown as errors. Text search now uses search.openfoodfacts.org, because the old
+  cgi/search.pl endpoint answers 503 ("unusually high demand"), checked from GitHub Actions on 2026-10-29.
+- The website no longer names the data source in search, barcode or product screens; the ODbL
+  licence notice stays in the footer, privacy policy and terms.
 - Product page: the score calculation table is collapsed until you open it; the packaging photo
   section was removed.
 - Removed the "About the data" page and the demo-data notices from the website (provenance is still
