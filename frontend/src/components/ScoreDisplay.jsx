@@ -3,15 +3,17 @@ import { gradeInfo, goalInfo, GRADE_BANDS } from '../scoring';
 import { Chevron, Collapse } from './Expandable';
 
 // The General Nutrition Grade: the same for everyone, against limits for the product's category.
-export function GradeBadge({ grade, size = 'md', showLabel = true }) {
+// reason: the product's own explanation from the server when it has no grade (missing values, etc.).
+export function GradeBadge({ grade, size = 'md', showLabel = true, reason = null }) {
   const info = gradeInfo(grade);
+  const why = (!info.graded && reason) || info.reason;
   return (
     <span className={`score-grade score-grade-${size}`}>
       <span
         className={`grade-badge ${info.className}`}
         role="img"
-        aria-label={info.graded ? `Nutrition grade ${info.letter}: ${info.label}` : `Nutrition grade unavailable: ${info.label}`}
-        title={info.reason || info.label}
+        aria-label={info.graded ? `Nutrition grade ${info.letter}: ${info.label}` : `Nutrition grade unavailable: ${why || info.label}`}
+        title={why || info.label}
       >
         {info.letter}
       </span>
@@ -47,17 +49,19 @@ export function GoalMatchMeter({ score, allergenConflict = false, size = 'md' })
 }
 
 // Compact pair for cards and tables: grade on the left, Goal Match on the right.
-export function ScorePair({ grade, score, allergenConflict = false }) {
+export function ScorePair({ grade, score, allergenConflict = false, gradeReason = null }) {
+  const ungradedReason = !gradeInfo(grade).graded && gradeReason;
   return (
     <div className="score-pair">
       <div className="score-pair-item">
         <span className="score-pair-heading">Nutrition grade</span>
-        <GradeBadge grade={grade} size="sm" showLabel={false} />
+        <GradeBadge grade={grade} size="sm" showLabel={false} reason={gradeReason} />
       </div>
       <div className="score-pair-item score-pair-goal">
         <span className="score-pair-heading">Goal Match</span>
         <GoalMatchMeter score={score} allergenConflict={allergenConflict} size="sm" />
       </div>
+      {ungradedReason && <p className="score-pair-reason">{ungradedReason}</p>}
     </div>
   );
 }

@@ -12,6 +12,7 @@ Decoupling Guarantee:
 - Missing critical data produce explicit refusal states ('Insufficient Data'), never silent zeroes.
 """
 
+import re
 from typing import Any
 
 import pandas as pd
@@ -40,7 +41,50 @@ def format_reference_basis(basis: str | None) -> str:
     return str(basis).strip()
 
 
+# Grade bands for the composite score (10–100): the minimum score for each grade.
+GRADE_BANDS = (
+    (80, "A", "Grade A — Optimal Nutritional Profile", "green"),
+    (65, "B", "Grade B — Favourable Nutritional Balance", "teal"),
+    (48, "C", "Grade C — Moderate / Consume in Moderation", "yellow"),
+    (32, "D", "Grade D — Elevated Nutrients of Concern", "orange"),
+    (10, "E", "Grade E — High in Sugar, Sodium, or Saturated Fat", "red"),
+)
+
+
+def grade_for_score(score: float) -> tuple[str, str, str]:
+    """(grade, label, colour) for a composite score."""
+    for minimum, grade, label, color in GRADE_BANDS:
+        if score >= minimum:
+            return grade, label, color
+    _, grade, label, color = GRADE_BANDS[-1]
+    return grade, label, color
+
+
+def grade_unavailable_reason(layer1: dict[str, Any]) -> str | None:
+    """One sentence saying why a product has no grade (None when it is graded), for lists and cards."""
+    status = layer1.get("status")
+    if status == "Calibrated":
+        return None
+    if status == "Insufficient Data":
+        labels = [re.sub(r"\s*\(.*\)$", "", label) for label in layer1.get("missing_field_labels") or []]
+        return f"Not graded: {', '.join(labels)} not stated on the label."
+    if status == "Data Contradiction":
+        concerns = layer1.get("concerns") or []
+        return f"Not graded: {concerns[0]}" if concerns else "Not graded: label values contradict each other."
+    category = layer1.get("category_calibrated")
+    if not category or category in ("Unspecified", "Uncategorised"):
+        return "Not graded: the food category could not be identified, so no category limits apply."
+    return f"Not graded: no validated grading method for {category} yet."
+
+
 def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
+    """Layer 1 grade (see _assess_general_nutrition), with grade_reason saying why a product has no grade."""
+    result = _assess_general_nutrition(product_data)
+    result["grade_reason"] = grade_unavailable_reason(result)
+    return result
+
+
+def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     """
     Layer 1: General Nutritional Assessment
     Computes an evidence-based statutory nutrition grade for calibrated categories:
@@ -59,11 +103,18 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
 
     # 1. Scope & Calibration Check
     if not spec or spec.get("status") != "Calibrated":
-        unsupported_msg = (
-            spec.get("unsupported_reason") if (spec and spec.get("unsupported_reason")) else (
-                "An overall grade is unavailable because this category has not yet been assessed using a suitable validated method."
+        if spec and spec.get("unsupported_reason"):
+            unsupported_msg = spec["unsupported_reason"]
+        elif not canonical_category or canonical_category == "Uncategorised":
+            unsupported_msg = (
+                "An overall grade is unavailable because the product's food category could not be identified "
+                "from its record, so no category thresholds apply."
             )
-        )
+        else:
+            unsupported_msg = (
+                f"An overall grade is unavailable because the {canonical_category} category has not yet been "
+                "assessed using a suitable validated method."
+            )
         return {
             "status": "Uncalibrated Category",
             "grade": "N/A",
@@ -95,6 +146,30 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
         target_basis=target_basis
     )
 
+    # Handle Severe Data Contradictions (e.g. Sugars > Carbs, Sat Fat > Total Fat). Checked before missing
+    # values, so a negative value (removed by the validator) is reported as invalid, not as missing.
+    if validation["contradictions"]:
+        return {
+            "status": "Data Contradiction",
+            "grade": "Data Contradiction",
+            "grade_label": "Overall Grade Unavailable — Data Contradiction",
+            "grade_status_badge": "Conflicting Data",
+            "general_nutrition_score": None,
+            "methodology_name": spec["methodology_name"],
+            "standards_version": spec["standards_version"],
+            "reference_basis": format_reference_basis(target_basis),
+            "category_calibrated": spec["canonical_name"],
+            "color": "red",
+            "explanation": f"An overall grade is unavailable due to conflicting packaging declarations: {'; '.join(validation['contradictions'])}.",
+            "strengths": [],
+            "concerns": validation["contradictions"],
+            "key_contributing_nutrients": {},
+            "intermediate_calculations": [],
+            "missing_fields": [],
+            "validation_warnings": validation["validation_warnings"],
+            "standards_applied": []
+        }
+
     # Handle Missing Critical Nutrients
     if validation["missing_mandatory_fields"]:
         missing_fields = validation["missing_mandatory_fields"]
@@ -121,33 +196,13 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
             "standards_applied": []
         }
 
-    # Handle Severe Data Contradictions (e.g. Sugars > Carbs, Sat Fat > Total Fat)
-    if validation["contradictions"]:
-        return {
-            "status": "Data Contradiction",
-            "grade": "Data Contradiction",
-            "grade_label": "Overall Grade Unavailable — Data Contradiction",
-            "grade_status_badge": "Conflicting Data",
-            "general_nutrition_score": None,
-            "methodology_name": spec["methodology_name"],
-            "standards_version": spec["standards_version"],
-            "reference_basis": format_reference_basis(target_basis),
-            "category_calibrated": spec["canonical_name"],
-            "color": "red",
-            "explanation": f"An overall grade is unavailable due to conflicting packaging declarations: {'; '.join(validation['contradictions'])}.",
-            "strengths": [],
-            "concerns": validation["contradictions"],
-            "key_contributing_nutrients": {},
-            "intermediate_calculations": [],
-            "missing_fields": [],
-            "validation_warnings": validation["validation_warnings"],
-            "standards_applied": []
-        }
-
     # 3. Retrieve Normalized Values
     nutr = validation["normalized_nutrition"]
     sugars = nutr.get("sugars_g", 0.0) or 0.0
     sat_fat = nutr.get("saturated_fat_g", 0.0) or 0.0
+    # Sodium is not required for every category (Dairy). When it isn't declared it earns neither a
+    # penalty nor a low-sodium bonus: a missing value is never read as zero.
+    sodium_declared = nutr.get("sodium_mg") is not None
     sodium = nutr.get("sodium_mg", 0.0) or 0.0
     protein = nutr.get("protein_g", 0.0) or 0.0
     fibre = nutr.get("dietary_fibre_g", 0.0) or 0.0
@@ -217,7 +272,10 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     # -------------------------------------------------------------
     # Step B: Sodium Evaluation (WHO SEARO Benchmark)
     # -------------------------------------------------------------
-    if sodium > (sodium_thresh * 2.0):
+    if not sodium_declared:
+        key_nutrients["sodium"] = {"value": None, "threshold": sodium_thresh, "unit": "mg", "status": "Not declared", "points": 0}
+        intermediate_calc.append({"nutrient": "Sodium", "value": "Not declared", "rule": "Not required for this category; no points", "points": 0, "type": "neutral"})
+    elif sodium > (sodium_thresh * 2.0):
         penalty_points += 4
         concerns.append(f"Very high sodium ({sodium}mg) — exceeds standard ({sodium_thresh}mg) by more than double.")
         key_nutrients["sodium"] = {"value": sodium, "threshold": sodium_thresh, "unit": "mg", "status": "Excessive (>2x threshold)", "points": -4}
@@ -313,26 +371,7 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
         "type": "final"
     })
 
-    if net_score >= 80:
-        grade = "A"
-        grade_label = "Grade A — Optimal Nutritional Profile"
-        color = "green"
-    elif net_score >= 65:
-        grade = "B"
-        grade_label = "Grade B — Favourable Nutritional Balance"
-        color = "teal"
-    elif net_score >= 48:
-        grade = "C"
-        grade_label = "Grade C — Moderate / Consume in Moderation"
-        color = "yellow"
-    elif net_score >= 32:
-        grade = "D"
-        grade_label = "Grade D — Elevated Nutrients of Concern"
-        color = "orange"
-    else:
-        grade = "E"
-        grade_label = "Grade E — High in Sugar, Sodium, or Saturated Fat"
-        color = "red"
+    grade, grade_label, color = grade_for_score(net_score)
 
     standards_applied = get_applicable_standards(canonical_category)
 

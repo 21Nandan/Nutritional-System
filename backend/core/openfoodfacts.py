@@ -23,6 +23,7 @@ import certifi
 import httpx
 
 from backend.config import OFF_BASE_URL, OFF_TIMEOUT_SECONDS, OFF_USER_AGENT
+from backend.core.nutrition_validator import parse_float_safe
 from backend.core.standards_registry import nutrient_flags
 
 logger = logging.getLogger("eatgood.openfoodfacts")
@@ -127,27 +128,59 @@ OFF_REQUEST_FIELDS = (
 
 UNCATEGORISED = "Uncategorised"
 
+_MASS_UNITS_IN_G = {"g": 1.0, "mg": 0.001, "µg": 0.000001, "μg": 0.000001, "mcg": 0.000001}
+
 
 _CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
+    # Checked first so "Peanut butters" is a spread, not dairy butter.
+    ("Condiments & Spreads", ("peanut butter", "nut butter")),
     ("Packaged Beverages", ("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar")),
-    ("Breakfast Cereals", ("cereal", "muesli", "granola", "oats", "corn flakes", "porridge")),
+    ("Breakfast Cereals", ("breakfast cereal", "cereal bar", "cereal flake", "muesli", "granola", "oats", "oat flake",
+                           "corn flakes", "porridge")),
     ("Biscuits & Bakery", ("biscuit", "cookie", "cracker", "bakery", "bread", "cake", "toast", "rusk")),
     ("Chocolates & Sweets", ("chocolate", "candy", "candies", "sweet", "confectionery", "confectioneries", "toffee")),
     ("Snacks", ("chip", "snack", "crisp", "namkeen", "popcorn", "nut", "makhana", "bhujia")),
-    ("Instant Foods", ("noodle", "instant", "ready to eat", "soup", "pasta", "ramen")),
-    ("Dairy", ("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "paneer", "ghee")),
+    ("Instant Foods", ("noodle", "instant", "ready to eat", "ready to cook", "ready meal", "prepared meal", "soup",
+                       "pasta", "ramen")),
+    ("Dairy", ("dairy", "dairies", "milk", "cheese", "yogurt", "yoghurt", "butter", "curd", "dahi", "paneer", "ghee")),
     ("Condiments & Spreads", ("sauce", "ketchup", "spread", "jam", "condiment", "mayonnaise", "pickle", "dip")),
 ]
+
+# Used only when a record's categories give no EATGOOD category: words that name the type of food on
+# their own. Words that also appear in other kinds of product names ("milk" in milk chocolate and milk
+# biscuits, "cheese" in cheese snacks, "butter" in peanut butter, "chocolate" in chocolate cookies) are
+# left out, and a name matching more than one category is not categorised.
+_NAME_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("Packaged Beverages", ("juice", "soda", "cola", "soft drink", "energy drink")),
+    ("Breakfast Cereals", ("cornflakes", "corn flakes", "muesli", "granola", "oats")),
+    ("Biscuits & Bakery", ("biscuit", "cookie", "cracker", "rusk")),
+    ("Snacks", ("chip", "crisp", "namkeen", "bhujia", "popcorn", "makhana", "nachos")),
+    ("Instant Foods", ("noodle", "ramen", "instant soup")),
+    ("Dairy", ("yogurt", "yoghurt", "dahi")),
+]
+
+
+def _matches(words: str, keywords: tuple[str, ...]) -> bool:
+    return any(re.search(rf"\b{re.escape(k)}s?\b", words) for k in keywords)
 
 
 def _category_for_entry(words: str) -> str | None:
     for category, keywords in _CATEGORY_RULES:
-        if any(re.search(rf"\b{re.escape(k)}s?\b", words) for k in keywords):
+        if _matches(words, keywords):
             return category
     return None
 
 
-def map_off_category_to_eatgood(categories_str: str | None, categories_tags: list | None) -> str:
+def category_from_product_name(product_name: str | None) -> str | None:
+    """The category a product name states unambiguously ("... Instant Noodles"), else None."""
+    words = re.sub(r"[^a-z]+", " ", str(product_name or "").lower()).strip()
+    found = {category for category, keywords in _NAME_RULES if _matches(words, keywords)}
+    return found.pop() if len(found) == 1 else None
+
+
+def map_off_category_to_eatgood(
+    categories_str: str | None, categories_tags: list | None, product_name: str | None = None
+) -> str:
     """
     Maps Open Food Facts category strings into EATGOOD primary categories:
     - Snacks
@@ -171,12 +204,15 @@ def map_off_category_to_eatgood(categories_str: str | None, categories_tags: lis
         words = re.sub(r"[^a-z]+", " ", entry.lower()).strip()
         if "food" in words and "beverage" in words:
             continue
-        category = _category_for_entry(words)
+        # The plain "Meals" entry (ready meals and other convenience dishes); "meal replacements" and
+        # similar longer names are not included.
+        category = "Instant Foods" if words in ("meal", "meals") else _category_for_entry(words)
         if category:
             return category
 
-    # Unknown category: never guess. "Uncategorised" has no thresholds, so no grade is given.
-    return UNCATEGORISED
+    # No category from the record's categories: use the product name only if it names the type of
+    # food unambiguously. Otherwise never guess: "Uncategorised" has no thresholds, so no grade is given.
+    return category_from_product_name(product_name) or UNCATEGORISED
 
 
 def _sold_in_india(countries_tags: list | None) -> bool | None:
@@ -250,154 +286,7 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
             except (ValueError, TypeError):
                 pass
 
-    if serving_size is None:
-        serving_size = 100.0  # Standard fallback serving
-
-    # Category determination
-    category = map_off_category_to_eatgood(
-        off_product.get("categories"),
-        off_product.get("categories_tags")
-    )
-
-    # Measurement basis determination (per 100g vs per 100ml vs per serving)
-    nutrition_data_per = str(off_product.get("nutrition_data_per") or "").lower().strip()
-    if "100ml" in nutrition_data_per or category == "Packaged Beverages":
-        measurement_basis = "per 100ml"
-        serving_size_unit = "ml"
-    elif "serving" in nutrition_data_per:
-        measurement_basis = "per serving"
-    else:
-        measurement_basis = "per 100g"
-
-    # Energy (kcal) parsing with kJ conversion fallback
-    energy_kcal = None
-    for k in ["energy-kcal_100g", "energy-kcal", "energy-kcal_value"]:
-        val = nutriments.get(k)
-        if val is not None:
-            try:
-                energy_kcal = round(float(val), 1)
-                break
-            except (ValueError, TypeError):
-                pass
-
-    if energy_kcal is None:
-        # Check energy-kj
-        for k in ["energy-kj_100g", "energy-kj", "energy-kj_value"]:
-            val = nutriments.get(k)
-            if val is not None:
-                try:
-                    energy_kcal = round(float(val) / 4.184, 1)
-                    break
-                except (ValueError, TypeError):
-                    pass
-
-    if energy_kcal is None:
-        # Check raw energy key
-        val = nutriments.get("energy_100g") or nutriments.get("energy")
-        unit = str(nutriments.get("energy_unit", "")).lower()
-        if val is not None:
-            try:
-                f_val = float(val)
-                if unit in ["kcal", "calories"]:
-                    energy_kcal = round(f_val, 1)
-                else:
-                    energy_kcal = round(f_val / 4.184, 1)
-            except (ValueError, TypeError):
-                pass
-
-    # Safe float parser checking multiple key variants without silent zero fills
-    def _get_float_val(keys: list[str]) -> float | None:
-        for k in keys:
-            v = nutriments.get(k)
-            if v is not None:
-                try:
-                    return round(float(v), 2)
-                except (ValueError, TypeError):
-                    pass
-        return None
-
-    # Protein (checks both 'proteins' and 'protein')
-    protein_g = _get_float_val([
-        "proteins_100g", "protein_100g", "proteins", "protein",
-        "proteins_value", "protein_value"
-    ])
-
-    # Carbohydrates
-    carbohydrates_g = _get_float_val([
-        "carbohydrates_100g", "carbohydrates", "carbohydrates_value"
-    ])
-
-    # Sugars
-    sugars_g = _get_float_val([
-        "sugars_100g", "sugars", "sugars_value"
-    ])
-
-    # Added Sugars
-    added_sugars_g = _get_float_val([
-        "added-sugars_100g", "added-sugars", "added-sugars_value"
-    ])
-
-    # Total Fat
-    total_fat_g = _get_float_val([
-        "fat_100g", "total-fat_100g", "fat", "total-fat", "fat_value"
-    ])
-
-    # Saturated Fat
-    saturated_fat_g = _get_float_val([
-        "saturated-fat_100g", "saturated_fat_100g", "saturated-fat", "saturated-fat_value"
-    ])
-
-    # Trans Fat
-    trans_fat_g = _get_float_val([
-        "trans-fat_100g", "trans_fat_100g", "trans-fat", "trans-fat_value"
-    ])
-
-    # Dietary Fibre
-    dietary_fibre_g = _get_float_val([
-        "fiber_100g", "fibre_100g", "fiber", "fibre", "fiber_value", "fibre_value"
-    ])
-
-    # Sodium (mg) with careful unit handling and salt fallback
-    sodium_mg = None
-    sodium_raw = nutriments.get("sodium_100g")
-    if sodium_raw is None:
-        sodium_raw = nutriments.get("sodium")
-    if sodium_raw is not None:
-        try:
-            val = float(sodium_raw)
-            unit = str(nutriments.get("sodium_unit", "")).lower()
-            if unit == "mg":
-                sodium_mg = round(val, 1)
-            else:
-                # Default OFF representation for sodium is in grams
-                sodium_mg = round(val * 1000.0, 1)
-        except (ValueError, TypeError):
-            pass
-
-    if sodium_mg is None:
-        salt_raw = nutriments.get("salt_100g") or nutriments.get("salt")
-        if salt_raw is not None:
-            try:
-                # salt (g) = sodium (g) * 2.5 => sodium (mg) = (salt / 2.5) * 1000
-                val = float(salt_raw)
-                unit = str(nutriments.get("salt_unit", "")).lower()
-                if unit == "mg":
-                    sodium_mg = round(val / 2.5, 1)
-                else:
-                    sodium_mg = round((val / 2.5) * 1000.0, 1)
-            except (ValueError, TypeError):
-                pass
-
-    # Cholesterol (mg)
-    cholesterol_mg = None
-    chol_raw = nutriments.get("cholesterol_100g") or nutriments.get("cholesterol")
-    if chol_raw is not None:
-        try:
-            val = float(chol_raw)
-            unit = str(nutriments.get("cholesterol_unit", "")).lower()
-            cholesterol_mg = round(val if unit == "mg" else val * 1000.0, 1)
-        except (ValueError, TypeError):
-            pass
+    # An unknown serving size stays unknown: per-serving values can't be converted without it.
 
     # Product Name
     product_name = (
@@ -407,6 +296,78 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
         off_product.get("generic_name_en") or
         f"Product {requested_barcode}"
     ).strip()
+
+    # Category determination
+    category = map_off_category_to_eatgood(
+        off_product.get("categories"),
+        off_product.get("categories_tags"),
+        product_name,
+    )
+
+    # Measurement basis. Open Food Facts states values as entered on the label (keys without a suffix,
+    # on the label's basis, nutrition_data_per) and, whenever it can, recalculated per 100 g/ml (keys
+    # ending in _100g). The _100g values are used when present, so the basis is per 100 g/ml whatever
+    # the label's own basis; mixing the two would convert per-100 g values a second time.
+    nutrition_data_per = str(off_product.get("nutrition_data_per") or "").lower().strip()
+    has_per_100 = any(k.endswith("_100g") and v not in (None, "") for k, v in nutriments.items())
+    label_per_serving = "serving" in nutrition_data_per and not has_per_100
+    if label_per_serving:
+        measurement_basis = "per serving"
+    elif "100ml" in nutrition_data_per or category == "Packaged Beverages":
+        measurement_basis = "per 100ml"
+        serving_size_unit = "ml"
+    else:
+        measurement_basis = "per 100g"
+
+    def _keys(*names: str) -> list[str]:
+        """Lookup keys for a nutrient: the _100g values, plus the label's values when those are
+        on the same basis (not per serving while _100g values are used)."""
+        keys = [f"{n}_100g" for n in names]
+        if not (has_per_100 and "serving" in nutrition_data_per):
+            keys += list(names) + [f"{n}_value" for n in names]
+        return keys
+
+    # Open Food Facts units: _100g values and values without a suffix are in grams (energy in kJ,
+    # "energy-kcal" in kcal); _value keys are as typed from the label, in the unit named by <name>_unit
+    # (Indian labels often give sodium in mg). Missing or unreadable values stay None, never 0.
+    def _nutrient(*names: str, units: dict[str, float] | None = None) -> float | None:
+        units = units or _MASS_UNITS_IN_G
+        for key in _keys(*names):
+            value = parse_float_safe(nutriments.get(key))
+            if value is None:
+                continue
+            if key.endswith("_value"):
+                unit = str(nutriments.get(key[:-len("_value")] + "_unit") or "").strip().lower()
+                if unit not in units:
+                    continue  # unit not stated or not understood: don't guess it
+                value *= units[unit]
+            return value
+        return None
+
+    def _rounded(value: float | None, digits: int = 2, scale: float = 1.0) -> float | None:
+        return None if value is None else round(value * scale, digits)
+
+    # Energy (kcal): kcal values first, then kJ converted (1 kcal = 4.184 kJ).
+    energy_kcal = _rounded(_nutrient("energy-kcal", units={"kcal": 1.0}), 1)
+    if energy_kcal is None:
+        kj = _nutrient("energy-kj", "energy", units={"kj": 1.0, "kcal": 4.184})
+        energy_kcal = _rounded(kj, 1, 1 / 4.184)
+
+    protein_g = _rounded(_nutrient("proteins", "protein"))
+    carbohydrates_g = _rounded(_nutrient("carbohydrates"))
+    sugars_g = _rounded(_nutrient("sugars"))
+    added_sugars_g = _rounded(_nutrient("added-sugars"))
+    total_fat_g = _rounded(_nutrient("fat", "total-fat"))
+    saturated_fat_g = _rounded(_nutrient("saturated-fat", "saturated_fat"))
+    trans_fat_g = _rounded(_nutrient("trans-fat", "trans_fat"))
+    dietary_fibre_g = _rounded(_nutrient("fiber", "fibre"))
+
+    # Sodium (mg), or from salt: salt (g) = sodium (g) x 2.5.
+    sodium_mg = _rounded(_nutrient("sodium"), 1, 1000.0)
+    if sodium_mg is None:
+        sodium_mg = _rounded(_nutrient("salt"), 1, 1000.0 / 2.5)
+
+    cholesterol_mg = _rounded(_nutrient("cholesterol"), 1, 1000.0)
 
     # Brand
     brand_raw = off_product.get("brands")

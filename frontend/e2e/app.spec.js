@@ -28,6 +28,13 @@ test('a product missing a few key values is listed honestly; a severely incomple
   const card = page.locator('.product-catalogue .card').filter({ hasText: 'Partial Label Test' });
   await expect(card.locator('.goal-meter')).toContainText('Not enough data');
   await expect(card.getByRole('img', { name: /Nutrition grade unavailable/ })).toBeVisible();
+  await expect(card.locator('.score-pair-reason')).toHaveText('Not graded: Total Sugars, Saturated Fat, Sodium not stated on the label.');
+});
+
+test('a product with no grading method says why on its card', async ({ page }) => {
+  await page.goto('/catalogue?q=chocolate');
+  const card = page.locator('.product-catalogue .card').filter({ hasText: 'Milk Chocolate Bar Test' });
+  await expect(card.locator('.score-pair-reason')).toContainText('no validated grading method for Chocolates & Sweets');
 });
 
 test('category filter is kept in the URL across reloads', async ({ page }) => {

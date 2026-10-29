@@ -106,7 +106,7 @@ export function compareGrades(products) {
   const differs = comparable && new Set(ranks).size > 1;
   return {
     note,
-    cells: products.map((p, i) => ({ grade: p.general_grade || 'N/A', isBest: differs && ranks[i] === best })),
+    cells: products.map((p, i) => ({ grade: p.general_grade || 'N/A', reason: p.grade_reason || null, isBest: differs && ranks[i] === best })),
   };
 }
 

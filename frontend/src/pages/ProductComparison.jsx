@@ -246,7 +246,8 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
                   {comparison.grades.cells.map((cell, i) => (
                     <td key={products[i].product_id}>
                       <span className="compare-cell">
-                        <GradeBadge grade={cell.grade} size="sm" showLabel={false} />
+                        <GradeBadge grade={cell.grade} size="sm" showLabel={false} reason={cell.reason} />
+                        {cell.reason && <span className="compare-grade-reason">{cell.reason}</span>}
                         {cell.isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> Best grade</span>}
                       </span>
                     </td>
