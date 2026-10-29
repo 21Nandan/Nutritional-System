@@ -292,7 +292,7 @@ export default function OnboardingModal({ isOpen, activeProfile, onComplete }) {
                     <span>Not Medical Advice</span>
                   </div>
                   <p style={{ fontSize: '0.76rem', color: '#b73800', margin: 0, lineHeight: 1.4 }}>
-                    EATGOOD gives informational assessments using thresholds informed by WHO and FSSAI reference documents. It is not medical advice. The catalogue currently uses demo nutrition data.
+                    EATGOOD gives informational assessments using thresholds informed by WHO and FSSAI reference documents. It is not medical advice.
                   </p>
                 </div>
 

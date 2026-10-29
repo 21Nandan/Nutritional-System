@@ -116,8 +116,9 @@ once, or behind a corporate proxy set `SSL_CERT_FILE` to your organisation's CA 
 - Product data comes from Open Food Facts and can be wrong or incomplete. Text searches rank the first
   100 results from the search service; ingredient text is not searchable. Products with severely
   incomplete or invalid key nutrition data are not listed (rules in docs/DATA.md).
-- Thresholds are informed by, but not yet checked against, the cited documents. Chocolates, sweets and
-  condiments get no grade.
+- Thresholds are informed by, but not yet checked against, the cited documents. Chocolates and sweets are
+  graded with EATGOOD's own method (not an official WHO or FSSAI grade; see docs/THRESHOLDS.md).
+  Condiments get no grade.
 - Label reading is English only and struggles with glare, curved packs and Hindi/bilingual labels.
 - Profiles are per device. On Vercel, contributions and the Open Food Facts cache live per server
   instance and can disappear.

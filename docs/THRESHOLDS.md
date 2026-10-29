@@ -30,8 +30,19 @@ A value **above** the threshold counts as "high" for that nutrient.
 | Packaged Beverages | Yes | per 100 ml | 5 g | 0 g | 80 mg | 0.1 g | WHO guidance on sugar-sweetened beverages (2020); FSSAI draft INR | **sat. fat 0 g and sodium 80 mg have no cited basis → heuristic** |
 | Instant Foods | Yes | per 100 g | 5 g | 4 g | 450 mg | 0.1 g | WHO SEARO 2017 (cat. 6); FSSAI draft INR | unverified |
 | Dairy | Yes | per 100 g | 10 g | 4 g | 300 mg | 0.1 g | WHO SEARO 2017 (cat. 2); FSSAI draft INR | unverified; dairy drinks declared per 100 ml are compared with per-100 g numbers |
-| Chocolates & Sweets | No | — | — | — | — | — | WHO SEARO 2017 (cat. 5) | no grade, explained in the UI |
+| Chocolates & Sweets | Yes, **EATGOOD's own method** | per 100 g | 22.5 g | 5 g | 600 mg | 0.1 g | Reference points: UK DH/FSA front-of-pack "high" cut-offs per 100 g (sugars 22.5 g, sat. fat 5 g, salt 1.5 g) | **not an official WHO or FSSAI grade**; labelled as EATGOOD's own method wherever the grade is shown |
 | Condiments & Spreads | No | — | — | — | — | — | WHO SEARO 2017; Codex CAC/GL 2-1985 | no grade, explained in the UI |
+
+### Chocolates & Sweets: EATGOOD's own method
+
+No official body publishes A–E limits for confectionery; the WHO SEARO model excludes it from
+marketing to children altogether. EATGOOD therefore grades chocolates and sweets with its own
+limits, using the UK front-of-pack "high" cut-offs per 100 g as reference points. Products are
+scored with the same points, formula and grade bands as every other category, so the grade follows
+each product's values: for example, a typical milk chocolate (about 55 g sugars and 18 g saturated
+fat) gets E, a sugar-free mint B. Energy, sugars, saturated fat and sodium are required; without
+them, or with contradictory values, the product is not graded. Pages, cards, comparison and
+alternatives say "EATGOOD's own method, not an official grade" next to these grades.
 
 Other fixed numbers used in scoring and parsing:
 

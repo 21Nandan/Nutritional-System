@@ -530,7 +530,7 @@ export default function ProductAssessment({
             <div className="score-summary-item">
               <span className="score-summary-heading">Nutrition grade</span>
               <GradeBadge grade={l1.grade} size="lg" />
-              <span className="score-summary-sub">Same for everyone · {l1.category_calibrated && l1.category_calibrated !== 'Unspecified' ? `${l1.category_calibrated} limits` : 'category limits'}</span>
+              <span className="score-summary-sub">Same for everyone · {l1.category_calibrated && l1.category_calibrated !== 'Unspecified' ? `${l1.category_calibrated} limits` : 'category limits'}{l1.is_eatgood_method ? ' · EATGOOD\'s own method, not an official grade' : ''}</span>
             </div>
             <div className="score-summary-item">
               <span className="score-summary-heading">Goal Match</span>
@@ -564,6 +564,14 @@ export default function ProductAssessment({
 
               <GradeBadge grade={l1.grade} size="md" showLabel={false} />
             </div>
+
+            {/* Grades from EATGOOD's own methods are labelled as such */}
+            {l1.method_notice && (
+              <p className="grade-method-notice" role="note">
+                <Info size={14} aria-hidden="true" />
+                <span>{l1.method_notice}</span>
+              </p>
+            )}
 
             {/* Uncalibrated Category Context Notice */}
             {l1.status === 'Uncalibrated Category' && (
@@ -725,7 +733,7 @@ export default function ProductAssessment({
                           {Object.entries(l1.key_contributing_nutrients).map(([nutKey, data]) => (
                             <tr key={nutKey} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                               <td style={{ padding: '4px 6px', fontWeight: 600 }}>{getNutrientLabel(nutKey)}</td>
-                              <td style={{ padding: '4px 6px' }}>{data.value} {data.unit || 'g'}</td>
+                              <td style={{ padding: '4px 6px' }}>{data.value != null ? `${data.value} ${data.unit || 'g'}` : 'Not declared'}</td>
                               <td style={{ padding: '4px 6px' }}>{data.threshold != null ? `${data.threshold} ${data.unit || 'g'}` : '—'}</td>
                               <td style={{ padding: '4px 6px', fontWeight: 600, color: data.points < 0 ? '#b73800' : (data.points > 0 ? '#1b5e20' : 'inherit') }}>
                                 {data.points > 0 ? `+${data.points}` : (data.points < 0 ? `${data.points}` : '0')}
@@ -1390,7 +1398,7 @@ export default function ProductAssessment({
                   </div>
 
                   <div style={{ marginBottom: 8 }}>
-                    <ScorePair grade={alt.general_grade} score={alt.personalized_score} />
+                    <ScorePair grade={alt.general_grade} gradeReason={alt.grade_reason} gradeNote={alt.grade_note} score={alt.personalized_score} />
                   </div>
 
                   <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>

@@ -223,7 +223,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                   5. Category-Specific Benchmarks
                 </h4>
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
-                  Letter grades are given for Snacks, Breakfast Cereals, Packaged Beverages, Biscuits &amp; Bakery, Instant Foods and Dairy, using category thresholds informed by WHO SEARO and FSSAI documents. Chocolates &amp; Sweets and Condiments &amp; Spreads show their nutrition values without a grade, because no suitable threshold model is used for them.
+                  Letter grades are given for Snacks, Breakfast Cereals, Packaged Beverages, Biscuits &amp; Bakery, Instant Foods and Dairy, using category thresholds informed by WHO SEARO and FSSAI documents. Chocolates &amp; Sweets are graded with EATGOOD&apos;s own method (limits per 100 g for sugars, saturated fat and sodium), which is not an official WHO or FSSAI grade. Condiments &amp; Spreads show their nutrition values without a grade, because no suitable threshold model is used for them.
                 </p>
               </div>
 

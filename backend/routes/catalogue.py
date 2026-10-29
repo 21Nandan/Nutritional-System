@@ -111,6 +111,8 @@ def _with_scores(product: dict[str, Any], profile: dict) -> dict[str, Any]:
     return {
         **product,
         "general_grade": general["grade"],
+        "grade_reason": general["grade_reason"],
+        "grade_note": general["grade_note"],
         "personalized_score": personal["personalized_score"],
         "has_allergen_conflict": personal["has_critical_allergen_conflict"],
     }
@@ -241,6 +243,8 @@ def compare_products(
                 "sodium_mg": prod.get("sodium_mg"),
                 "dietary_fibre_g": prod.get("dietary_fibre_g"),
                 "general_grade": assessment["layer1_general"].get("grade", "N/A"),
+                "grade_reason": assessment["layer1_general"].get("grade_reason"),
+                "grade_note": assessment["layer1_general"].get("grade_note"),
                 "personalized_score": assessment["layer2_personalized"]["personalized_score"],
                 "allergen_conflicts": assessment["layer2_personalized"]["allergen_conflicts"],
                 "has_allergen_conflict": assessment["layer2_personalized"]["has_critical_allergen_conflict"],

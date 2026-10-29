@@ -28,6 +28,16 @@ test('a product missing a few key values is listed honestly; a severely incomple
   const card = page.locator('.product-catalogue .card').filter({ hasText: 'Partial Label Test' });
   await expect(card.locator('.goal-meter')).toContainText('Not enough data');
   await expect(card.getByRole('img', { name: /Nutrition grade unavailable/ })).toBeVisible();
+  await expect(card.locator('.score-pair-reason')).toHaveText('Not graded: Total Sugars, Saturated Fat, Sodium not stated on the label.');
+});
+
+test('chocolates are graded with EATGOOD\'s own method and say so on the card and product page', async ({ page }) => {
+  await page.goto('/catalogue?q=chocolate');
+  const card = page.locator('.product-catalogue .card').filter({ hasText: 'Milk Chocolate Bar Test' });
+  await expect(card.getByRole('img', { name: /Nutrition grade E/ })).toBeVisible();
+  await expect(card.locator('.score-pair-reason')).toHaveText("EATGOOD's own method, not an official grade");
+  await card.getByRole('button', { name: /View Assessment/ }).click();
+  await expect(page.locator('.grade-method-notice')).toContainText('not an official WHO or FSSAI grade');
 });
 
 test('category filter is kept in the URL across reloads', async ({ page }) => {

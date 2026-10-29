@@ -87,6 +87,8 @@ def get_healthier_alternatives(
                 "personalized_score": cand_score,
                 "suitability_status": suitability["suitability_status"],
                 "general_grade": general.get("grade", "N/A"),
+                "grade_reason": general.get("grade_reason"),
+                "grade_note": general.get("grade_note"),
                 "data_confidence_status": cand.get("data_confidence_status"),
                 "comparative_advantages": advantages,
                 "nutrition_highlights": {

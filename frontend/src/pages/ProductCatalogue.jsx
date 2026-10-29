@@ -690,7 +690,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
                   </div>
 
                   <div style={{ marginBottom: 10 }}>
-                    <ScorePair grade={prod.general_grade} score={prod.personalized_score} allergenConflict={prod.has_allergen_conflict} />
+                    <ScorePair grade={prod.general_grade} gradeReason={prod.grade_reason} gradeNote={prod.grade_note} score={prod.personalized_score} allergenConflict={prod.has_allergen_conflict} />
                   </div>
 
                   {/* Nutrition Highlights Grid */}
