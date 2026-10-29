@@ -17,7 +17,8 @@ tests in the repository.
    (seed 42) reproduces all 852 products byte for byte: random nutrients, random allergens, random
    barcodes. The records said "Label Scan / Retail Packaging Audit 2026" and "Verified", and the README
    said "852 authentic products". **Fixed:** relabelled as synthetic (nutrient values unchanged), with a
-   persistent banner, an "About the data" page and a dataset manifest checked at startup.
+   footer disclaimer, a "Synthetic" badge on each product, an "About the data" page and a dataset
+   manifest checked at startup. (A top-of-page banner was added, then removed at the owner's request.)
 2. **One visitor's data could reach or harm another.**
    - A new visitor inherited the shared default profile, which anyone could overwrite, allergens included.
    - `GET /api/history` returned everyone's history, and `DELETE /api/history` erased it.
@@ -98,7 +99,7 @@ tests in the repository.
 - Backend split into `routes/`, `products.py`, `profile.py`, `schemas.py` (Pydantic for every body)
   and `errors.py`, with config validated at startup.
 - One Python dependency source (`pyproject.toml`) compiled to pinned `requirements*.txt`; Python ≥ 3.12.
-- New frontend modules: `api.js`, `storage.js`, `ocr.js`, `format.js`; `DemoDataBanner`; rewritten
+- New frontend modules: `api.js`, `storage.js`, `ocr.js`, `format.js`; rewritten
   data page.
 - Security headers in `vercel.json` (CSP tested against the running app, Permissions-Policy limiting
   the camera to this site, HSTS); self-hosted fonts and OCR assets; 10 KB logo.

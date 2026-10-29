@@ -11,7 +11,15 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+    ignore:
+      # eslint-plugin-react 7.37 only supports ESLint up to 9; revisit when it supports 10.
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      - dependency-name: "@eslint/js"
+        update-types: [version-update:semver-major]
     groups:
+      react:
+        patterns: [react, react-dom]
       npm-minor:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
