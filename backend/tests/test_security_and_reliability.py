@@ -58,8 +58,8 @@ def test_upload_oversized_file_rejected(monkeypatch):
     monkeypatch.setattr(main_mod, "MAX_UPLOAD_SIZE_BYTES", 100)
     monkeypatch.setattr(main_mod, "MAX_UPLOAD_SIZE_MB", 0.0001)
 
-    # Valid PNG image of 200 bytes
-    img = Image.new("RGB", (30, 30), color="white")
+    # Valid PNG image (dimensioned to ensure compressed byte size > 100 bytes across all OS/zlib builds)
+    img = Image.new("RGB", (100, 100), color="white")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     png_bytes = buf.getvalue()

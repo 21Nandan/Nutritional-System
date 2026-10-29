@@ -1,0 +1,4 @@
+# Astral uv configuration for EATGOOD
+# Forces full copy mode instead of hardlinks to prevent cross-device hardlink warnings
+# in containerized and serverless environments (Vercel, Docker, CI).
+link-mode = "copy"

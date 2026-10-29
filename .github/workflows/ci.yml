@@ -10,6 +10,8 @@ jobs:
   backend-test:
     name: Backend Test Suite (Pytest)
     runs-on: ubuntu-latest
+    env:
+      UV_LINK_MODE: copy
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
