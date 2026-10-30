@@ -107,6 +107,7 @@ test('product page separates the nutrition grade from Goal Match and explains bo
 
 test('additives are compact boxes that open one at a time', async ({ page }) => {
   await page.goto(`/product/${NOODLES}`);
+  await page.getByRole('button', { name: 'Show ingredients, allergen details and additives' }).click();
   const toggles = page.locator('.additive-toggle');
   await expect(toggles).toHaveCount(2);
   await expect(toggles.nth(0)).toContainText('INS 627');

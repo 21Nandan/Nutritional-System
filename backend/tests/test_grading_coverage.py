@@ -182,11 +182,11 @@ def test_alcoholic_drinks_are_never_graded_or_scored():
     assert not is_alcoholic({"categories_tags": ["en:beverages", "en:juices"], "nutriments": {"alcohol_100g": 0}})
 
 
-def test_uncategorised_products_say_the_category_is_unknown():
+def test_uncategorised_products_are_graded_with_the_general_method():
     result = grade(snack(category="Uncategorised"))
-    assert result["grade"] == "N/A"
-    assert "category could not be identified" in result["grade_reason"]
-    assert "could not be identified" in result["explanation"]
+    assert result["status"] == "Calibrated" and result["category_calibrated"] == "General Packaged Food"
+    assert result["grade_reason"] is None
+    assert "general limits" in result["method_notice"]
 
 
 def test_grade_ignores_community_ratings_and_the_visitor_profile():
@@ -279,7 +279,7 @@ def test_products_without_categories_use_an_unambiguous_product_name():
 def test_ambiguous_names_are_not_categorised(name):
     product = off(PER_100G, tags=(), name=name)
     assert product["category"] == "Uncategorised"
-    assert "category could not be identified" in grade(product)["grade_reason"]
+    assert grade(product)["category_calibrated"] == "General Packaged Food"
 
 
 def test_tags_win_over_the_product_name():

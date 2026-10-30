@@ -19,7 +19,7 @@ def test_search_openfoodfacts_text_structure():
     """search_openfoodfacts_text maps Open Food Facts results into the EATGOOD schema."""
     def handler(request):
         assert request.url.host == "search.openfoodfacts.org"
-        assert request.url.params["q"] == "haldiram bhujia test"
+        assert request.url.params["q"].startswith('haldiram bhujia test countries_tags:"en:india" AND brands_tags:(')
         return httpx.Response(200, json={"count": 2, "hits": [
             {"code": "8904004400069", "product_name": "Bhujia Sev", "brands": ["Haldiram's", "Haldiram"], "nutriments": {}},
             {"code": "", "product_name": "No barcode, skipped"},

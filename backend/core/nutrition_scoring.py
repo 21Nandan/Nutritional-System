@@ -83,7 +83,8 @@ def assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     """Layer 1 grade (see _assess_general_nutrition), with grade_reason saying why a product has no grade."""
     result = _assess_general_nutrition(product_data)
     result["grade_reason"] = grade_unavailable_reason(result)
-    spec = get_category_spec(normalize_category(product_data.get("category", ""))) or {}
+    # The category actually used (unknown food types are graded as General Packaged Food).
+    spec = get_category_spec(result.get("category_calibrated") or normalize_category(product_data.get("category", ""))) or {}
     own_method = spec.get("method_type") == "EATGOOD" and result["status"] == "Calibrated"
     # Grades from EATGOOD's own methods say so wherever they are shown.
     result["is_eatgood_method"] = own_method
@@ -107,6 +108,9 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     """
     raw_category = product_data.get("category", "")
     canonical_category = normalize_category(raw_category)
+    # A food whose type isn't one of the categories is graded with the general method.
+    if canonical_category in ("", "Uncategorised", "Unspecified") or get_category_spec(canonical_category) is None:
+        canonical_category = "General Packaged Food"
     spec = get_category_spec(canonical_category)
 
     # 1. Scope & Calibration Check
@@ -374,7 +378,7 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
     intermediate_calc.append({
         "nutrient": "Net Composite Grade Calculation",
         "value": f"Base: 50 - ({penalty_points} penalties * 7) + ({bonus_points} bonuses * 8)",
-        "rule": "Deterministic profiling scale (10 to 100)",
+        "rule": "Scored on a 10 to 100 scale",
         "points": raw_score,
         "type": "final"
     })
@@ -633,7 +637,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Reduce Sugar",
                     "metric": f"{sugars}g sugars / 100g",
                     "rule": "Low sugar benchmark (<= 3.0g)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Reduce Sugar)",
+                    "threshold_source": "EATGOOD dietary goal (Reduce Sugar)",
                     "points": pts,
                     "points_str": f"+{pts}",
                     "score_before": score_before,
@@ -652,7 +656,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Reduce Sugar",
                     "metric": f"{sugars}g sugars / 100g",
                     "rule": "Moderate sugar benchmark (3.0g - 7.0g)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Reduce Sugar)",
+                    "threshold_source": "EATGOOD dietary goal (Reduce Sugar)",
                     "points": pts,
                     "points_str": f"+{pts}",
                     "score_before": score_before,
@@ -671,7 +675,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Reduce Sugar",
                     "metric": f"{sugars}g sugars / 100g",
                     "rule": "Excessive sugar threshold (> 20.0g)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Reduce Sugar)",
+                    "threshold_source": "EATGOOD dietary goal (Reduce Sugar)",
                     "points": pts,
                     "points_str": f"{pts}",
                     "score_before": score_before,
@@ -690,7 +694,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Reduce Sugar",
                     "metric": f"{sugars}g sugars / 100g",
                     "rule": "Elevated sugar threshold (> 10.0g)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Reduce Sugar)",
+                    "threshold_source": "EATGOOD dietary goal (Reduce Sugar)",
                     "points": pts,
                     "points_str": f"{pts}",
                     "score_before": score_before,
@@ -733,7 +737,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Reduce Sodium",
                     "metric": f"{sodium}mg sodium / 100g",
                     "rule": "Moderate sodium benchmark (140mg - 350mg)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Reduce Sodium)",
+                    "threshold_source": "EATGOOD dietary goal (Reduce Sodium)",
                     "points": pts,
                     "points_str": f"+{pts}",
                     "score_before": score_before,
@@ -752,7 +756,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Reduce Sodium",
                     "metric": f"{sodium}mg sodium / 100g",
                     "rule": "Excessive sodium threshold (> 900mg)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Reduce Sodium)",
+                    "threshold_source": "EATGOOD dietary goal (Reduce Sodium)",
                     "points": pts,
                     "points_str": f"{pts}",
                     "score_before": score_before,
@@ -833,7 +837,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Increase Fibre",
                     "metric": f"{fibre}g fibre / 100g",
                     "rule": "Low fibre relative to target (< 2.0g)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Increase Fibre)",
+                    "threshold_source": "EATGOOD dietary goal (Increase Fibre)",
                     "points": pts,
                     "points_str": f"{pts}",
                     "score_before": score_before,
@@ -895,7 +899,7 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
                     "factor": "Goal: Increase Protein",
                     "metric": f"{protein}g protein / 100g",
                     "rule": "Low protein relative to target (< 4.0g)",
-                    "threshold_source": "EATGOOD Dietary Goal Rule (Increase Protein)",
+                    "threshold_source": "EATGOOD dietary goal (Increase Protein)",
                     "points": pts,
                     "points_str": f"{pts}",
                     "score_before": score_before,
@@ -1241,6 +1245,7 @@ def run_full_product_assessment(product_data: dict[str, Any], user_profile: dict
         "image_small_url": product_data.get("image_small_url"),
         "image_ingredients_url": product_data.get("image_ingredients_url"),
         "image_nutrition_url": product_data.get("image_nutrition_url"),
+        "marketing_claims": product_data.get("marketing_claims") or "",
         "quantity": product_data.get("quantity"),
         "serving_size": product_data.get("serving_size"),
         "serving_size_unit": product_data.get("serving_size_unit"),

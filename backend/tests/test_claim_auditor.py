@@ -183,3 +183,21 @@ def test_nutrient_function_claim_distinction():
     assert res["primary_claim_type"] == "Nutrient-Function Claim"
     assert res["compliance_status"] == "Potential concern — review required"
     assert "FSSAI" in res["regulatory_source"]
+
+
+
+def test_claims_read_from_a_pack_are_checked_against_entered_values():
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+
+    product = {"product_name": "Test Bar", "category": "Snacks", "energy_kcal": 400, "sugars_g": 2, "protein_g": 12,
+               "dietary_fibre_g": 7, "saturated_fat_g": 1, "sodium_mg": 100, "ingredients": "whole wheat flour, sugar, salt"}
+    res = TestClient(app).post("/api/claims/check", json={"claims": "High protein\nNo added sugar\nGluten-free", "product": product})
+    assert res.status_code == 200
+    verdicts = {c["claim"]: c["compliance_status"] for c in res.json()["claims"]}
+    assert verdicts["High protein"].startswith("Consistent")
+    assert verdicts["No added sugar"].startswith("Potentially inconsistent")
+    assert verdicts["Gluten-free"].startswith("Potentially inconsistent")
+
+    assert TestClient(app).post("/api/claims/check", json={"claims": "High protein"}).status_code == 400

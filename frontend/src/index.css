@@ -1676,3 +1676,55 @@ textarea:focus-visible {
 }
 .compare-priority.is-first { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
 .compare-priority span { font-size: 0.72rem; font-weight: 600; opacity: 0.8; }
+.more-details { margin-top: 8px; }
+.more-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.more-details .collapse-inner > *:first-child { margin-top: 6px; }
+.l3-allergen-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.82rem; }
+.l3-allergen-chips > span:first-child { font-weight: 700; color: var(--color-text-subtle); }
+.l3-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid #ffcc80;
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 600;
+}
+.l3-chip.is-conflict { border-color: #c62828; background: #ffebee; color: #c62828; }
+.l3-summary { margin-bottom: 4px; }
+/* Check the pack's claims */
+.claim-scanner { margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px; }
+.claim-scanner h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.2rem; color: var(--color-primary); }
+.claim-scanner-intro { margin: 0; font-size: 0.82rem; color: var(--color-text-muted); line-height: 1.5; }
+.claim-scanner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.claim-scanner-progress { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--color-text-muted); }
+.claim-scanner-track { display: block; height: 6px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+.claim-scanner-track span { display: block; height: 100%; background: var(--color-primary); transition: width 0.2s; }
+.claim-scanner-note { margin: 0; font-size: 0.8rem; color: var(--color-text-main); }
+.claim-scanner-error { margin: 0; font-size: 0.8rem; color: #c62828; }
+.claim-scanner-label { font-size: 0.78rem; font-weight: 700; color: var(--color-text-subtle); }
+.claim-scanner textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  font: inherit;
+  font-size: 0.88rem;
+  resize: vertical;
+}
+.claim-scanner > .btn-primary { align-self: flex-start; }
+.claim-results { margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--color-border); }

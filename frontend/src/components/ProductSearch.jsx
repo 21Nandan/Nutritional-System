@@ -83,7 +83,7 @@ export default function ProductSearch({ onSelectProduct }) {
         <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: 0 }}>Search products</h2>
       </div>
       <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>
-        Search millions of packaged foods by product or brand name. Matches appear as you type.
+        Search popular packaged foods from well-known brands in India. Matches appear as you type.
       </p>
 
       <form onSubmit={handleSubmit} className="product-search-form" role="search">

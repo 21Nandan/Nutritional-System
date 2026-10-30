@@ -196,7 +196,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
           Indian Packaged Food Catalogue
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Browse and search packaged foods sold in India by name or brand, and filter by nutrient limits.
+          Browse and search popular packaged foods from well-known brands in India, and filter by nutrient limits.
         </p>
       </div>
 

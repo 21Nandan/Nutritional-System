@@ -20,6 +20,11 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
   const videoRef = useRef(null);
   const readerRef = useRef(null);
   const controlsRef = useRef(null);
+  // The camera stream itself: kept here because the <video> element may already be gone when the
+  // scanner closes, and the camera must still be released.
+  const streamRef = useRef(null);
+  // Bumped on every start and stop, so a camera that finishes starting after a stop is released.
+  const sessionRef = useRef(0);
   const scanLockRef = useRef(false);
   const lastScannedTimeRef = useRef(0);
 
@@ -56,6 +61,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
 
   // Safely stop all active streams and tracks
   const stopStream = useCallback(() => {
+    sessionRef.current += 1;
     try {
       if (controlsRef.current) {
         controlsRef.current.stop();
@@ -66,8 +72,8 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
     }
 
     try {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject;
+      const stream = streamRef.current || videoRef.current?.srcObject;
+      if (stream) {
         stream.getTracks().forEach(track => {
           try {
             if (torchEnabled && track.applyConstraints) {
@@ -78,7 +84,8 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
             console.warn('Error stopping camera track:', trackErr);
           }
         });
-        videoRef.current.srcObject = null;
+        streamRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
       }
     } catch (e) {
       console.warn('Error stopping video stream:', e);
@@ -105,8 +112,10 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
     }
   };
 
-  // Start scanner
-  const startScanning = useCallback(async (deviceId = null) => {
+  // Start scanner. Starts run one at a time (startChainRef): two starts sharing the one <video>
+  // element could otherwise release each other's camera.
+  const startChainRef = useRef(Promise.resolve());
+  const startScanningNow = useCallback(async (deviceId = null) => {
     setIsLoading(true);
     setErrorMessage('');
     setErrorType('');
@@ -115,6 +124,7 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
 
     // Stop any existing stream
     stopStream();
+    const session = sessionRef.current;
 
     // Check secure context (camera requires HTTPS or localhost)
     const isSecureContext = window.isSecureContext || 
@@ -172,8 +182,18 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
 
       if (!videoRef.current) return;
 
-      const controls = await reader.decodeFromConstraints(
-        constraints,
+      // This start's own stream: if the scanner was stopped or closed meanwhile, release it
+      // before it is shown, without touching the <video> element.
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (session !== sessionRef.current || !videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        setIsLoading(false);
+        return;
+      }
+      streamRef.current = stream;
+
+      const controls = await reader.decodeFromStream(
+        stream,
         videoRef.current,
         (result) => {
           if (result && !scanLockRef.current) {
@@ -192,7 +212,9 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
                 lastScannedTimeRef.current = now;
                 setLastScannedCode(cleaned);
                 triggerAudioBeep();
-                
+                // A barcode was read: release the camera straight away.
+                stopRef.current();
+
                 // Callback to parent
                 if (onScan) {
                   onScan(cleaned);
@@ -208,6 +230,15 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
         }
       );
 
+      if (session !== sessionRef.current) {
+        // Stopped or closed while the camera was being shown: release it (stopStream has already
+        // stopped the tracks through streamRef) and let the scan loop finish before the next start.
+        controls.stop();
+        stream.getTracks().forEach((track) => track.stop());
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        setIsLoading(false);
+        return;
+      }
       controlsRef.current = controls;
       setIsScanning(true);
 
@@ -251,6 +282,12 @@ export default function BarcodeCameraScanner({ onScan, onClose, onManualEntry, i
       }
     }
   }, [stopStream, onScan]);
+
+  const startScanning = useCallback((deviceId = null) => {
+    const run = startChainRef.current.then(() => startScanningNow(deviceId));
+    startChainRef.current = run.catch(() => {});
+    return run;
+  }, [startScanningNow]);
 
   // Handle camera switch (e.g., front vs back)
   const handleSwitchCamera = () => {

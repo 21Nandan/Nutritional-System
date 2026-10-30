@@ -128,7 +128,7 @@ export default function ProfileModal({ isOpen, onClose, activeProfile, onSavePro
           <div>
             <h3 style={{ fontSize: '1.3rem', margin: 0, color: 'var(--color-primary)' }}>Personalized Nutrition Profile</h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-              Configures transparent rules for Layer 2 personalized suitability scoring and Layer 3 allergen safety exclusions.
+              Your goal, diet and allergens shape your Goal Match and allergen alerts.
             </p>
           </div>
           <button onClick={onClose} style={{ padding: 6, borderRadius: 6, color: 'var(--color-text-subtle)' }}>
