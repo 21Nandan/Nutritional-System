@@ -158,6 +158,7 @@ test('compare starts empty, then adding and removing products updates the matrix
     await page.getByRole('button', { name: 'Add Product to Compare' }).first().click();
     await page.getByPlaceholder('Search product name or brand...').fill(term);
     await page.getByRole('button', { name: new RegExp(name) }).click();
+    await page.locator('.compare-pick-footer button').click();
   };
   await add('bhujia', 'Masala Bhujia Test');
   await expect(page.getByText(/is selected\. Add at least one more product/)).toBeVisible();
@@ -165,6 +166,17 @@ test('compare starts empty, then adding and removing products updates the matrix
   await expect(page.locator('.compare-table thead th')).toHaveCount(3);
   await page.getByRole('button', { name: 'Remove Baked Oat Crackers Test from comparison' }).click();
   await expect(page.getByText(/Masala Bhujia Test is selected/)).toBeVisible();
+});
+
+test('several products can be ticked in the dialog and compared at once', async ({ page }) => {
+  await page.goto('/compare');
+  await page.getByRole('button', { name: 'Add Product to Compare' }).first().click();
+  await page.getByPlaceholder('Search product name or brand...').fill('bhujia');
+  await page.getByRole('button', { name: /Masala Bhujia Test/ }).click();
+  await page.getByPlaceholder('Search product name or brand...').fill('oat');
+  await page.getByRole('button', { name: /Baked Oat Crackers Test/ }).click();
+  await page.getByRole('button', { name: 'Compare 2 products' }).click();
+  await expect(page.locator('.compare-table thead th')).toHaveCount(3);
 });
 
 test('profile sections collapse independently and saved items persist', async ({ page }) => {
@@ -199,6 +211,7 @@ test('matching products appear while typing and open the chosen product', async 
   });
   await page.route('**/api/**/OFF_8901491101837*', (route) => route.abort());
   await page.goto('/scanner');
+  await page.getByRole('button', { name: 'Search Products' }).click();
   await expect(page.getByText('Upload Label (OCR)')).toHaveCount(0);
   await page.getByLabel('Product or brand name').pressSequentially('kurkure', { delay: 40 });
   await expect(page.getByRole('button', { name: /Kurkure Masala Munch/ })).toBeVisible();
@@ -215,6 +228,7 @@ test('the Search button searches immediately, once', async ({ page }) => {
     return route.fulfill({ json: KURKURE_RESULTS });
   });
   await page.goto('/scanner');
+  await page.getByRole('button', { name: 'Search Products' }).click();
   await page.getByLabel('Product or brand name').fill('kurkure');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('button', { name: /Kurkure Masala Munch/ })).toBeVisible();
@@ -230,6 +244,7 @@ test.describe('when the product database is busy', () => {
       status: 429, json: { detail: { error_code: 'OFF_RATE_LIMITED', message: 'The product database is receiving too many requests.' } },
     }));
     await page.goto('/scanner');
+    await page.getByRole('button', { name: 'Search Products' }).click();
     await page.getByLabel('Product or brand name').fill('maggi');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('too many requests');
@@ -280,6 +295,12 @@ test('product cards carry no "Sold in India" tag', async ({ page }) => {
   const card = (name) => page.locator('.product-catalogue .card').filter({ hasText: name });
   await expect(card('Masala Bhujia Test')).toBeVisible();
   await expect(page.locator('.product-catalogue .card').getByText('Sold in India')).toHaveCount(0);
+});
+
+test('the product scanner opens on barcode lookup', async ({ page }) => {
+  await page.goto('/scanner');
+  await expect(page.getByPlaceholder('Enter 8-13 digit barcode...')).toBeVisible();
+  await expect(page.getByRole('navigation').getByText('Product Scanner')).toBeVisible();
 });
 
 test('no source or community-contribution labels appear anywhere a product is shown', async ({ page }) => {

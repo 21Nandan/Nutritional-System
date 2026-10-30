@@ -6,7 +6,7 @@ import { basisLabel } from '../format';
 import { GradeBadge, GoalMatchMeter } from '../components/ScoreDisplay';
 import { loadSavedProducts } from '../storage';
 import {
-  COMPARE_METRICS, basisComparison, compareMetric, compareGrades, compareGoalMatch, allergenState, buildVerdict,
+  COMPARE_METRICS, basisComparison, compareMetric, compareGrades, compareGoalMatch, allergenState, buildVerdict, relativeScores,
 } from '../compare';
 
 export default function ProductComparison({ productIds = [], onChangeIds, onSelectProduct, activeProfile }) {
@@ -25,6 +25,9 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
     [showSearchModal],
   );
   const savedNotSelected = savedForCompare.filter((p) => !selectedIds.includes(p.product_id));
+  // Products ticked in the dialog, added together; at most 4 products are compared.
+  const [picked, setPicked] = useState([]);
+  const room = 4 - selectedIds.length;
 
   const [compareError, setCompareError] = useState(null);
   const [searchError, setSearchError] = useState(null);
@@ -66,19 +69,30 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
       });
   };
 
-  const addProductToCompare = (pid) => {
-    if (!selectedIds.includes(pid) && selectedIds.length < 4) {
-      onChangeIds([...selectedIds, pid]);
-    }
+  const closeSearchModal = () => {
     setShowSearchModal(false);
+    setPicked([]);
     setSearchQuery('');
     setSearchResults([]);
   };
 
-  const addSavedProducts = () => {
-    const room = 4 - selectedIds.length;
-    onChangeIds([...selectedIds, ...savedNotSelected.slice(0, room).map((p) => p.product_id)]);
-    setShowSearchModal(false);
+  const togglePick = (pid) => {
+    setPicked((prev) => {
+      if (prev.includes(pid)) return prev.filter((id) => id !== pid);
+      return prev.length < room ? [...prev, pid] : prev;
+    });
+  };
+
+  const pickAllSaved = () => {
+    setPicked((prev) => {
+      const extra = savedNotSelected.map((p) => p.product_id).filter((id) => !prev.includes(id));
+      return [...prev, ...extra].slice(0, room);
+    });
+  };
+
+  const addPickedToCompare = () => {
+    onChangeIds([...selectedIds, ...picked.filter((id) => !selectedIds.includes(id))].slice(0, 4));
+    closeSearchModal();
   };
 
   const removeProduct = (pid) => {
@@ -103,6 +117,7 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
       rows: COMPARE_METRICS.map((m) => compareMetric(m, products, basis.comparable)),
       grades: compareGrades(products),
       goalMatch: compareGoalMatch(products),
+      relative: relativeScores(products, basis.comparable),
       verdict: buildVerdict(products, goal, profileAllergens),
     };
   }, [products, goal, profileAllergens]);
@@ -290,6 +305,31 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
                   ))}
                 </tr>
 
+                {comparison.relative.available && (
+                  <tr className="compare-relative-row">
+                    <th scope="row" className="compare-label-col">
+                      Nutrient Priority
+                      <span className="compare-help">
+                        1 = best balance among these products, from {comparison.relative.metrics.join(', ').toLowerCase()} (equal weight)
+                      </span>
+                    </th>
+                    {comparison.relative.cells.map((cell, i) => (
+                      <td key={products[i].product_id}>
+                        {cell.rank === null ? (
+                          <span className="compare-value is-missing">Not enough values</span>
+                        ) : (
+                          <span className="compare-cell">
+                            <span className={`compare-priority${cell.rank === 1 ? ' is-first' : ''}`} aria-label={`Priority ${cell.rank} of ${products.length}${cell.tied ? ', tied' : ''}`}>
+                              #{cell.rank}{cell.tied && <span>tied</span>}
+                            </span>
+                            {cell.isBest && <span className="compare-best"><Check size={12} aria-hidden="true" /> Best nutrient balance</span>}
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                )}
+
                 {visibleRows.map(({ metric, cells }) => (
                   <tr key={metric.key}>
                     <th scope="row" className="compare-label-col">
@@ -366,11 +406,11 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
 
       {/* Add Product Modal */}
       {showSearchModal && (
-        <div className="modal-overlay" onClick={() => setShowSearchModal(false)}>
+        <div className="modal-overlay" onClick={closeSearchModal}>
           <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Add Product to Comparison</h3>
-              <button type="button" onClick={() => setShowSearchModal(false)} aria-label="Close"><X size={18} aria-hidden="true" /></button>
+              <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Add Products to Comparison</h3>
+              <button type="button" onClick={closeSearchModal} aria-label="Close"><X size={18} aria-hidden="true" /></button>
             </div>
             <input
               type="text"
@@ -393,9 +433,9 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
                 <div className="compare-saved">
                   <div className="compare-saved-head">
                     <span>Saved products</span>
-                    {savedNotSelected.length > 0 && (
-                      <button type="button" className="btn-secondary btn-compact" onClick={addSavedProducts}>
-                        {savedNotSelected.length <= 4 - selectedIds.length ? 'Add all' : `Add ${4 - selectedIds.length} (max 4)`}
+                    {savedNotSelected.length > 1 && (
+                      <button type="button" className="btn-secondary btn-compact" onClick={pickAllSaved}>
+                        {savedNotSelected.length <= room ? 'Select all' : `Select ${room} (max 4)`}
                       </button>
                     )}
                   </div>
@@ -404,11 +444,23 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
                   ) : savedNotSelected.length === 0 ? (
                     <p className="compare-saved-empty">All your saved products are already in this comparison.</p>
                   ) : (
-                    savedNotSelected.map((p) => <PickRow key={p.product_id} product={p} onPick={addProductToCompare} />)
+                    savedNotSelected.map((p) => <PickRow key={p.product_id} product={p} picked={picked.includes(p.product_id)} disabled={!picked.includes(p.product_id) && picked.length >= room} onPick={togglePick} />)
                   )}
                 </div>
               )}
-              {searchResults.map((p) => <PickRow key={p.product_id} product={p} onPick={addProductToCompare} />)}
+              {searchResults.filter((p) => !selectedIds.includes(p.product_id)).map((p) => (
+                <PickRow key={p.product_id} product={p} picked={picked.includes(p.product_id)} disabled={!picked.includes(p.product_id) && picked.length >= room} onPick={togglePick} />
+              ))}
+            </div>
+            <div className="compare-pick-footer">
+              <span>
+                {picked.length === 0
+                  ? `Tick up to ${room} product${room === 1 ? '' : 's'}`
+                  : `${picked.length} selected${picked.length >= room ? ' (max 4 in a comparison)' : ''}`}
+              </span>
+              <button type="button" className="btn-primary btn-compact" disabled={picked.length === 0} onClick={addPickedToCompare}>
+                {selectedIds.length + picked.length >= 2 ? `Compare ${selectedIds.length + picked.length} products` : 'Add to comparison'}
+              </button>
             </div>
           </div>
         </div>
@@ -417,10 +469,12 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
   );
 }
 
-function PickRow({ product, onPick }) {
+function PickRow({ product, picked, disabled, onPick }) {
   return (
     <button
       type="button"
+      aria-pressed={picked}
+      disabled={disabled}
       onClick={() => onPick(product.product_id)}
       style={{
         width: '100%',
@@ -429,19 +483,22 @@ function PickRow({ product, onPick }) {
         color: 'inherit',
         padding: '10px 12px',
         borderRadius: 6,
-        border: '1px solid var(--color-border)',
-        cursor: 'pointer',
+        border: picked ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        background: '#fff'
+        background: picked ? 'var(--color-accent-subtle)' : '#fff'
       }}
     >
       <div>
         <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>{product.brand}</span>
         <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{product.product_name}</div>
       </div>
-      <Plus size={16} color="var(--color-accent)" aria-hidden="true" />
+      {picked
+        ? <Check size={16} color="var(--color-primary)" aria-hidden="true" />
+        : <Plus size={16} color="var(--color-accent)" aria-hidden="true" />}
     </button>
   );
 }

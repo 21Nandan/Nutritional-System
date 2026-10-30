@@ -10,6 +10,7 @@ from typing import Any
 from backend.config import OFF_CACHE_TTL_HOURS
 from backend.core.barcode_utils import clean_barcode
 from backend.core.openfoodfacts import fetch_product_from_openfoodfacts
+from backend.core.standards_registry import nutrient_flags
 from backend.database import cache_barcode_product, get_cached_lookup, get_user_contribution_by_barcode
 
 UNVERIFIED_CONTRIBUTION_STATUS = "User submitted (not reviewed)"
@@ -65,6 +66,25 @@ def fetch_off_product(barcode: str) -> dict[str, Any]:
     elif result["status"] == "not_found":
         cache_barcode_product(barcode, None, status="not_found", ttl_hours=NEGATIVE_CACHE_TTL_HOURS)
     return result
+
+
+def with_saved_record(product: dict[str, Any]) -> dict[str, Any]:
+    """A search result with the product's saved current record in place of the search copy, when one is cached.
+
+    The search service works from an older copy of Open Food Facts, so a value added since (trans fat,
+    say) would grade a card differently from the product page, which uses the current record.
+    """
+    cached = get_cached_lookup(clean_barcode(product.get("barcode") or ""))
+    if cached is None or cached["status"] != "success" or not cached["product"]:
+        return product
+    merged = {**product, **cached["product"]}
+    merged["nutrient_flags"] = nutrient_flags(merged)
+    if "nutrition_summary" in product:
+        merged["nutrition_summary"] = {
+            **product["nutrition_summary"],
+            **{key: merged.get(key) for key in ("energy_kcal", "sugars_g", "protein_g", "sodium_mg")},
+        }
+    return merged
 
 
 def resolve_product(product_id: str) -> dict[str, Any] | None:

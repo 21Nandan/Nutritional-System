@@ -323,7 +323,7 @@ export default function ProductContributionModal({
                     <option value="Chocolates & Sweets">Chocolates & Sweets</option>
                     <option value="Instant Foods">Instant Foods</option>
                     <option value="Dairy">Dairy</option>
-                    <option value="Condiments & Spreads">Condiments & Spreads</option>
+                    <option value="Condiments & Spreads">Condiments & Spreads (not graded)</option>
                   </select>
                 </div>
 

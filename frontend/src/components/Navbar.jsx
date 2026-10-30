@@ -10,7 +10,7 @@ export default function Navbar({ activePage, setActivePage }) {
 
   const navItems = [
     { id: 'landing', label: 'Home', icon: Home },
-    { id: 'scanner', label: 'Label Scanner', icon: ScanLine },
+    { id: 'scanner', label: 'Product Scanner', icon: ScanLine },
     { id: 'catalogue', label: 'Catalogue', labelSub: 'Products', icon: Search },
     { id: 'compare', label: 'Compare', icon: ArrowLeftRight },
     { id: 'profile', label: 'Profile', icon: User }

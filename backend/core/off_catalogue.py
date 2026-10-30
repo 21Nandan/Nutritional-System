@@ -30,6 +30,7 @@ CATEGORY_FILTERS: dict[str, str] = {
 CATEGORIES = list(CATEGORY_FILTERS)
 
 INDIA = 'countries_tags:"en:india"'
+NOT_ALCOHOLIC = 'NOT categories_tags:"en:alcoholic-beverages"'
 # Only products with a stated energy value: entries without nutrition facts can't be assessed.
 HAS_NUTRITION = "nutriments.energy-kcal_100g:[0 TO 1000]"
 HAS_PHOTO = 'states_tags:"en:front-photo-selected"'
@@ -95,7 +96,7 @@ def build_catalogue_query(
             "keywords": words.split(),
         }
 
-    clauses = []
+    clauses = [NOT_ALCOHOLIC]
     if india_only:
         clauses.append(INDIA)
     if category not in ("All", ""):

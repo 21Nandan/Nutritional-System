@@ -171,3 +171,23 @@ def test_score_calculation_breakdown_and_scale():
     assert any("Reduce Sugar" in s["factor"] for s in breakdown["steps"])
     assert breakdown["steps"][-1]["type"] == "final"
     assert breakdown["steps"][-1]["running_total"] == res["personalized_score"]
+
+
+def test_alternatives_are_never_worse_than_the_current_product():
+    from backend.core.recommender import get_healthier_alternatives
+
+    def cereal(pid, sugars, fibre):
+        return {
+            "product_id": pid, "product_name": pid, "brand": "Test", "category": "Breakfast Cereals", "sub_category": None,
+            "energy_kcal": 380, "sugars_g": sugars, "sodium_mg": 180, "protein_g": 7.0, "dietary_fibre_g": fibre,
+            "saturated_fat_g": 1.0, "ingredients": "Oats", "allergens_declared": "None",
+        }
+
+    profile = {"goal": "Reduce Sugar", "dietary_preference": "No preference", "allergens_to_avoid": ""}
+    current = cereal("CURRENT", 12.0, 3.0)
+    better, worse = cereal("BETTER", 2.0, 8.0), cereal("WORSE", 30.0, 1.0)
+    score = lambda p: assess_personalized_suitability(p, profile)["personalized_score"]
+    assert score(worse) < score(current) < score(better)
+
+    ids = [a["product_id"] for a in get_healthier_alternatives(current, profile, [better, worse])["alternatives"]]
+    assert ids == ["BETTER"]

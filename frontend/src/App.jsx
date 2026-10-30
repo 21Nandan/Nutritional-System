@@ -14,7 +14,7 @@ import { DEFAULT_PROFILE, completeOnboarding, isOnboardingComplete, loadProfile,
 const PAGE_TITLES = {
   landing: 'EATGOOD — Understand Indian packaged food labels',
   catalogue: 'Catalogue — EATGOOD',
-  scanner: 'Search or scan a product — EATGOOD',
+  scanner: 'Product Scanner — EATGOOD',
   assessment: 'Product assessment — EATGOOD',
   compare: 'Compare products — EATGOOD',
   profile: 'Your profile — EATGOOD',
@@ -123,7 +123,7 @@ export default function App() {
       marketing_claims: ''
   });
 
-  const [scannerMode, setScannerMode] = useState('search');
+  const [scannerMode, setScannerMode] = useState('barcode');
 
   // Navigate function that synchronizes URL, document title, and browser history
   const navigateTo = useCallback((page, params = {}, replace = false) => {
@@ -306,6 +306,7 @@ export default function App() {
             activeProfile={activeProfile}
             onEditCustomData={handleEditCustomData}
             onUpdateAssessment={handleUpdateCustomAssessment}
+            onAssessmentGenerated={handleAssessmentGenerated}
           />
         )}
 

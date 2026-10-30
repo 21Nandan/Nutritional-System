@@ -11,6 +11,11 @@ import pandas as pd
 from backend.core.nutrition_scoring import assess_general_nutrition, assess_personalized_suitability
 
 
+def _grade_rank(grade: str | None) -> int:
+    """A = 0 … E = 4; an ungraded product ranks last."""
+    return "ABCDE".index(grade) if grade in ("A", "B", "C", "D", "E") else 5
+
+
 def get_healthier_alternatives(
     current_product: dict[str, Any], user_profile: dict, candidates: list[dict[str, Any]], limit: int = 4
 ):
@@ -24,6 +29,7 @@ def get_healthier_alternatives(
     goal = user_profile.get("goal", "Balanced Choices")
     curr_assessment = assess_personalized_suitability(current_product, user_profile)
     curr_score = curr_assessment["personalized_score"] or 0
+    curr_grade_rank = _grade_rank(assess_general_nutrition(current_product).get("grade"))
 
     alternatives = []
 
@@ -40,10 +46,11 @@ def get_healthier_alternatives(
             continue
 
         cand_score = suitability["personalized_score"] or 0
+        general = assess_general_nutrition(cand)
 
-        # Only recommend if better or comparable with meaningful positive attributes
-        if cand_score >= curr_score or cand_score >= 70:
-            general = assess_general_nutrition(cand)
+        # Only recommend a product that is actually better: a higher Goal Match, or the same
+        # Goal Match with a better nutrition grade. A lower score is never shown as healthier.
+        if cand_score > curr_score or (cand_score == curr_score and _grade_rank(general.get("grade")) < curr_grade_rank):
 
             # Compute comparative advantages
             advantages = []

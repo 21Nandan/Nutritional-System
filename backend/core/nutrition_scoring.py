@@ -72,6 +72,8 @@ def grade_unavailable_reason(layer1: dict[str, Any]) -> str | None:
         concerns = layer1.get("concerns") or []
         return f"Not graded: {concerns[0]}" if concerns else "Not graded: label values contradict each other."
     category = layer1.get("category_calibrated")
+    if category == "Alcoholic Drinks":
+        return "Not graded: EATGOOD does not grade alcoholic drinks."
     if not category or category in ("Unspecified", "Uncategorised"):
         return "Not graded: the food category could not be identified, so no category limits apply."
     return f"Not graded: no validated grading method for {category} yet."
@@ -356,7 +358,7 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
         strengths.append(f"High protein content ({protein}g/100g) supporting daily amino acid requirements.")
         key_nutrients["protein"] = {"value": protein, "threshold": 10.0, "unit": "g/100g", "status": "High Protein (Codex Standard)", "points": +2}
         intermediate_calc.append({"nutrient": "Protein", "value": f"{protein}g", "rule": ">= 10.0g Codex High Protein", "points": +2, "type": "bonus"})
-    elif protein >= 6.0 and target_basis != "per 100ml":
+    elif protein >= 6.0:
         bonus_points += 1
         strengths.append(f"Good source of protein ({protein}g/100g).")
         key_nutrients["protein"] = {"value": protein, "threshold": 6.0, "unit": "g/100g", "status": "Source of Protein", "points": +1}
@@ -555,6 +557,28 @@ def assess_personalized_suitability(product_data: dict[str, Any], user_profile: 
             "goal_concerns": [
                 f"Missing critical nutritional declarations: {', '.join(missing_labels)}. Please enter these values to compute an accurate 1–100 score."
             ],
+            "allergen_conflicts": allergen_assessment["user_conflicts"],
+            "has_critical_allergen_conflict": False,
+            "allergen_check_incomplete": allergen_assessment["user_allergen_check_incomplete"],
+            "preference_conflict": pref_conflict,
+            "preference_reason": pref_reason
+        }
+
+    if cat == "Alcoholic Drinks":
+        return {
+            "user_goal": primary_goal_str,
+            "user_goals": goals,
+            "dietary_preference": dietary_pref,
+            "personalized_score": None,
+            "has_insufficient_data": False,
+            "score_display": "N/A",
+            "suitability_status": "Not scored: EATGOOD does not score alcoholic drinks",
+            "suitability_badge": "Alcoholic drink",
+            "color": "gray",
+            "rules_applied": [],
+            "calculation_breakdown": None,
+            "goal_strengths": [],
+            "goal_concerns": ["EATGOOD does not score alcoholic drinks for any goal."],
             "allergen_conflicts": allergen_assessment["user_conflicts"],
             "has_critical_allergen_conflict": False,
             "allergen_check_incomplete": allergen_assessment["user_allergen_check_incomplete"],

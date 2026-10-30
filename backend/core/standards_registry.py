@@ -644,6 +644,17 @@ CATEGORY_CALIBRATION_SPECS: dict[str, dict[str, Any]] = {
         ],
         "source_check": "EATGOOD's own method; reference cut-offs not yet re-checked against the guidance document",
     },
+    "Alcoholic Drinks": {
+        "status": "Unsupported",
+        "canonical_name": "Alcoholic Drinks",
+        "methodology_name": None,
+        "standards_version": None,
+        "regulatory_category": None,
+        "reference_basis": "per 100ml",
+        "mandatory_fields": [],
+        "unsupported_reason": "EATGOOD does not grade alcoholic drinks.",
+        "source_citations": [],
+    },
     "Condiments & Spreads": {
         "status": "Unsupported",
         "canonical_name": "Condiments & Spreads",
@@ -669,6 +680,7 @@ CALIBRATED_CATEGORIES = [
 ]
 
 CATEGORY_ALIASES = {
+    "alcoholic drinks": "Alcoholic Drinks",  # matched exactly, before "drinks" below
     "biscuits": "Biscuits & Bakery",
     "bakery": "Biscuits & Bakery",
     "cookies": "Biscuits & Bakery",

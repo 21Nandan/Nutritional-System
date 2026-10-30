@@ -45,7 +45,7 @@ export default function Footer({ setActivePage }) {
           <div className="footer-col">
             <h4>Explore</h4>
             <ul>
-              <li><a href="#scanner" onClick={(e) => { e.preventDefault(); setActivePage('scanner'); }}>Label Scanner</a></li>
+              <li><a href="#scanner" onClick={(e) => { e.preventDefault(); setActivePage('scanner'); }}>Product Scanner</a></li>
               <li><a href="#catalogue" onClick={(e) => { e.preventDefault(); setActivePage('catalogue'); }}>Product Catalogue</a></li>
               <li><a href="#compare" onClick={(e) => { e.preventDefault(); setActivePage('compare'); }}>Product Comparison</a></li>
               <li><a href="#profile" onClick={(e) => { e.preventDefault(); setActivePage('profile'); }}>User Profile</a></li>

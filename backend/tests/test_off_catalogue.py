@@ -34,7 +34,9 @@ def test_words_are_placed_before_the_filters_without_and():
     words, filters, _ = build_catalogue_query("  Dairy   MILK ", category="Chocolates & Sweets")
     assert words == ["dairy", "milk"]
     query = compose_query(words, filters)
-    assert query.startswith('dairy milk countries_tags:"en:india" AND (categories_tags:"en:chocolates"')
+    assert query.startswith(
+        'dairy milk NOT categories_tags:"en:alcoholic-beverages" AND countries_tags:"en:india" AND (categories_tags:"en:chocolates"'
+    )
     assert "milk AND" not in query
 
 
