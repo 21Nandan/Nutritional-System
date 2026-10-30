@@ -1098,36 +1098,6 @@ textarea:focus-visible {
 }
 .assistant-sources span { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 4px; }
 
-/* Catalogue: where products are sold */
-.catalogue-scope {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.catalogue-scope span {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--color-text-subtle);
-  margin-right: 4px;
-}
-.catalogue-scope button {
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  font-size: 0.8rem;
-  border: 1px solid var(--color-border);
-  background: #fff;
-  color: var(--color-text-main);
-  cursor: pointer;
-}
-.catalogue-scope button[aria-pressed="true"] {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: #fff;
-  font-weight: 700;
-}
-
 /* Expand / collapse (additives, profile sections, score explanations) */
 .collapse {
   display: grid;
@@ -1660,12 +1630,4 @@ textarea:focus-visible {
   .profile-actions .btn-secondary { flex: 1 1 auto; justify-content: center; }
   .profile-details { grid-template-columns: 1fr 1fr; }
   .profile-section-body { padding: 0 12px 12px; }
-}
-.sold-in-india {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--color-primary);
-  background: var(--color-accent-subtle);
-  border-radius: 999px;
-  padding: 1px 8px;
 }

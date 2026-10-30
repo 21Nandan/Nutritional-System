@@ -19,7 +19,6 @@ function readUrlState() {
     page: Math.max(0, Number(p.get('page') || 1) - 1),
     pageSize: PAGE_SIZES.includes(size) ? size : 30,
     photos: p.get('photos') === '1',
-    world: p.get('world') === '1',
     filters: Object.fromEntries(FILTER_KEYS.map((k) => [k, p.get(k) || 'all'])),
   };
 }
@@ -31,7 +30,6 @@ function writeUrlState(state) {
   if (state.page > 0) p.set('page', String(state.page + 1));
   if (state.pageSize !== 30) p.set('size', String(state.pageSize));
   if (state.photos) p.set('photos', '1');
-  if (state.world) p.set('world', '1');
   FILTER_KEYS.forEach((k) => {
     if (state.filters[k] !== 'all') p.set(k, state.filters[k]);
   });
@@ -77,7 +75,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
   const [savedIds, setSavedIds] = useState(() => loadSavedProducts().map((p) => p.product_id));
   const [pageSize, setPageSize] = useState(initial.pageSize);
   const [hasImageFilter, setHasImageFilter] = useState(initial.photos);
-  const [allCountries, setAllCountries] = useState(initial.world);
   const [totalIsCapped, setTotalIsCapped] = useState(false);
   const [partialSearch, setPartialSearch] = useState(null);
   const [semanticIntent, setSemanticIntent] = useState(null);
@@ -146,13 +143,11 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
       page,
       pageSize,
       photos: hasImageFilter,
-      world: allCountries,
       filters: { sugar: sugarFilter, sodium: sodiumFilter, satfat: satFatFilter, fibre: fibreFilter, protein: proteinFilter },
     });
 
     const searchTerm = query.trim();
     const params = new URLSearchParams({ query: searchTerm, category: selectedCat, limit: pageSize, offset: page * pageSize });
-    if (allCountries) params.append('india_only', 'false');
     if (hasImageFilter) params.append('has_image', 'true');
     if (sugarFilter === 'healthy') params.append('max_sugars', '10');
     else if (sugarFilter === 'low') params.append('max_sugars', '5');
@@ -190,7 +185,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter, allCountries, reloadToken]);
+  }, [query, selectedCat, page, pageSize, sugarFilter, sodiumFilter, satFatFilter, fibreFilter, proteinFilter, hasImageFilter, reloadToken]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
@@ -201,7 +196,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
           Indian Packaged Food Catalogue
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Browse packaged foods sold in India, or search any food by name or brand, and filter by nutrient limits.
+          Browse and search packaged foods sold in India by name or brand, and filter by nutrient limits.
         </p>
       </div>
 
@@ -280,13 +275,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
               </button>
             );
           })}
-        </div>
-
-        {/* Where the products are sold */}
-        <div className="catalogue-scope" role="group" aria-label="Where products are sold">
-          <span>SOLD IN:</span>
-          <button type="button" aria-pressed={!allCountries} onClick={() => { setAllCountries(false); setPage(0); }}>India</button>
-          <button type="button" aria-pressed={allCountries} onClick={() => { setAllCountries(true); setPage(0); }}>All countries</button>
         </div>
 
         {/* Filter Options Toolbar (Collapsible via arrow at the side) */}
@@ -536,7 +524,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
             </div>
             <div style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
               {selectedCat === 'All' ? 'All categories' : `${selectedCat}`}
-              {allCountries ? ' • All countries' : ' • Sold in India'}
               {isFiltered ? ' • Filter Active' : ''}
               {hasImageFilter ? ' • Packaging Photos' : ''}
             </div>
@@ -685,8 +672,6 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
 
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: 10, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px' }}>
                     <span>{prod.category}</span>{prod.sub_category && <> • <span>{prod.sub_category}</span></>}
-                    {/* Shown only when the product record lists India among the countries where it is sold. */}
-                    {prod.sold_in_india === true && <span className="sold-in-india">Sold in India</span>}
                   </div>
 
                   <div style={{ marginBottom: 10 }}>

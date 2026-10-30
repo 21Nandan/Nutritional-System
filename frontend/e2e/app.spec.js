@@ -275,12 +275,11 @@ test('assistant answers render as formatted text without markdown symbols', asyn
   await expect(answer).toContainText('not clinical medical advice');
 });
 
-test('"Sold in India" appears only when the product data says so', async ({ page }) => {
+test('product cards carry no "Sold in India" tag', async ({ page }) => {
   await page.goto('/catalogue');
   const card = (name) => page.locator('.product-catalogue .card').filter({ hasText: name });
-  await expect(card('Masala Bhujia Test').getByText('Sold in India')).toBeVisible();
-  await expect(card('Orange Drink Test').getByText('Sold in India')).toHaveCount(0);
-  await expect(card('Mystery Snack Test').getByText('Sold in India')).toHaveCount(0);
+  await expect(card('Masala Bhujia Test')).toBeVisible();
+  await expect(page.locator('.product-catalogue .card').getByText('Sold in India')).toHaveCount(0);
 });
 
 test('no source or community-contribution labels appear anywhere a product is shown', async ({ page }) => {
