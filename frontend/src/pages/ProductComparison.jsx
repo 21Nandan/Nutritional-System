@@ -4,6 +4,7 @@ import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import { apiFetch } from '../api';
 import { basisLabel } from '../format';
 import { GradeBadge, GoalMatchMeter } from '../components/ScoreDisplay';
+import { loadSavedProducts } from '../storage';
 import {
   COMPARE_METRICS, basisComparison, compareMetric, compareGrades, compareGoalMatch, allergenState, buildVerdict,
 } from '../compare';
@@ -17,6 +18,13 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
   const [showSearchModal, setShowSearchModal] = useState(false);
 
   useLockBodyScroll(showSearchModal);
+
+  // Saved products the compare API can load (custom scans have no server record), re-read on open.
+  const savedForCompare = useMemo(
+    () => (showSearchModal ? loadSavedProducts().filter((p) => !p.is_custom && !p.product_id.startsWith('CUSTOM')) : []),
+    [showSearchModal],
+  );
+  const savedNotSelected = savedForCompare.filter((p) => !selectedIds.includes(p.product_id));
 
   const [compareError, setCompareError] = useState(null);
   const [searchError, setSearchError] = useState(null);
@@ -67,6 +75,12 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
     setSearchResults([]);
   };
 
+  const addSavedProducts = () => {
+    const room = 4 - selectedIds.length;
+    onChangeIds([...selectedIds, ...savedNotSelected.slice(0, room).map((p) => p.product_id)]);
+    setShowSearchModal(false);
+  };
+
   const removeProduct = (pid) => {
     onChangeIds(selectedIds.filter((id) => id !== pid));
   };
@@ -114,7 +128,8 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
         <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
           Active Comparison Matrix ({products.length} items selected)
         </div>
-        {selectedIds.length < 4 && (
+        {/* The empty state has its own add button, so this one shows only beside a comparison */}
+        {selectedIds.length < 4 && products.length >= 2 && !loading && (
           <button 
             className="btn-secondary" 
             onClick={() => setShowSearchModal(true)}
@@ -374,38 +389,60 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {searchError && <p role="alert" style={{ color: '#c62828', fontSize: '0.85rem' }}>{searchError}</p>}
-              {searchResults.map(p => (
-                <button
-                  type="button"
-                  key={p.product_id}
-                  onClick={() => addProductToCompare(p.product_id)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    font: 'inherit',
-                    color: 'inherit',
-                    padding: '10px 12px',
-                    borderRadius: 6,
-                    border: '1px solid var(--color-border)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    background: '#fff'
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>{p.brand}</span>
-                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{p.product_name}</div>
+              {!searchQuery.trim() && (
+                <div className="compare-saved">
+                  <div className="compare-saved-head">
+                    <span>Saved products</span>
+                    {savedNotSelected.length > 0 && (
+                      <button type="button" className="btn-secondary btn-compact" onClick={addSavedProducts}>
+                        {savedNotSelected.length <= 4 - selectedIds.length ? 'Add all' : `Add ${4 - selectedIds.length} (max 4)`}
+                      </button>
+                    )}
                   </div>
-                  <Plus size={16} color="var(--color-accent)" aria-hidden="true" />
-                </button>
-              ))}
+                  {savedForCompare.length === 0 ? (
+                    <p className="compare-saved-empty">Products you save appear here. Or search above.</p>
+                  ) : savedNotSelected.length === 0 ? (
+                    <p className="compare-saved-empty">All your saved products are already in this comparison.</p>
+                  ) : (
+                    savedNotSelected.map((p) => <PickRow key={p.product_id} product={p} onPick={addProductToCompare} />)
+                  )}
+                </div>
+              )}
+              {searchResults.map((p) => <PickRow key={p.product_id} product={p} onPick={addProductToCompare} />)}
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function PickRow({ product, onPick }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(product.product_id)}
+      style={{
+        width: '100%',
+        textAlign: 'left',
+        font: 'inherit',
+        color: 'inherit',
+        padding: '10px 12px',
+        borderRadius: 6,
+        border: '1px solid var(--color-border)',
+        cursor: 'pointer',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#fff'
+      }}
+    >
+      <div>
+        <span style={{ fontSize: '0.72rem', color: 'var(--color-text-subtle)' }}>{product.brand}</span>
+        <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{product.product_name}</div>
+      </div>
+      <Plus size={16} color="var(--color-accent)" aria-hidden="true" />
+    </button>
   );
 }
 

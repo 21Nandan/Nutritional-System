@@ -8,6 +8,7 @@ import ProductImageFallback from '../components/ProductImageFallback';
 import AdditiveList from '../components/AdditiveList';
 import { GradeBadge, GoalMatchMeter, ScoreExplainer, ScorePair } from '../components/ScoreDisplay';
 import { apiFetch } from '../api';
+import { gradeLabelFor, listNutrients, nutrientsOverLimit } from '../scoring';
 import { isSaved as isProductSaved, recordHistory, toggleSavedProduct } from '../storage';
 
 // Every custom scan shares the id CUSTOM_SCAN, so saved scans are keyed by name and brand instead.
@@ -20,8 +21,9 @@ const getGradeSummary = (l1) => {
   if (grade === 'A') return 'A strong overall nutritional profile with low levels of nutrients to limit.';
   if (grade === 'B') return 'A good nutritional balance with favorable overall values.';
   if (grade === 'C') return 'A moderate nutritional balance with some nutrients to monitor.';
-  if (grade === 'D') return 'Contains elevated levels in one or more nutrients of concern.';
-  if (grade === 'E') return 'Higher in sugar, sodium, or saturated fat relative to category benchmarks.';
+  const over = listNutrients(nutrientsOverLimit(l1));
+  if (grade === 'D') return over ? `Above the category limit for ${over}.` : 'Contains elevated levels in one or more nutrients of concern.';
+  if (grade === 'E') return over ? `Well above the category limits for ${over}.` : 'Higher in sugar, sodium, or saturated fat relative to category benchmarks.';
   if (l1.status === 'Insufficient Data') return 'Incomplete nutritional declarations on the packaging prevent an overall grade.';
   if (l1.status === 'Data Contradiction') return 'Conflicting nutrition values on packaging prevent an accurate grade.';
   if (l1.status === 'Uncalibrated Category') return 'Category benchmarks are not yet established for this food type; nutrition panel is displayed without an estimated grade.';
@@ -494,7 +496,7 @@ export default function ProductAssessment({
                 </span>
                 <span>•</span>
                 <span style={{ fontSize: '0.82rem', color: 'var(--color-text-subtle)' }}>
-                  {assessment.category} ({assessment.sub_category})
+                  {assessment.category}{assessment.sub_category ? ` (${assessment.sub_category})` : ''}
                 </span>
               </div>
               
@@ -529,7 +531,7 @@ export default function ProductAssessment({
           <div className="score-summary">
             <div className="score-summary-item">
               <span className="score-summary-heading">Nutrition grade</span>
-              <GradeBadge grade={l1.grade} size="lg" />
+              <GradeBadge grade={l1.grade} size="lg" label={gradeLabelFor(l1)} />
               <span className="score-summary-sub">Same for everyone · {l1.category_calibrated && l1.category_calibrated !== 'Unspecified' ? `${l1.category_calibrated} limits` : 'category limits'}{l1.is_eatgood_method ? ' · EATGOOD\'s own method, not an official grade' : ''}</span>
             </div>
             <div className="score-summary-item">
@@ -555,7 +557,7 @@ export default function ProductAssessment({
                   Nutrition grade · same for everyone
                 </span>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', margin: '4px 0 2px', fontWeight: 800 }}>
-                  {l1.grade_label || (['A', 'B', 'C', 'D', 'E'].includes(l1.grade) ? `Grade ${l1.grade}` : 'Overall Grade Unavailable')}
+                  {['D', 'E'].includes(l1.grade) ? `Grade ${l1.grade} — ${gradeLabelFor(l1)}` : (l1.grade_label || (['A', 'B', 'C'].includes(l1.grade) ? `Grade ${l1.grade}` : 'Overall Grade Unavailable'))}
                 </h3>
                 <p style={{ fontSize: '0.84rem', color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.45 }}>
                   {getGradeSummary(l1)}
@@ -1017,7 +1019,7 @@ export default function ProductAssessment({
                 Community Ratings
               </span>
               <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
-                Reported by the product database community; separate from EATGOOD's own assessment.
+                Separate from EATGOOD's own assessment.
               </p>
             </div>
 

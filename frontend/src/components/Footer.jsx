@@ -40,7 +40,7 @@ export default function Footer({ setActivePage }) {
           </p>
         </div>
 
-        {/* Explore & Standards & Data: displayed side-by-side on mobile */}
+        {/* Explore & Standards: displayed side-by-side on mobile */}
         <div className="footer-nav-group">
           <div className="footer-col">
             <h4>Explore</h4>
@@ -53,7 +53,7 @@ export default function Footer({ setActivePage }) {
           </div>
 
           <div className="footer-col">
-            <h4>Standards & Data</h4>
+            <h4>Standards</h4>
             <ul>
               <li>
                 <a 

@@ -120,5 +120,5 @@ def contribute_product(payload: ProductContributionRequest, request: Request):
         "barcode": code,
         "review_status": "pending_review",
         "data_confidence_status": UNVERIFIED_CONTRIBUTION_STATUS,
-        "message": f"Thanks! '{payload.product_name}' was saved as an unreviewed contribution.",
+        "message": f"Thanks! '{payload.product_name}' was saved.",
     }
