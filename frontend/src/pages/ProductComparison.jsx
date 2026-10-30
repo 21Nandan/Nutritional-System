@@ -58,7 +58,7 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
       setSearchResults([]);
       return;
     }
-    apiFetch(`/api/products?query=${encodeURIComponent(q)}&india_only=false&limit=12`)
+    apiFetch(`/api/products?query=${encodeURIComponent(q)}&limit=12`)
       .then((data) => setSearchResults(data.products))
       .catch((err) => {
         setSearchResults([]);
