@@ -735,3 +735,28 @@ def evaluate_claims(marketing_claims: str, product_data: dict) -> list[dict[str,
         evaluations.append(eval_result)
 
     return evaluations
+
+
+# Accurate claims can still give a healthier impression than the product as a whole deserves.
+HEALTH_HALO_TYPES = {"Nutrient-Content Claim", "Free-From Claim", "Health Claim", "Nutrient-Function Claim",
+                     "Sugar-Related Claim", "Ingredient & Composition Claim", "Organic / Natural Claim", "Processing Claim"}
+OVER_LIMIT_NAMES = {"sugars": "sugar", "sodium": "sodium", "saturated_fat": "saturated fat", "trans_fat": "trans fat",
+                    "energy": "calories"}
+
+
+def add_misleading_context(results: list[dict[str, Any]], product: dict[str, Any]) -> None:
+    """Adds context_note to accurate health-sounding claims on a product with nutrients over its limits,
+    using the product's own grade (assess_general_nutrition); claims and grades are left unchanged."""
+    from backend.core.nutrition_scoring import assess_general_nutrition  # avoids a circular import
+
+    layer1 = assess_general_nutrition(product)
+    over = [OVER_LIMIT_NAMES[k] for k, v in (layer1.get("key_contributing_nutrients") or {}).items()
+            if k in OVER_LIMIT_NAMES and (v.get("points") or 0) < 0]
+    if not over or layer1.get("grade") not in ("C", "D", "E"):
+        return
+    listed = over[0] if len(over) == 1 else f"{', '.join(over[:-1])} and {over[-1]}"
+    for r in results:
+        types = set(r.get("detected_claim_types") or [r.get("primary_claim_type")])
+        if str(r.get("compliance_status", "")).startswith("Consistent") and types & HEALTH_HALO_TYPES:
+            r["context_note"] = (f"Accurate, but the product is still high in {listed} (nutrition grade "
+                                 f"{layer1['grade']}), so the claim may make it seem healthier than it is overall.")

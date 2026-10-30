@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import LabelPhotoButton from './LabelPhotoButton';
 import { 
   X, CheckCircle2, PlusCircle, 
   Sparkles, RefreshCw
@@ -247,6 +248,7 @@ export default function ProductContributionModal({
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
+              <LabelPhotoButton setForm={setFormData} />
               {submitError && (
                 <div style={{
                   background: '#ffebee',

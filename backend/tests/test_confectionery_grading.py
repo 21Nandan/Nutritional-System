@@ -62,9 +62,9 @@ def test_limits_are_per_100g_for_sugar_saturated_fat_and_sodium():
     [
         ("sugar-free mint", {"sugars_g": 0.5, "saturated_fat_g": 0, "sodium_mg": 20, "carbohydrates_g": 95, "total_fat_g": 0}, "B"),
         ("85% dark chocolate", {"sugars_g": 14, "saturated_fat_g": 28, "sodium_mg": 20, "dietary_fibre_g": 12, "protein_g": 10,
-                                "total_fat_g": 46, "carbohydrates_g": 22}, "B"),
+                                "total_fat_g": 46, "carbohydrates_g": 22}, "C"),  # 3 penalty points; 6 bonus points capped to 3: 53
         ("70% dark chocolate", {"sugars_g": 28, "saturated_fat_g": 24, "sodium_mg": 20, "dietary_fibre_g": 11, "protein_g": 8,
-                                "total_fat_g": 42, "carbohydrates_g": 36}, "C"),
+                                "total_fat_g": 42, "carbohydrates_g": 36}, "D"),  # 5 penalty points; bonuses capped to 3: 39
         ("fruit jelly sweets", {"sugars_g": 55, "saturated_fat_g": 0.1, "sodium_mg": 30, "carbohydrates_g": 78, "total_fat_g": 0.2}, "D"),
         ("milk chocolate", {"sugars_g": 56, "saturated_fat_g": 18, "sodium_mg": 90, "protein_g": 7, "total_fat_g": 30,
                             "carbohydrates_g": 58}, "E"),

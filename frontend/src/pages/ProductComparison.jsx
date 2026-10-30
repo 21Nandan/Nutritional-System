@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useId } from 'react';
+import { Chevron, Collapse } from '../components/Expandable';
 import { X, Plus, ChevronRight, Check, AlertTriangle } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import { apiFetch } from '../api';
@@ -122,6 +123,39 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
     };
   }, [products, goal, profileAllergens]);
 
+  // Patterns across the products, a plain explanation and a swap idea for the lowest-priority product,
+  // loaded after the table. Each part is left out if it can't be loaded.
+  const [insight, setInsight] = useState(null);
+  useEffect(() => {
+    setInsight(null);
+    if (!comparison || products.length < 2) return undefined;
+    const controller = new AbortController();
+    const ids = products.map((p) => p.product_id);
+    const priority = Object.fromEntries(
+      products.map((p, i) => [p.product_id, comparison.relative.cells[i]?.rank]).filter(([, r]) => r != null),
+    );
+    const ranked = products
+      .map((p, i) => ({ p, rank: comparison.relative.cells[i]?.rank ?? 0 }))
+      .filter((r) => !r.p.has_allergen_conflict)
+      .sort((a, b) => b.rank - a.rank);
+    const worst = comparison.relative.available && ranked.length && ranked[0].rank > 1 ? ranked[0].p : null;
+    Promise.all([
+      apiFetch('/api/compare/explain', { method: 'POST', body: { product_ids: ids, priority }, signal: controller.signal }).catch(() => null),
+      worst
+        ? apiFetch(`/api/alternatives/${encodeURIComponent(worst.product_id)}?limit=1`, { signal: controller.signal }).catch(() => null)
+        : Promise.resolve(null),
+    ]).then(([explained, alts]) => {
+      if (controller.signal.aborted) return;
+      const swap = alts?.alternatives?.find((a) => !ids.includes(a.product_id));
+      setInsight({
+        explanation: explained?.explanation || null,
+        patterns: explained?.patterns || [],
+        swap: swap && worst ? { from: worst.product_name, to: swap } : null,
+      });
+    });
+    return () => controller.abort();
+  }, [comparison, products]);
+
   const visibleRows = comparison
     ? comparison.rows.filter((r) => !showDifferencesOnly || !comparison.basis.comparable || r.meaningful)
     : [];
@@ -206,7 +240,7 @@ export default function ProductComparison({ productIds = [], onChangeIds, onSele
         </div>
       ) : (
         <>
-          <CompareVerdict verdict={comparison.verdict} />
+          <CompareVerdict verdict={comparison.verdict} insight={insight} onSelectProduct={onSelectProduct} />
 
           <div className="compare-toolbar">
             <div className="compare-toggle" role="group" aria-label="Rows to show">
@@ -503,8 +537,13 @@ function PickRow({ product, picked, disabled, onPick }) {
   );
 }
 
-function CompareVerdict({ verdict }) {
+// The verdict shows its highlights; the written explanation and the patterns across the products
+// open from the "Show explanation" toggle.
+function CompareVerdict({ verdict, insight, onSelectProduct }) {
   const { headline, advantages, tradeoffs, subject, comparedWith, tie, notes } = verdict;
+  const detailsId = useId();
+  const [showDetails, setShowDetails] = useState(false);
+  const hasDetails = Boolean(insight?.explanation || insight?.patterns?.length);
   return (
     <section className="compare-verdict" aria-labelledby="compare-verdict-title">
       <h2 id="compare-verdict-title">Verdict for your goal</h2>
@@ -517,7 +556,35 @@ function CompareVerdict({ verdict }) {
           {` compared with ${comparedWith.product_name}.`}
         </p>
       )}
+      {/* Notes stay visible: they include allergen warnings */}
       {notes.map((n) => <p key={n} className="compare-verdict-note">{n}</p>)}
+      {insight?.swap && (
+        <p className="compare-verdict-swap">
+          Swap idea for {insight.swap.from}:{' '}
+          <button type="button" className="compare-swap-link" onClick={() => onSelectProduct(insight.swap.to.product_id)}>
+            {insight.swap.to.product_name}
+          </button>
+          {insight.swap.to.brand ? ` (${insight.swap.to.brand})` : ''}, grade {insight.swap.to.general_grade}
+          {insight.swap.to.comparative_advantages?.[0] ? `: ${insight.swap.to.comparative_advantages[0]}` : ''}
+        </p>
+      )}
+      {hasDetails && (
+        <>
+          <button type="button" className="compare-verdict-toggle" aria-expanded={showDetails} aria-controls={detailsId} onClick={() => setShowDetails((v) => !v)}>
+            <Chevron open={showDetails} />
+            <span>{showDetails ? 'Hide explanation' : 'Show explanation'}</span>
+          </button>
+          <Collapse id={detailsId} open={showDetails}>
+            {insight?.explanation && <p className="compare-verdict-explain">{insight.explanation}</p>}
+            {insight?.patterns?.length > 0 && (
+              <div className="compare-verdict-patterns">
+                <strong>Across these products</strong>
+                <ul>{insight.patterns.map((t) => <li key={t}>{t}</li>)}</ul>
+              </div>
+            )}
+          </Collapse>
+        </>
+      )}
       <p className="compare-verdict-note">Goal Match reflects your selected goal, not overall healthiness. Always read the pack.</p>
     </section>
   );

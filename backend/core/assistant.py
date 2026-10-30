@@ -154,6 +154,7 @@ def answer_product_question(
 
     conclusion: list[Part] = []
     details: list[list[Part]] = []
+    understood = True  # False when the question matched none of the topics below
     disclaimer: str | None = None
     citations: list[str] = []
 
@@ -251,6 +252,7 @@ def answer_product_question(
                 conclusion = [_t(f"{p_name} has "), _v(amount), _t(" protein.")]
 
     else:
+        understood = False
         conclusion = [_t(f"{p_name} by {brand} ({cat}) has grade "), _v(str(grade)), _t(" and a Goal Match of "),
                       _v(f"{score}/100" if score is not None else "N/A"), _t(f" for your goal ({goal}).")]
         for key, label in [("energy_kcal", "Energy"), ("sugars_g", "Total Sugars"), ("sodium_mg", "Sodium"), ("protein_g", "Protein")]:
@@ -277,6 +279,7 @@ def answer_product_question(
         "details": details,
         "disclaimer": disclaimer,
         "evidence_citations": citations,
+        "understood": understood,
         "grounded_metrics": {
             "energy_kcal": product.get("energy_kcal"),
             "sugars_g": product.get("sugars_g"),

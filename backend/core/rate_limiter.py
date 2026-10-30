@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 
 from backend.config import (
     IS_SERVERLESS,
+    RATE_LIMIT_AI_RPM,
     RATE_LIMIT_CONTRIB_RPM,
     RATE_LIMIT_ENABLED,
     RATE_LIMIT_OFF_RPM,
@@ -85,7 +86,8 @@ def enforce_rate_limit(request: Request, endpoint_type: str):
     limits = {
         "off_search": RATE_LIMIT_OFF_SEARCH_RPM,
         "off_barcode": RATE_LIMIT_OFF_RPM,
-        "contribution": RATE_LIMIT_CONTRIB_RPM
+        "contribution": RATE_LIMIT_CONTRIB_RPM,
+        "ai": RATE_LIMIT_AI_RPM,
     }
     max_reqs = limits.get(endpoint_type, 60)
     client_id = f"{endpoint_type}:{get_client_identifier(request)}"

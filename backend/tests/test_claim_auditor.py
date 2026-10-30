@@ -201,3 +201,20 @@ def test_claims_read_from_a_pack_are_checked_against_entered_values():
     assert verdicts["Gluten-free"].startswith("Potentially inconsistent")
 
     assert TestClient(app).post("/api/claims/check", json={"claims": "High protein"}).status_code == 400
+
+
+def test_accurate_claims_on_products_over_their_limits_get_context():
+    from backend.core.claims_detector import add_misleading_context, evaluate_claims
+
+    snack = {"category": "Snacks", "measurement_basis": "per 100g", "energy_kcal": 540, "sugars_g": 2, "protein_g": 12,
+             "saturated_fat_g": 9.6, "sodium_mg": 780, "ingredients": "soya, palm oil, salt"}
+    results = evaluate_claims("High protein, crunchy", snack)
+    add_misleading_context(results, snack)
+    by_claim = {r["claim"]: r for r in results}
+    assert "high in sodium, saturated fat and calories" in by_claim["High protein"]["context_note"]
+    assert "context_note" not in by_claim["crunchy"]  # sensory words aren't health claims
+
+    clean = {**snack, "saturated_fat_g": 1, "sodium_mg": 100, "energy_kcal": 380}
+    results = evaluate_claims("High protein", clean)
+    add_misleading_context(results, clean)
+    assert "context_note" not in results[0]

@@ -13,6 +13,22 @@ DATA_DIR = BASE_DIR / "data"
 IS_SERVERLESS = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
 
+def _load_local_env_file(path: Path) -> None:
+    """Locally, read KEY=value lines from .env (git-ignored) without overriding real environment variables.
+    On Vercel the variables come from the project settings instead."""
+    if IS_SERVERLESS or not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_local_env_file(BASE_DIR / ".env")
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
@@ -83,3 +99,17 @@ RATE_LIMIT_ENABLED = _env_bool("EATGOOD_RATE_LIMIT", True)
 RATE_LIMIT_OFF_SEARCH_RPM = _env_int("RATE_LIMIT_OFF_SEARCH_RPM", 60)  # search-as-you-type
 RATE_LIMIT_OFF_RPM = _env_int("RATE_LIMIT_OFF_RPM", 45)
 RATE_LIMIT_CONTRIB_RPM = _env_int("RATE_LIMIT_CONTRIB_RPM", 30)
+RATE_LIMIT_AI_RPM = _env_int("RATE_LIMIT_AI_RPM", 6)
+
+# Google Gemini (optional; without a key every feature uses its non-Gemini fallback). Defaults suit the
+# free tier: Flash-Lite reads photos and answers questions (about 2 s per photo, and it read labels and
+# claims as well as Flash in testing, while Flash was often overloaded), with a daily cap on calls.
+# The "-latest" aliases follow Google's current models, so a retired version doesn't break the app.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
+GEMINI_TEXT_MODEL = os.environ.get("GEMINI_TEXT_MODEL", "gemini-flash-lite-latest")
+# Used when the main model times out or is overloaded (it then rests for a few minutes).
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
+GEMINI_DAILY_LIMIT = _env_int("GEMINI_DAILY_LIMIT", 200)
+GEMINI_COOLDOWN_SECONDS = _env_int("GEMINI_COOLDOWN_SECONDS", 60)
+GEMINI_TIMEOUT_SECONDS = _env_float("GEMINI_TIMEOUT_SECONDS", 6.0)  # two tries still fit Vercel's 15 s limit

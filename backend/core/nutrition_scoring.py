@@ -19,6 +19,7 @@ import pandas as pd
 
 from backend.core.allergen_engine import analyze_additives, analyze_allergens
 from backend.core.claims_detector import evaluate_claims
+from backend.core.data_quality import quality_flags
 from backend.core.nutrition_validator import FIELD_FRIENDLY_NAMES, parse_float_safe, validate_and_normalize_nutrition
 from backend.core.standards_registry import (
     get_applicable_standards,
@@ -49,6 +50,13 @@ GRADE_BANDS = (
     (32, "D", "Grade D — Elevated Nutrients of Concern", "orange"),
     (10, "E", "Grade E — High in Sugar, Sodium, or Saturated Fat", "red"),
 )
+
+
+# Energy above these counts as a penalty point (per 100 g of food / per 100 ml of drink).
+ENERGY_LIMIT_FOODS_KCAL = 450.0
+ENERGY_LIMIT_DRINKS_KCAL = 70.0
+# With any penalty, at most this many bonus points count towards the score.
+MAX_BONUS_POINTS = 3
 
 
 def grade_for_score(score: float) -> tuple[str, str, str]:
@@ -247,16 +255,17 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
             concerns.append(f"Exceeds WHO sugar threshold for packaged beverages ({sugars}g/100ml vs >{sugar_thresh}g standard).")
             key_nutrients["sugars"] = {"value": sugars, "threshold": sugar_thresh, "unit": "g/100ml", "status": "Elevated (>threshold)", "points": -2}
             intermediate_calc.append({"nutrient": "Total Sugars", "value": f"{sugars}g", "rule": f"> WHO threshold ({sugar_thresh}g)", "points": -2, "type": "penalty"})
+        # Kept modest so a sugar-free soft drink can't reach a top grade on sugar alone.
         elif sugars <= 1.0:
-            bonus_points += 4
-            strengths.append(f"Virtually sugar-free beverage ({sugars}g/100ml).")
-            key_nutrients["sugars"] = {"value": sugars, "threshold": sugar_thresh, "unit": "g/100ml", "status": "Optimal / Low", "points": +4}
-            intermediate_calc.append({"nutrient": "Total Sugars", "value": f"{sugars}g", "rule": "<= 1.0g virtually sugar-free", "points": +4, "type": "bonus"})
-        elif sugars <= 3.0:
             bonus_points += 2
+            strengths.append(f"Virtually sugar-free beverage ({sugars}g/100ml).")
+            key_nutrients["sugars"] = {"value": sugars, "threshold": sugar_thresh, "unit": "g/100ml", "status": "Optimal / Low", "points": +2}
+            intermediate_calc.append({"nutrient": "Total Sugars", "value": f"{sugars}g", "rule": "<= 1.0g virtually sugar-free", "points": +2, "type": "bonus"})
+        elif sugars <= 3.0:
+            bonus_points += 1
             strengths.append(f"Low sugar beverage ({sugars}g/100ml).")
-            key_nutrients["sugars"] = {"value": sugars, "threshold": sugar_thresh, "unit": "g/100ml", "status": "Favourable / Low", "points": +2}
-            intermediate_calc.append({"nutrient": "Total Sugars", "value": f"{sugars}g", "rule": "<= 3.0g low sugar benchmark", "points": +2, "type": "bonus"})
+            key_nutrients["sugars"] = {"value": sugars, "threshold": sugar_thresh, "unit": "g/100ml", "status": "Favourable / Low", "points": +1}
+            intermediate_calc.append({"nutrient": "Total Sugars", "value": f"{sugars}g", "rule": "<= 3.0g low sugar benchmark", "points": +1, "type": "bonus"})
         else:
             key_nutrients["sugars"] = {"value": sugars, "threshold": sugar_thresh, "unit": "g/100ml", "status": "Moderate", "points": 0}
             intermediate_calc.append({"nutrient": "Total Sugars", "value": f"{sugars}g", "rule": "Within standard limits", "points": 0, "type": "neutral"})
@@ -338,10 +347,10 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
         key_nutrients["trans_fat"] = {"value": trans_fat, "threshold": 0.1, "unit": "g", "status": "Non-compliant (WHO REPLACE target: <0.2g)", "points": -3}
         intermediate_calc.append({"nutrient": "Trans Fat", "value": f"{trans_fat}g", "rule": "> 0.1g WHO REPLACE target", "points": -3, "type": "penalty"})
     elif nutr.get("trans_fat_g") is not None and trans_fat == 0.0:
-        bonus_points += 1
+        # Shown as a strength, but no bonus: 0 g trans fat is what the rules expect, not extra credit.
         strengths.append("Zero industrial trans fats declared.")
-        key_nutrients["trans_fat"] = {"value": 0.0, "threshold": 0.1, "unit": "g", "status": "Optimal (0g)", "points": +1}
-        intermediate_calc.append({"nutrient": "Trans Fat", "value": "0g", "rule": "Zero trans fat declared", "points": +1, "type": "bonus"})
+        key_nutrients["trans_fat"] = {"value": 0.0, "threshold": 0.1, "unit": "g", "status": "Optimal (0g)", "points": 0}
+        intermediate_calc.append({"nutrient": "Trans Fat", "value": "0g", "rule": "Zero trans fat declared (no bonus)", "points": 0, "type": "neutral"})
 
     # -------------------------------------------------------------
     # Step E: Positive Nutrients (Dietary Fibre & Protein Codex CAC/GL 23-1997)
@@ -369,9 +378,28 @@ def _assess_general_nutrition(product_data: dict[str, Any]) -> dict[str, Any]:
         intermediate_calc.append({"nutrient": "Protein", "value": f"{protein}g", "rule": ">= 6.0g Codex Source of Protein", "points": +1, "type": "bonus"})
 
     # -------------------------------------------------------------
-    # Step F: Composite Score Calculation
-    # Formula: net_score = max(10, min(100, 50 - (penalties * 7) + (bonuses * 8)))
+    # Step F: Energy density (EATGOOD's own cut-offs; FSSAI's draft rating and Nutri-Score also count energy)
     # -------------------------------------------------------------
+    energy = nutr.get("energy_kcal")
+    energy_limit = ENERGY_LIMIT_DRINKS_KCAL if target_basis == "per 100ml" else ENERGY_LIMIT_FOODS_KCAL
+    unit = "kcal/100ml" if target_basis == "per 100ml" else "kcal/100g"
+    if energy is not None and energy > energy_limit:
+        penalty_points += 1
+        concerns.append(f"Energy-dense ({energy:g} {unit}, above {energy_limit:g}).")
+        key_nutrients["energy"] = {"value": energy, "threshold": energy_limit, "unit": unit, "status": "Elevated (>threshold)", "points": -1}
+        intermediate_calc.append({"nutrient": "Energy", "value": f"{energy:g} kcal", "rule": f"> {energy_limit:g} {unit}", "points": -1, "type": "penalty"})
+
+    # -------------------------------------------------------------
+    # Step G: Composite Score Calculation
+    # When anything is over a limit, bonuses are capped so protein or fibre can't cancel out excess
+    # sugar, salt, fat or energy. A product with nothing over a limit keeps all its bonuses.
+    # Formula: net_score = max(10, min(100, 50 - (penalties * 7) + (bonuses * 8))), bonuses <= 3 if penalties
+    # -------------------------------------------------------------
+    if penalty_points > 0 and bonus_points > MAX_BONUS_POINTS:
+        intermediate_calc.append({"nutrient": "Bonus cap", "value": f"{bonus_points} bonus points",
+                                  "rule": f"With anything over a limit, bonuses count up to {MAX_BONUS_POINTS} points",
+                                  "points": MAX_BONUS_POINTS, "type": "neutral"})
+        bonus_points = MAX_BONUS_POINTS
     raw_score = 50 - (penalty_points * 7) + (bonus_points * 8)
     net_score = max(10, min(100, raw_score))
 
@@ -1246,6 +1274,8 @@ def run_full_product_assessment(product_data: dict[str, Any], user_profile: dict
         "image_ingredients_url": product_data.get("image_ingredients_url"),
         "image_nutrition_url": product_data.get("image_nutrition_url"),
         "marketing_claims": product_data.get("marketing_claims") or "",
+        # Values worth checking against the pack (never change the grade).
+        "data_quality_flags": quality_flags(product_data),
         "quantity": product_data.get("quantity"),
         "serving_size": product_data.get("serving_size"),
         "serving_size_unit": product_data.get("serving_size_unit"),

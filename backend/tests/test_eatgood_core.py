@@ -193,3 +193,11 @@ def test_alternatives_are_never_worse_than_the_current_product():
 
     ids = [a["product_id"] for a in get_healthier_alternatives(current, profile, [better, worse])["alternatives"]]
     assert ids == ["BETTER"]
+
+
+def test_swaps_list_what_they_give_up():
+    from backend.core.recommender import _trade_offs
+
+    current = {"sugars_g": 2.0, "sodium_mg": 300, "protein_g": 12.0, "dietary_fibre_g": None}
+    swap = {"sugars_g": 8.0, "sodium_mg": 120, "protein_g": 6.0, "dietary_fibre_g": 9.0}
+    assert _trade_offs(current, swap) == ["6.0 g more sugar per 100", "6.0 g less protein per 100"]

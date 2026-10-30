@@ -154,6 +154,9 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'privacy' }) 
                 <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
                   If you choose to contribute a missing product, what you submit is stored without your identity and can be shown, marked as unreviewed, to anyone who scans the same barcode. When a barcode is not in our catalogue, the server asks Open Food Facts about that barcode or search term (never your profile). Product photos are loaded by your browser directly from Open Food Facts&apos; image servers.
                 </p>
+                <p style={{ margin: '8px 0 0', color: 'var(--color-text-muted)' }}>
+                  When you photograph a nutrition label or the claims on a pack, the photo is shrunk on your device and sent to a third-party service only to read its text; EATGOOD doesn&apos;t store it. Questions that EATGOOD&apos;s own answers don&apos;t cover, questions in &ldquo;Ask about your food&rdquo;, and requests to explain ingredients or a comparison are sent there too, with the products&apos; values and results and your goal, diet and allergens (and, for &ldquo;Ask about your food&rdquo;, your saved and recent products), but not your name. That service may keep and use this data under its own terms. If that service isn&apos;t available, claim photos are read on your device instead. Barcode scanning always happens on your device.
+                </p>
               </div>
               <div>
                 <h4 style={{ color: 'var(--color-primary)', fontSize: '0.98rem', marginBottom: 6 }}>

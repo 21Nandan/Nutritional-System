@@ -79,7 +79,7 @@ export default function Footer({ setActivePage }) {
 
         <div className="footer-disclaimer">
           <h4>Important Disclaimer</h4>
-          <p style={{ color: '#8da698', fontSize: '0.8rem', lineHeight: 1.5, background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
+          <p style={{ color: '#8da698', fontSize: '0.76rem', lineHeight: 1.45, background: 'rgba(255,255,255,0.05)', padding: '10px 12px', borderRadius: 8, margin: 0 }}>
             Informational only, not medical advice. EATGOOD is not affiliated with or endorsed by WHO or FSSAI and does not
             certify regulatory compliance. Always read the actual pack. Consult a
             registered dietitian or doctor for medical needs. Product data from Open Food Facts is available under the
@@ -88,8 +88,9 @@ export default function Footer({ setActivePage }) {
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: 20, maxWidth: 1240, margin: '0 auto' }}>
-        <div className="footer-subbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, paddingBottom: 14 }}>
+      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: 14, maxWidth: 1240, margin: '0 auto' }}>
+        {/* Three equal-sided columns so the middle text sits at the true centre */}
+        <div className="footer-subbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <img 
               src={logoImg} 
@@ -106,7 +107,25 @@ export default function Footer({ setActivePage }) {
             <span style={{ color: '#fff', fontWeight: 600, fontSize: '0.92rem' }}>EATGOOD</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: '#8da698', fontSize: '0.82rem' }}>
+          <div className="footer-made" style={{ color: '#8da698', fontSize: '0.78rem', lineHeight: 1.5, textAlign: 'center' }}>
+            <span>
+              Made with
+              <span
+                className={`rvce-heart ${heartGlow ? 'is-glowing' : ''}`}
+                onClick={handleHeartClick}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleHeartClick(); } }}
+                role="button"
+                tabIndex={0}
+                aria-label="Made with love in Bengaluru — click to toggle glow"
+                title="Made with ❤️ in Bengaluru — Click or hover to glow!"
+              >
+                ❤️
+              </span>
+              in Bengaluru &nbsp;•&nbsp; v1.0.0 &nbsp;•&nbsp; &copy; 2026 EATGOOD
+            </span>
+          </div>
+
+          <div className="footer-legal" style={{ display: 'flex', alignItems: 'center', gap: 14, color: '#8da698', fontSize: '0.82rem' }}>
             <a 
               href="#privacy" 
               onClick={(e) => { e.preventDefault(); openLegal('privacy'); }}
@@ -125,26 +144,6 @@ export default function Footer({ setActivePage }) {
           </div>
         </div>
 
-        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: 14, display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
-          <div style={{ color: '#8da698', fontSize: '0.78rem', lineHeight: 1.6 }}>
-            <div>
-              Made with{' '}
-              <span
-                className={`rvce-heart ${heartGlow ? 'is-glowing' : ''}`}
-                onClick={handleHeartClick}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleHeartClick(); } }}
-                role="button"
-                tabIndex={0}
-                aria-label="Made with love in Bengaluru — click to toggle glow"
-                title="Made with ❤️ in Bengaluru — Click or hover to glow!"
-              >
-                ❤️
-              </span>{' '}
-              in Bengaluru &nbsp;•&nbsp; v1.0.0
-            </div>
-            <div>&copy; 2026 EATGOOD &nbsp;•&nbsp; All rights reserved</div>
-          </div>
-        </div>
       </div>
 
       <LegalModal

@@ -13,6 +13,15 @@ os.environ["EATGOOD_RATE_LIMIT"] = "false"
 
 
 @pytest.fixture(autouse=True)
+def no_real_gemini(monkeypatch):
+    """Tests never call the real Gemini (a key in .env would otherwise be used); test_gemini.py fakes it."""
+    from backend.core import gemini
+
+    monkeypatch.setattr(gemini, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(gemini, "_cache", {})
+
+
+@pytest.fixture(autouse=True)
 def offline_catalogue(monkeypatch):
     """Product lookups, catalogue pages and alternatives come from tests/catalogue_fixture.py.
 

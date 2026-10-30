@@ -87,6 +87,13 @@ def with_saved_record(product: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def cached_product(product_id: str) -> dict[str, Any] | None:
+    """A catalogue product the server already has saved (no network call), or None."""
+    code = clean_barcode(product_id.removeprefix("OFF_"))
+    cached = get_cached_lookup(code) if code.isdigit() else None
+    return cached["product"] if cached and cached["status"] == "success" else None
+
+
 def resolve_product(product_id: str) -> dict[str, Any] | None:
     """Resolves a product identifier to a product dict, or None when nothing matches.
 
