@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import BASE_DIR, CORS_ORIGINS, IS_SERVERLESS
 from backend.database import init_db
-from backend.routes import catalogue, meta, scan
+from backend.routes import ai, catalogue, meta, scan
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("eatgood")
@@ -79,6 +79,7 @@ async def unhandled_exception(request: Request, exc: Exception):
 app.include_router(meta.router)
 app.include_router(scan.router)
 app.include_router(catalogue.router)
+app.include_router(ai.router)
 
 # Local runs serve the built frontend from the same process. On Vercel the static
 # files are served by the CDN and only /api/* reaches this app.

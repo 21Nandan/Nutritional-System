@@ -77,6 +77,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
   const [hasImageFilter, setHasImageFilter] = useState(initial.photos);
   const [totalIsCapped, setTotalIsCapped] = useState(false);
   const [partialSearch, setPartialSearch] = useState(null);
+  const [rewrittenQuery, setRewrittenQuery] = useState(null);
   const [semanticIntent, setSemanticIntent] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -171,6 +172,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
           setTotalIsCapped(data.total_is_capped);
           setSemanticIntent(data.interpreted_intent || null);
           setPartialSearch(data.match_mode === 'partial' ? { term: searchTerm, pool: data.searched_pool } : null);
+          setRewrittenQuery(data.rewritten_query || null);
           setLoading(false);
         })
         .catch((err) => {
@@ -530,6 +532,12 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
           </div>
         </div>
       </div>
+
+      {rewrittenQuery && !loading && !apiError && (
+        <p className="catalogue-note" role="status">
+          Nothing matched those exact words, so these are results for &ldquo;{rewrittenQuery}&rdquo;.
+        </p>
+      )}
 
       {partialSearch && !loading && !apiError && (
         <p className="catalogue-note" role="status">

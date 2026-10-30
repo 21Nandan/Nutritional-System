@@ -11,6 +11,31 @@ import pandas as pd
 from backend.core.nutrition_scoring import assess_general_nutrition, assess_personalized_suitability
 
 
+# Where a suggested swap is worse than the current product, by at least this much per 100 g / 100 ml.
+TRADE_OFF_STEPS = [
+    ("sugars_g", "sugar", "g", 3.0, "more"),
+    ("sodium_mg", "sodium", "mg", 100.0, "more"),
+    ("saturated_fat_g", "saturated fat", "g", 1.5, "more"),
+    ("energy_kcal", "calories", "kcal", 50.0, "more"),
+    ("protein_g", "protein", "g", 2.5, "less"),
+    ("dietary_fibre_g", "fibre", "g", 2.0, "less"),
+]
+
+
+def _trade_offs(current: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
+    """What the swap gives up, from the two products' stated values (missing values are skipped)."""
+    out = []
+    for key, label, unit, step, worse in TRADE_OFF_STEPS:
+        a, b = current.get(key), candidate.get(key)
+        if a is None or b is None or pd.isna(a) or pd.isna(b):
+            continue
+        diff = (b - a) if worse == "more" else (a - b)
+        if diff >= step:
+            amount = f"{int(round(diff))}" if unit in ("mg", "kcal") else f"{round(diff, 1)}"
+            out.append(f"{amount} {unit} {worse} {label} per 100")
+    return out
+
+
 def _grade_rank(grade: str | None) -> int:
     """A = 0 … E = 4; an ungraded product ranks last."""
     return "ABCDE".index(grade) if grade in ("A", "B", "C", "D", "E") else 5
@@ -82,6 +107,7 @@ def get_healthier_alternatives(
 
             if not advantages:
                 advantages.append(f"Better aligned with your '{goal}' nutritional objective ({cand_score}/100 vs {curr_score}/100).")
+            trade_offs = _trade_offs(current_product, cand)
 
             alternatives.append({
                 "product_id": cand["product_id"],
@@ -98,6 +124,7 @@ def get_healthier_alternatives(
                 "grade_note": general.get("grade_note"),
                 "data_confidence_status": cand.get("data_confidence_status"),
                 "comparative_advantages": advantages,
+                "trade_offs": trade_offs,
                 "nutrition_highlights": {
                     "energy_kcal": cand.get("energy_kcal"),
                     "sugars_g": cand.get("sugars_g"),

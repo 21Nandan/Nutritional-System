@@ -240,6 +240,15 @@ def map_off_category_to_eatgood(
     return category_from_product_name(product_name) or UNCATEGORISED
 
 
+def _category_with_model(category: str, product_name: str | None, ingredients: str | None) -> str:
+    """When the rules can't place a product, a trained category model (if installed) may."""
+    if category != UNCATEGORISED:
+        return category
+    from backend.core import ml_models  # imported here: ml_models is optional at runtime
+
+    return ml_models.predict_category(product_name, ingredients) or category
+
+
 def _sold_in_india(countries_tags: list | None) -> bool | None:
     if not countries_tags:
         return None
@@ -328,6 +337,7 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
         off_product.get("categories_tags"),
         product_name,
     )
+    category = _category_with_model(category, product_name, off_product.get("ingredients_text") or off_product.get("ingredients_text_en"))
 
     # Measurement basis. Open Food Facts states values as entered on the label (keys without a suffix,
     # on the label's basis, nutrition_data_per) and, whenever it can, recalculated per 100 g/ml (keys

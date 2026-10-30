@@ -88,8 +88,8 @@ export function ScoreExplainer({ layer1, layer2 }) {
           <h4>Nutrition grade (the same for everyone)</h4>
           <p>
             The label is compared with limits for its category ({layer1?.reference_basis || 'per 100 g or 100 ml'}). Each nutrient over a limit
-            adds penalty points (more if it is over double the limit); low sugar, sodium or saturated fat, zero trans fat, fibre and protein add bonus points.
-            Score = 50 − 7 × penalties + 8 × bonuses, kept between 10 and 100.
+            adds penalty points (more if it is over double the limit), as does trans fat or very high energy; low sugar, sodium or saturated fat, fibre and protein add bonus points.
+            If anything is over a limit, at most 3 bonus points count. Score = 50 − 7 × penalties + 8 × bonuses, kept between 10 and 100.
           </p>
           {graded && layer1?.raw_score != null && (
             <p className="score-explainer-calc">

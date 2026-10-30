@@ -6,7 +6,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.core.assistant import answer_product_question
-from backend.core.claims_detector import evaluate_claims
+from backend.core.claims_detector import add_misleading_context, evaluate_claims
+from backend.core import gemini
+from backend.core.assistant_ai import answer_with_gemini, check_claims_with_gemini, explain_comparison, rewrite_search_query
+from backend.core.basket import basket_summary
 from backend.core.nutrition_scoring import (
     assess_general_nutrition,
     assess_personalized_suitability,
@@ -27,7 +30,7 @@ from backend.core.standards_registry import CALIBRATED_CATEGORIES, nutrient_flag
 from backend.errors import off_unavailable_error, product_not_found_error
 from backend.products import OpenFoodFactsUnavailable, resolve_product, with_saved_record
 from backend.profile import get_request_profile
-from backend.schemas import AssistantQuery, ClaimCheckRequest
+from backend.schemas import AssistantQuery, ClaimCheckRequest, CompareExplainRequest
 
 logger = logging.getLogger("eatgood.catalogue")
 router = APIRouter(prefix="/api")
@@ -90,9 +93,25 @@ def list_products(
     )
     if result["status"] == "error":
         raise _off_error(result)
+    # A search in everyday words ("something healthy for evening hunger") that finds nothing is rewritten
+    # into product keywords and tried once more. Only for 3+ word searches with no results, and cached.
+    rewritten = None
+    if not result["products"] and offset == 0 and len(query.split()) >= 3 and gemini.is_available():
+        enforce_rate_limit(request, "ai")
+        rewritten = rewrite_search_query(query)
+        if rewritten:
+            retry = browse_catalogue(text=rewritten, category=category, india_only=india_only,
+                                     nutrient_filters={"max_sugars": max_sugars, "max_sodium": max_sodium, "max_sat_fat": max_sat_fat,
+                                                       "min_fibre": min_fibre, "min_protein": min_protein},
+                                     has_image=has_image, limit=limit, page=1)
+            if retry["status"] != "error" and retry["products"]:
+                result = retry
+            else:
+                rewritten = None
     count = result["count"]
     return {
         "query": query.strip(),
+        "rewritten_query": rewritten,
         "total": min(count, MAX_RESULT_WINDOW) if count is not None else len(result["products"]),
         "total_is_capped": count is not None and count >= MAX_RESULT_WINDOW,
         "products": [_with_scores(with_saved_record(p), profile) for p in result["products"]],
@@ -267,14 +286,22 @@ def compare_products(
 
 
 @router.post("/assistant/ask")
-def ask_assistant(query: AssistantQuery, profile: dict = Depends(get_request_profile)):
-    """Rule-based answers grounded in the product's computed assessment."""
-    product = _resolve_or_raise(query.product_id)
-    return answer_product_question(product=product, question=query.question, user_profile=profile)
+def ask_assistant(query: AssistantQuery, request: Request, profile: dict = Depends(get_request_profile)):
+    """Answers grounded in the product's computed assessment. Questions the built-in answers cover are
+    answered without Gemini; others are phrased by Gemini from the same facts, when it's available."""
+    if query.product is not None:
+        product = {**query.product.model_dump(), "product_id": query.product_id}
+    else:
+        product = _resolve_or_raise(query.product_id)
+    answer = answer_product_question(product=product, question=query.question, user_profile=profile)
+    if answer.get("understood") or not gemini.is_available():
+        return answer
+    enforce_rate_limit(request, "ai")
+    return answer_with_gemini(product, query.question, profile, answer) or answer
 
 
 @router.post("/claims/check")
-def check_claims(body: ClaimCheckRequest):
+def check_claims(body: ClaimCheckRequest, request: Request):
     """Checks claims the visitor read off the pack (one per line or comma-separated) against the product."""
     if body.product is not None:
         product = body.product.model_dump()
@@ -283,4 +310,43 @@ def check_claims(body: ClaimCheckRequest):
     else:
         raise HTTPException(status_code=400, detail={"error_code": "NO_PRODUCT", "message": "Say which product to check the claims against."})
     claims = ", ".join(line.strip() for line in body.claims.splitlines() if line.strip())
-    return {"claims": evaluate_claims(claims, product)}
+    results = evaluate_claims(claims, product)
+    # Claims the built-in checks don't recognise ("no oil", "baked not fried") are checked in one request.
+    unknown = [r for r in results if r.get("primary_claim_type") == "Unclassified or Ambiguous Claim"]
+    if unknown and gemini.is_available():
+        enforce_rate_limit(request, "ai")
+        verdicts = check_claims_with_gemini([r["claim"] for r in unknown], product)
+        for r in unknown:
+            v = verdicts.get(r["claim"].strip().lower())
+            if v:
+                r.update({
+                    "status": v["status"], "compliance_status": v["status"],
+                    "detected_claim_types": [v["claim_type"]], "primary_claim_type": v["claim_type"],
+                    "evidence": v["evidence"], "evidence_available": v["evidence"], "explanation": v["explanation"],
+                    "missing_information": [], "confidence_indicator": "Checked against ingredients and values",
+                    "criterion_applied": "Checked against this product's ingredients and values",
+                })
+    add_misleading_context(results, product)
+    return {"claims": results}
+
+
+@router.post("/compare/explain")
+def explain_compare(body: CompareExplainRequest, request: Request, profile: dict = Depends(get_request_profile)):
+    """Patterns across the compared products, and (when available) a short plain explanation of the
+    differences. Built from the products' values and EATGOOD's own results, never new scores."""
+    products = []
+    for pid in body.product_ids:
+        try:
+            product = resolve_product(pid)
+        except OpenFoodFactsUnavailable:
+            product = None
+        if product:
+            products.append(product)
+    if len(products) < 2:
+        raise HTTPException(status_code=400, detail={"error_code": "COMPARE_COUNT", "message": "Choose between 2 and 4 products to compare."})
+    summary = basket_summary(products, profile)
+    explanation = None
+    if gemini.is_available():
+        enforce_rate_limit(request, "ai")
+        explanation = explain_comparison(summary["facts"], body.priority, profile.get("goal") or "Balanced Choices")
+    return {"patterns": summary["patterns"], "explanation": explanation}

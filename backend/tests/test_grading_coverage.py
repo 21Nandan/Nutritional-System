@@ -60,7 +60,8 @@ def snack(**overrides):
 @pytest.mark.parametrize(
     ("overrides", "score", "expected"),
     [
-        ({"sugars_g": 2, "sodium_mg": 100, "saturated_fat_g": 1, "trans_fat_g": 0}, 82, "A"),  # 4 bonus points
+        ({"sugars_g": 2, "sodium_mg": 100, "saturated_fat_g": 1, "dietary_fibre_g": 3}, 82, "A"),  # 4 bonus points, no penalty
+        ({"sugars_g": 2, "sodium_mg": 100, "saturated_fat_g": 1, "trans_fat_g": 0}, 74, "B"),  # 0 g trans fat earns no bonus
         ({"sugars_g": 2, "sodium_mg": 100}, 66, "B"),  # 2 bonus points
         ({}, 50, "C"),  # nothing above or well below a limit
         ({"saturated_fat_g": 5}, 43, "D"),  # saturated fat above its limit: 1 penalty point
@@ -305,3 +306,21 @@ def test_tags_win_over_the_product_name():
 )
 def test_category_tags(tags, expected):
     assert map_off_category_to_eatgood(None, tags) == expected
+
+
+def test_energy_dense_foods_and_drinks_take_a_penalty_point():
+    assert "energy" not in grade(snack(energy_kcal=450))["key_contributing_nutrients"]
+    dense = grade(snack(energy_kcal=451))
+    assert dense["key_contributing_nutrients"]["energy"]["points"] == -1
+    assert dense["general_nutrition_score"] == 43
+    drink = {"category": "Packaged Beverages", "measurement_basis": "per 100ml", "energy_kcal": 71, "sugars_g": 4, "sodium_mg": 10}
+    assert grade(drink)["key_contributing_nutrients"]["energy"]["points"] == -1
+
+
+def test_bonuses_cannot_cancel_penalties_but_clean_products_keep_them_all():
+    # Sugar just over the limit (2 penalty points) with 4 bonus points: only 3 count, 50 - 14 + 24 = 60.
+    capped = grade(snack(sugars_g=12, sodium_mg=100, saturated_fat_g=1, dietary_fibre_g=6))
+    assert (capped["penalty_points"], capped["bonus_points"], capped["general_nutrition_score"]) == (2, 3, 60)
+    # Nothing over a limit: all 6 bonus points count (sugar, sodium, saturated fat 1 each, fibre 3), 50 + 48 = 98.
+    clean = grade(snack(sugars_g=2, sodium_mg=100, saturated_fat_g=1, dietary_fibre_g=6))
+    assert (clean["penalty_points"], clean["bonus_points"], clean["general_nutrition_score"]) == (0, 6, 98)

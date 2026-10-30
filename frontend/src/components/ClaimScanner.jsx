@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Camera, ImageUp, ScanText } from 'lucide-react';
 import { apiFetch } from '../api';
 import { claimsFromText, readTextFromImage } from '../ocr';
+import { readPhotoWithAi } from '../aiPhoto';
 
 // "Check the pack's claims": the visitor photographs the front of the pack (or types what it says),
 // the text is read on their device, they confirm the claim lines, and the server checks them against
@@ -21,10 +22,13 @@ export default function ClaimScanner({ productId, product, onChecked, children }
     if (!file) return;
     setError('');
     setReadNote('');
-    setReading({ status: 'Preparing', progress: 0 });
+    setReading({ status: 'recognizing', progress: 0 });
     try {
-      const text = await readTextFromImage(file, (status, progress) => setReading({ status, progress }));
-      const found = claimsFromText(text);
+      // Read on the server when that's available; otherwise on this device.
+      const fromServer = await readPhotoWithAi('read-claims', file);
+      const found = fromServer
+        ? fromServer.claims || []
+        : claimsFromText(await readTextFromImage(file, (status, progress) => setReading({ status, progress })));
       if (found.length === 0) {
         setReadNote('No claims could be read from that photo. Try a closer, well-lit photo of the front, or type the claims below.');
       } else {
@@ -62,7 +66,7 @@ export default function ClaimScanner({ productId, product, onChecked, children }
       </h3>
       <p className="claim-scanner-intro">
         Photograph the front of the pack, or type what it claims (&ldquo;High protein&rdquo;, &ldquo;No added sugar&rdquo;…).
-        The photo is read on your device and isn&apos;t uploaded; each claim is then checked against this product&apos;s values.
+        The photo is used only to read the claims and isn&apos;t stored; each claim is then checked against this product&apos;s values.
       </p>
 
       <div className="claim-scanner-actions">

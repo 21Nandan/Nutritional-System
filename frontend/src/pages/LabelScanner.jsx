@@ -6,6 +6,7 @@ import {
   PlusCircle
 } from 'lucide-react';
 import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
+import LabelPhotoButton from '../components/LabelPhotoButton';
 import ProductSearch from '../components/ProductSearch';
 import ProductContributionModal from '../components/ProductContributionModal';
 
@@ -76,6 +77,7 @@ export default function LabelScanner({
   const setFormData = propSetFormData || setInternalFormData;
 
   const [evaluating, setEvaluating] = useState(false);
+
 
   const handleBarcodeLookup = async (codeToLookup) => {
     const code = String(codeToLookup !== undefined ? codeToLookup : barcodeInput).trim();
@@ -586,6 +588,7 @@ export default function LabelScanner({
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
             Check every value against the pack before continuing. Nothing is scored until you submit this form.
           </p>
+          <LabelPhotoButton setForm={setFormData} />
         </div>
 
         {/* Basic Product Info */}

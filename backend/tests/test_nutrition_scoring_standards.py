@@ -141,7 +141,7 @@ def test_supported_categories_grading():
             "energy_kcal": 15.0,
             "sugars_g": 0.5,
             "sodium_mg": 10.0,
-            "expected_grade": "A"
+            "expected_grade": "B"  # a sugar-free drink earns 2 bonus points: 66
         },
         {
             "category": "Instant Foods",

@@ -7,6 +7,8 @@ import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
 import AdditiveList from '../components/AdditiveList';
 import ClaimScanner from '../components/ClaimScanner';
+import LabelPhotoButton from '../components/LabelPhotoButton';
+import IngredientExplainer from '../components/IngredientExplainer';
 import { Chevron, Collapse } from '../components/Expandable';
 import { GradeBadge, GoalMatchMeter, ScoreExplainer, ScorePair } from '../components/ScoreDisplay';
 import { apiFetch } from '../api';
@@ -122,7 +124,10 @@ export default function ProductAssessment({
     if (!q || !assessment?.product_id) return;
     setAssistantLoading(true);
     setAssistantResponse(null);
-    apiFetch('/api/assistant/ask', { method: 'POST', body: { product_id: assessment.product_id, question: q } })
+    // The visitor's own scan or entry has no record on the server, so its values are sent with the question.
+    const own = isCustom || assessment.product_id === 'CUSTOM_SCAN';
+    const body = { product_id: assessment.product_id, question: q, ...(own ? { product: claimProductValues(assessment) } : {}) };
+    apiFetch('/api/assistant/ask', { method: 'POST', body })
       .then((data) => setAssistantResponse(data))
       .catch((err) => setAssistantResponse({ error: err.message }))
       .finally(() => setAssistantLoading(false));
@@ -1055,6 +1060,15 @@ export default function ProductAssessment({
             Serving: {assessment.serving_size || 100}{assessment.serving_size_unit || 'g'}
           </span>
         </div>
+
+        {assessment.data_quality_flags?.length > 0 && (
+          <div className="data-check" role="note">
+            <strong>Check against the pack:</strong>
+            <ul>
+              {assessment.data_quality_flags.map((f) => <li key={f.code}>{f.message}</li>)}
+            </ul>
+          </div>
+        )}
         
         {(() => {
           const items = [
@@ -1142,6 +1156,10 @@ export default function ProductAssessment({
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-main)', background: 'var(--color-surface-alt)', padding: 12, borderRadius: 8, marginTop: 4, lineHeight: 1.5 }}>
               {assessment.ingredients || 'Ingredients list not provided on package.'}
             </p>
+            <IngredientExplainer
+              productId={!isCustom && assessment.product_id !== 'CUSTOM_SCAN' ? assessment.product_id : undefined}
+              ingredients={assessment.ingredients}
+            />
           </div>
 
           {/* Allergens Table */}
@@ -1301,7 +1319,11 @@ export default function ProductAssessment({
                       </p>
                     )}
 
-                    {/* Missing Information Callout */}
+                    {cl.context_note && (
+                    <p className="claim-context" role="note">{cl.context_note}</p>
+                  )}
+
+                  {/* Missing Information Callout */}
                     {cl.missing_information && cl.missing_information.length > 0 && (
                       <div style={{ background: 'rgba(0,0,0,0.03)', padding: '6px 10px', borderRadius: 6, margin: '6px 0', fontSize: '0.74rem' }}>
                         <strong style={{ color: '#b71c1c' }}>Missing for substantiation:</strong> {cl.missing_information.join('; ')}
@@ -1436,6 +1458,9 @@ export default function ProductAssessment({
                   <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                     {alt.comparative_advantages?.map((adv, i) => (
                       <li key={i}>{adv}</li>
+                    ))}
+                    {alt.trade_offs?.map((t, i) => (
+                      <li key={`t${i}`} className="swap-trade-off">But: {t}</li>
                     ))}
                   </ul>
                 </div>
@@ -1591,6 +1616,7 @@ export default function ProductAssessment({
             </div>
 
             <form onSubmit={handleSaveEditedData}>
+              <LabelPhotoButton setForm={setEditForm} />
               {/* Product Info */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
                 <div>

@@ -2,7 +2,8 @@
 // server (backend/core/nutrition_scoring.py); these bands and labels mirror its rules so every
 // screen describes a score the same way. Nothing here calculates or adjusts a score.
 
-// General Nutrition Grade: 50 − 7 × penalty points + 8 × bonus points, kept between 10 and 100.
+// General Nutrition Grade: 50 − 7 × penalty points + 8 × bonus points (at most 3 if anything is over a limit),
+// kept between 10 and 100.
 export const GRADE_BANDS = [
   { grade: 'A', min: 80, label: 'Optimal nutritional profile' },
   { grade: 'B', min: 65, label: 'Favourable nutritional balance' },
@@ -32,7 +33,7 @@ export function gradeInfo(grade) {
 }
 
 // Nutrients that cost a product grade points, as the server's breakdown lists them.
-const LIMIT_NUTRIENT_NAMES = { sugars: 'sugar', sodium: 'sodium', saturated_fat: 'saturated fat', trans_fat: 'trans fat' };
+const LIMIT_NUTRIENT_NAMES = { sugars: 'sugar', sodium: 'sodium', saturated_fat: 'saturated fat', trans_fat: 'trans fat', energy: 'calories' };
 
 export function nutrientsOverLimit(layer1) {
   return Object.entries(layer1?.key_contributing_nutrients || {})

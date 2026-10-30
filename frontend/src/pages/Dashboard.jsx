@@ -1,19 +1,20 @@
 import React, { useId, useState } from 'react';
 import { apiFetch } from '../api';
 import { clearHistory, loadHistory, loadSavedProducts, toggleSavedProduct } from '../storage';
-import { Bookmark, Clock, User, ScanLine, ChevronRight, Settings } from 'lucide-react';
+import { Bookmark, Clock, User, ScanLine, ChevronRight, Settings, MessageCircle } from 'lucide-react';
 import { Chevron, Collapse } from '../components/Expandable';
 import { GradeBadge } from '../components/ScoreDisplay';
+import FoodCoach from '../components/FoodCoach';
 
 function splitList(value) {
   return String(value || '').split(',').map((v) => v.trim()).filter(Boolean);
 }
 
-// A card whose heading opens and closes its content. The count and any extra actions sit
+// A card whose heading opens and closes its content (closed until opened). The count and any extra actions sit
 // beside the heading button, so they stay usable while the section is collapsed.
 function CollapsibleSection({ icon: Icon, title, count, actions, children }) {
   const id = useId();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false); // opened with the triangle
   return (
     <section className="card profile-section">
       <div className="profile-section-head">
@@ -126,6 +127,16 @@ export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustom
         </dl>
       </section>
 
+      {/* Full width, above the two columns, so History and Saved Items stay aligned */}
+      <div className="profile-coach">
+        <CollapsibleSection icon={MessageCircle} title="Ask about your food" count="Fits your profile">
+          <FoodCoach
+            ownIds={[...new Set([...savedProducts, ...history].map((p) => p.product_id).filter((id) => id && !id.startsWith('CUSTOM')))].slice(0, 12)}
+            onSelectProduct={onSelectProduct}
+          />
+        </CollapsibleSection>
+      </div>
+
       <div className="dashboard-columns">
         <CollapsibleSection
           icon={Clock}
@@ -152,7 +163,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustom
               </button>
             </div>
           ) : (
-            <ul className="profile-list">
+            <ul className="profile-list profile-list-scroll">
               {history.map((item) => {
                 const isCustom = item.product_id === 'CUSTOM_SCAN';
                 return (
@@ -198,7 +209,7 @@ export default function Dashboard({ setActivePage, onSelectProduct, onOpenCustom
               </button>
             </div>
           ) : (
-            <ul className="profile-list">
+            <ul className="profile-list profile-list-scroll">
               {savedProducts.map((p) => (
                 <li key={p.product_id} className="profile-saved-row">
                   <button type="button" className="profile-item" onClick={() => openSaved(p)}>
