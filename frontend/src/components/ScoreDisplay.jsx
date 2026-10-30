@@ -4,8 +4,10 @@ import { Chevron, Collapse } from './Expandable';
 
 // The General Nutrition Grade: the same for everyone, against limits for the product's category.
 // reason: the product's own explanation from the server when it has no grade (missing values, etc.).
-export function GradeBadge({ grade, size = 'md', showLabel = true, reason = null }) {
-  const info = gradeInfo(grade);
+// label: a product-specific label (see gradeLabelFor) in place of the band's general one.
+export function GradeBadge({ grade, size = 'md', showLabel = true, reason = null, label = null }) {
+  const info = { ...gradeInfo(grade) };
+  if (label && info.graded) info.label = label;
   const why = (!info.graded && reason) || info.reason;
   return (
     <span className={`score-grade score-grade-${size}`}>

@@ -38,7 +38,8 @@ def contribution_to_product(contribution: dict[str, Any]) -> dict[str, Any]:
         "product_name": contribution["product_name"],
         "brand": contribution.get("brand") or "Unknown brand",
         "category": contribution["category"],
-        "sub_category": contribution.get("sub_category") or "User contributed",
+        # Older contributions were stored with a "User contributed" placeholder; it is not shown.
+        "sub_category": None if contribution.get("sub_category") in (None, "", "User contributed") else contribution["sub_category"],
         "serving_size": contribution.get("serving_size"),
         "serving_size_unit": contribution.get("serving_size_unit"),
         "measurement_basis": contribution["measurement_basis"],

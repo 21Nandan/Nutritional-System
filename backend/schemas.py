@@ -49,7 +49,7 @@ class ProductContributionRequest(NutritionFields):
     product_name: str = Field(min_length=2, max_length=200)
     brand: str = Field(default="", max_length=120)
     category: CATEGORIES = "Snacks"
-    sub_category: str = Field(default="User contributed", max_length=120)
+    sub_category: str = Field(default="", max_length=120)
     serving_size: float | None = Field(default=None, gt=0, le=10000)
     serving_size_unit: Literal["g", "ml"] = "g"
     measurement_basis: BASES = "per 100g"

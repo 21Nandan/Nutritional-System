@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   X, CheckCircle2, PlusCircle, 
-  Sparkles, RefreshCw, Info
+  Sparkles, RefreshCw
 } from 'lucide-react';
 import { useLockBodyScroll } from './useLockBodyScroll';
 import { apiFetch } from '../api';
@@ -71,7 +71,7 @@ export default function ProductContributionModal({
       product_name: formData.product_name.trim(),
       brand: formData.brand.trim(),
       category: formData.category,
-      sub_category: formData.sub_category || 'User contributed',
+      sub_category: formData.sub_category,
       serving_size: parseNum(formData.serving_size),
       serving_size_unit: formData.serving_size_unit,
       measurement_basis: formData.measurement_basis,
@@ -222,8 +222,7 @@ export default function ProductContributionModal({
                 Product Added Successfully!
               </h3>
               <p style={{ fontSize: '0.88rem', color: 'var(--color-text-muted)', maxWidth: 460, margin: '0 auto 20px' }}>
-                {successData.message} It is stored locally in your SQLite database with status 
-                <strong> "User Submitted (Unverified)"</strong>.
+                {successData.message}
               </p>
 
               <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -248,26 +247,6 @@ export default function ProductContributionModal({
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              {/* Provenance and Integrity Notice */}
-              <div style={{
-                background: '#e8f4fd',
-                border: '1px solid #bbdefb',
-                borderRadius: 8,
-                padding: '10px 14px',
-                marginBottom: 16,
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 10,
-                fontSize: '0.78rem',
-                color: '#0d47a1'
-              }}>
-                <Info size={18} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <strong>Data honesty:</strong> Contributed products are explicitly tagged as 
-                  <em> "User Submitted (Unverified)"</em>. EATGOOD never marks self-reported nutrition values as checked.
-                </div>
-              </div>
-
               {submitError && (
                 <div style={{
                   background: '#ffebee',

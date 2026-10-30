@@ -468,7 +468,7 @@ html, body {
     margin-bottom: 24px;
   }
   
-  /* Explore & Standards & Data strictly side-by-side */
+  /* Explore & Standards strictly side-by-side */
   .footer-nav-group {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
@@ -1498,6 +1498,10 @@ textarea:focus-visible {
   color: var(--color-text-muted);
 }
 .compare-empty p { margin: 0; max-width: 460px; }
+.compare-saved { display: flex; flex-direction: column; gap: 8px; }
+.compare-saved-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.compare-saved-head > span { font-size: 0.72rem; font-weight: 700; color: var(--color-text-subtle); text-transform: uppercase; letter-spacing: 0.04em; }
+.compare-saved-empty { margin: 0; font-size: 0.85rem; color: var(--color-text-muted); }
 
 /* Profile page */
 .profile-page-head { margin-bottom: 20px; }

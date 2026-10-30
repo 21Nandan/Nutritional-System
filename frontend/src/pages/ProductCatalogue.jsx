@@ -684,7 +684,7 @@ export default function ProductCatalogue({ onSelectProduct, onCompareProduct }) 
                   </h3>
 
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: 10, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px' }}>
-                    <span>{prod.category}</span> • <span>{prod.sub_category}</span>
+                    <span>{prod.category}</span>{prod.sub_category && <> • <span>{prod.sub_category}</span></>}
                     {/* Shown only when the product record lists India among the countries where it is sold. */}
                     {prod.sold_in_india === true && <span className="sold-in-india">Sold in India</span>}
                   </div>

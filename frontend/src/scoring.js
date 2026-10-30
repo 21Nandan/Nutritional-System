@@ -31,6 +31,28 @@ export function gradeInfo(grade) {
   return { graded: false, letter: ungraded.short, label: ungraded.label, reason: ungraded.reason, className: 'grade-NA' };
 }
 
+// Nutrients that cost a product grade points, as the server's breakdown lists them.
+const LIMIT_NUTRIENT_NAMES = { sugars: 'sugar', sodium: 'sodium', saturated_fat: 'saturated fat', trans_fat: 'trans fat' };
+
+export function nutrientsOverLimit(layer1) {
+  return Object.entries(layer1?.key_contributing_nutrients || {})
+    .filter(([key, n]) => LIMIT_NUTRIENT_NAMES[key] && n?.points < 0)
+    .map(([key]) => LIMIT_NUTRIENT_NAMES[key]);
+}
+
+// "sugar", "sugar and sodium", "sugar, sodium and saturated fat"
+export function listNutrients(names) {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+// D and E labels name this product's own nutrients over the limit; other grades keep the band label.
+export function gradeLabelFor(layer1) {
+  const over = listNutrients(nutrientsOverLimit(layer1));
+  if (over && layer1?.grade === 'E') return `High in ${over}`;
+  if (over && layer1?.grade === 'D') return `Elevated ${over}`;
+  return gradeInfo(layer1?.grade).label;
+}
+
 export function goalInfo(score, { allergenConflict = false } = {}) {
   if (allergenConflict) return { available: true, score: 0, label: 'Allergen conflict', tone: 'conflict' };
   if (score === null || score === undefined) return { available: false, score: null, label: 'Not enough data', tone: 'none' };
