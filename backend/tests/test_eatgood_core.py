@@ -37,11 +37,13 @@ def test_layer1_calibrated_vs_uncalibrated():
     assert res_sweet["is_eatgood_method"] is True
     assert "not an official WHO or FSSAI grade" in res_sweet["explanation"]
 
-    # Uncalibrated category: Condiments & Spreads
+    # Condiments & Spreads: EATGOOD's own method. Sugar and sodium over their limits (-2 each),
+    # low saturated fat (+1): 50 - 28 + 8 = 30, grade E.
     sauce = {"category": "Condiments & Spreads", "energy_kcal": 120, "sugars_g": 24.0, "sodium_mg": 950, "saturated_fat_g": 0.1}
     res_sauce = assess_general_nutrition(sauce)
-    assert res_sauce["status"] == "Uncalibrated Category"
-    assert res_sauce["grade"] == "N/A"
+    assert res_sauce["status"] == "Calibrated"
+    assert (res_sauce["general_nutrition_score"], res_sauce["grade"]) == (30, "E")
+    assert res_sauce["is_eatgood_method"] is True
 
 def test_missing_data_refusal():
     # Product missing sugars and sodium

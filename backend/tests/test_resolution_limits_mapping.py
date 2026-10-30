@@ -219,13 +219,15 @@ def test_off_category_mapping_never_guesses(categories, expected):
     assert map_off_category_to_eatgood(categories, []) == expected
 
 
-def test_off_unknown_category_gets_no_grade():
+def test_off_unknown_category_uses_the_general_method():
     from backend.core.nutrition_scoring import assess_general_nutrition
 
     product = map_off_product_to_eatgood("4000000000026", {"code": "4000000000026", "product_name": "Rice", "categories": "Rice",
                                                            "nutriments": {"energy-kcal_100g": 350, "sugars_100g": 0.2, "sodium_100g": 0.01, "saturated-fat_100g": 0.1}})
     assert product["category"] == "Uncategorised"
-    assert assess_general_nutrition(product)["grade"] == "N/A"
+    result = assess_general_nutrition(product)
+    assert result["category_calibrated"] == "General Packaged Food"
+    assert result["grade"] in ("A", "B", "C", "D", "E") and result["is_eatgood_method"] is True
 
 
 def test_off_traces_become_may_contain():

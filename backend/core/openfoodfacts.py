@@ -23,6 +23,7 @@ import certifi
 import httpx
 
 from backend.config import OFF_BASE_URL, OFF_TIMEOUT_SECONDS, OFF_USER_AGENT
+from backend.core.known_brands import KNOWN_BRANDS_CLAUSE
 from backend.core.nutrition_validator import parse_float_safe
 from backend.core.standards_registry import nutrient_flags
 
@@ -645,8 +646,9 @@ def search_openfoodfacts(
 def search_openfoodfacts_text(
     query: str, limit: int = 6, client: httpx.Client | None = None, page: int = 1
 ) -> dict[str, Any]:
-    """Plain-text search (any product, any country). Short or empty text returns no results."""
+    """Plain-text search over well-known brands sold in India. Short or empty text returns no results."""
     clean_q = clean_search_text(query)
     if len(clean_q) < 2:
         return {"status": "ok", "products": [], "count": 0}
-    return search_openfoodfacts(clean_q, limit=limit, page=page, client=client)
+    filters = f'countries_tags:"en:india" AND {KNOWN_BRANDS_CLAUSE}'
+    return search_openfoodfacts(f"{clean_q} {filters}", limit=limit, page=page, client=client)

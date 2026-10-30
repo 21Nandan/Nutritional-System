@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from backend.core.barcode_utils import validate_barcode
+from backend.core.barcode_utils import barcode_candidates, validate_barcode
 from backend.core.nutrition_scoring import run_full_product_assessment
 from backend.core.rate_limiter import enforce_rate_limit
 from backend.database import get_user_contribution_by_barcode, record_user_contribution
@@ -51,20 +51,27 @@ def lookup_barcode(barcode: str, request: Request, profile: dict = Depends(get_r
         )
     code = val["normalized"]
 
-    contribution = get_user_contribution_by_barcode(code)
-    if contribution is not None:
-        product = contribution_to_product(contribution)
-        return _found(
-            "user_contributed",
-            product,
-            profile,
-            val,
-            f"Found '{product['product_name']}' from a user contribution. It has not been reviewed, so check it against the pack.",
-        )
+    # The same product may be stored under another form of its barcode (UPC-A / EAN-13 / UPC-E).
+    candidates = barcode_candidates(code)
+    for candidate in candidates:
+        contribution = get_user_contribution_by_barcode(candidate)
+        if contribution is not None:
+            product = contribution_to_product(contribution)
+            return _found(
+                "user_contributed",
+                product,
+                profile,
+                val,
+                f"Found '{product['product_name']}' from a user contribution. It has not been reviewed, so check it against the pack.",
+            )
 
-    result = fetch_off_product(code)
-    if result["status"] == "success":
-        return _found("openfoodfacts", result["product"], profile, val, "Product found in the product database.")
+    result = None
+    for candidate in candidates:
+        result = fetch_off_product(candidate)
+        if result["status"] == "success":
+            return _found("openfoodfacts", result["product"], profile, val, "Product found in the product database.")
+        if result["status"] != "not_found":
+            break  # an outage or rate limit: report it rather than calling it not found
     if result["status"] == "not_found":
         raise HTTPException(
             status_code=404,

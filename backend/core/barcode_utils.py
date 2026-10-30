@@ -197,3 +197,47 @@ def validate_barcode(barcode: str, strict: bool = False) -> dict[str, Any]:
         "actual_check_digit": None,
         "error": f"Invalid barcode length ({length} digits)."
     }
+
+
+def expand_upce(upce: str) -> str | None:
+    """UPC-E (6 digits, or 8 with number system and check digit) expanded to its 12-digit UPC-A."""
+    if len(upce) == 6:
+        system, body, check = "0", upce, None
+    elif len(upce) == 8 and upce[0] in "01":
+        system, body, check = upce[0], upce[1:7], upce[7]
+    else:
+        return None
+    last = body[5]
+    if last in "012":
+        digits = system + body[0:2] + last + "0000" + body[2:5]
+    elif last == "3":
+        digits = system + body[0:3] + "00000" + body[3:5]
+    elif last == "4":
+        digits = system + body[0:4] + "00000" + body[4]
+    else:
+        digits = system + body[0:5] + "0000" + last
+    expected = str(calculate_gs1_check_digit(digits))
+    if check is not None and check != expected:
+        return None
+    return digits + expected
+
+
+def barcode_candidates(code: str) -> list[str]:
+    """The same product's barcode in the forms a database may hold it, the scanned form first.
+
+    Shops print UPC-A (12 digits) where databases store EAN-13 (13, with a leading 0) and the
+    reverse; UPC-E is a compressed UPC-A; a GTIN-14 carton code wraps an EAN-13.
+    """
+    code = clean_barcode(code)
+    found = [code]
+    if len(code) == 12:
+        found.append("0" + code)
+    elif len(code) == 13 and code.startswith("0"):
+        found.append(code[1:])
+    elif len(code) == 14 and code.startswith("0"):
+        found.append(code[1:])
+    elif len(code) in (6, 8):
+        upca = expand_upce(code)
+        if upca:
+            found += [upca, "0" + upca]
+    return list(dict.fromkeys(found))[:3]

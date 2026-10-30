@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { 
   ArrowLeft, AlertTriangle, CheckCircle2, Bookmark, 
-  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, Sliders, RefreshCw
+  ArrowRight, Scale, Info, ChevronRight, ChevronDown, ChevronUp, Edit3, X, RefreshCw
 } from 'lucide-react';
 import { useLockBodyScroll } from '../components/useLockBodyScroll';
 import ProductImageFallback from '../components/ProductImageFallback';
 import AdditiveList from '../components/AdditiveList';
+import ClaimScanner from '../components/ClaimScanner';
+import { Chevron, Collapse } from '../components/Expandable';
 import { GradeBadge, GoalMatchMeter, ScoreExplainer, ScorePair } from '../components/ScoreDisplay';
 import { apiFetch } from '../api';
 import { gradeLabelFor, listNutrients, nutrientsOverLimit } from '../scoring';
@@ -106,6 +108,9 @@ export default function ProductAssessment({
   const [savingEdit, setSavingEdit] = useState(false);
   const [showDetailedL1, setShowDetailedL1] = useState(false);
   const [expandedClaimIdx, setExpandedClaimIdx] = useState({});
+  // Claim results appear only once the visitor checks what their pack says (packs vary), never before.
+  const [checkedClaims, setCheckedClaims] = useState(null);
+  useEffect(() => { setCheckedClaims(null); }, [productId, initialAssessment]);
 
   // Grounded AI Food Assistant State
   const [assistantQuestion, setAssistantQuestion] = useState('');
@@ -244,7 +249,7 @@ export default function ProductAssessment({
   const l2 = assessment.layer2_personalized || {};
   const l3_allg = assessment.layer3_allergens || {};
   const l3_add = assessment.layer3_additives || {};
-  const claims = assessment.marketing_claims_analysis || [];
+  const claims = checkedClaims || [];
   const nuts = assessment.nutrition_facts || {};
 
   const isCustom = Boolean(
@@ -261,7 +266,7 @@ export default function ProductAssessment({
   const canCompleteValues = !isCustom && Boolean(onAssessmentGenerated) && (
     l1.status === 'Insufficient Data' ||
     l1.status === 'Data Contradiction' ||
-    ['', 'Uncategorised', 'Unspecified'].includes(assessment?.category || '')
+    (['', 'Uncategorised', 'Unspecified'].includes(assessment?.category || '') && !['A', 'B', 'C', 'D', 'E'].includes(l1.grade))
   );
 
   const openEditModal = () => {
@@ -438,27 +443,6 @@ export default function ProductAssessment({
         </p>
       )}
 
-      {/* Quick Edit Banner for Custom Scans */}
-      {isCustom && (
-        <div style={{
-          background: '#f0f9eb',
-          border: '1px solid #c8e6c9',
-          borderRadius: 8,
-          padding: '12px 18px',
-          marginBottom: 20,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <Sliders size={18} color="var(--color-primary)" style={{ flexShrink: 0, marginTop: 1 }} />
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-primary)', fontWeight: 600 }}>
-              Need to change your entered values or add missing declarations? You can edit and recalculate anytime.
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Product Overview Card */}
       <div className="card" style={{ marginBottom: 24, padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 20 }}>
@@ -606,9 +590,10 @@ export default function ProductAssessment({
             )}
 
             {/* Missing Critical Fields Warning */}
-            {((l1.missing_fields && l1.missing_fields.length > 0) || (l1.missing_field_labels && l1.missing_field_labels.length > 0)) && (
+            {/* Only values that stop the grade; optional ones a graded product lacks aren't listed */}
+            {l1.status === 'Insufficient Data' && l1.missing_field_labels?.length > 0 && (
               <div style={{ background: '#fff3e0', border: '1px solid #ffe0b2', padding: '8px 12px', borderRadius: 6, fontSize: '0.78rem', color: '#b73800', marginBottom: 12 }}>
-                ℹ️ <strong>Missing Declarations:</strong> {(l1.missing_field_labels || l1.missing_fields).join(', ')}
+                <strong>Needed for a grade:</strong> {l1.missing_field_labels.join(', ')}
               </div>
             )}
 
@@ -628,76 +613,47 @@ export default function ProductAssessment({
               </div>
             )}
 
-            {/* Key Nutrient Summary Cards */}
-            {l1.key_contributing_nutrients && Object.keys(l1.key_contributing_nutrients).length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 8 }}>
-                  Key Nutrients
-                </span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-                  {Object.entries(l1.key_contributing_nutrients).map(([nutKey, data]) => {
-                    const statusText = formatNutrientStatus(data.status);
-                    const isConcern = data.status?.includes('Excessive') || data.status?.includes('Elevated') || data.status?.includes('Non-compliant');
-                    const isPositive = data.status?.includes('High') || data.status?.includes('Optimal') || data.status?.includes('Source') || data.status?.includes('Low');
-                    const label = getNutrientLabel(nutKey);
+            {/* Key nutrients: only those over the limit by default; all of them, and the highlights, on request */}
+            {Object.keys(l1.key_contributing_nutrients || {}).length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                {Object.entries(l1.key_contributing_nutrients || {}).some(([, d]) => isConcernStatus(d.status)) ? (
+                  <>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 8 }}>
+                      Over the limit
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+                      {Object.entries(l1.key_contributing_nutrients || {}).filter(([, d]) => isConcernStatus(d.status)).map(([nutKey, data]) => (
+                        <KeyNutrientCard key={nutKey} nutKey={nutKey} data={data} />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ fontSize: '0.82rem', color: '#166534', margin: 0 }}>No nutrient is over its category limit.</p>
+                )}
 
-                    return (
-                      <div
-                        key={nutKey}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: 8,
-                          border: isConcern ? '1px solid #fed7aa' : (isPositive ? '1px solid #bbf7d0' : '1px solid var(--color-border)'),
-                          background: isConcern ? '#fff7ed' : (isPositive ? '#f0fdf4' : 'var(--color-surface-alt)'),
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          gap: 2
-                        }}
-                      >
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-subtle)' }}>
-                          {label}
-                        </span>
-                        <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--color-primary)' }}>
-                          {data.value != null ? `${data.value} ${data.unit || 'g'}` : '—'}
+                <MoreDetails label="all nutrients and highlights">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 14 }}>
+                    {Object.entries(l1.key_contributing_nutrients || {}).map(([nutKey, data]) => (
+                      <KeyNutrientCard key={nutKey} nutKey={nutKey} data={data} />
+                    ))}
+                  </div>
+                  {((l1.strengths && l1.strengths.length > 0) || (l1.concerns && l1.concerns.length > 0)) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {l1.strengths && l1.strengths.slice(0, 3).map((str, i) => (
+                        <div key={`str-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: '#166534', lineHeight: 1.4 }}>
+                          <CheckCircle2 size={15} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
+                          <span>{cleanHighlightText(str)}</span>
                         </div>
-                        <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          color: isConcern ? '#c2410c' : (isPositive ? '#15803d' : 'var(--color-text-muted)')
-                        }}>
-                          {statusText}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Nutritional Highlights: Max 3 positive findings + 1 or 2 important concerns */}
-            {((l1.strengths && l1.strengths.length > 0) || (l1.concerns && l1.concerns.length > 0)) && (
-              <div style={{ marginBottom: 14 }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 6 }}>
-                  Highlights
-                </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {/* Top <= 3 Positive Findings */}
-                  {l1.strengths && l1.strengths.slice(0, 3).map((str, i) => (
-                    <div key={`str-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: '#166534', lineHeight: 1.4 }}>
-                      <CheckCircle2 size={15} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>{cleanHighlightText(str)}</span>
+                      ))}
+                      {l1.concerns && l1.concerns.slice(0, 2).map((con, i) => (
+                        <div key={`con-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: '#9a3412', lineHeight: 1.4 }}>
+                          <AlertTriangle size={15} color="#ea580c" style={{ flexShrink: 0, marginTop: 2 }} />
+                          <span>{cleanHighlightText(con)}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-
-                  {/* Top <= 2 Important Concerns */}
-                  {l1.concerns && l1.concerns.slice(0, 2).map((con, i) => (
-                    <div key={`con-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: '#9a3412', lineHeight: 1.4 }}>
-                      <AlertTriangle size={15} color="#ea580c" style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>{cleanHighlightText(con)}</span>
-                    </div>
-                  ))}
-                </div>
+                  )}
+                </MoreDetails>
               </div>
             )}
           </div>
@@ -869,45 +825,53 @@ export default function ProductAssessment({
                   {l2.suitability_status}
                 </h4>
 
-                {/* Goal Strengths */}
-                {l2.goal_strengths && l2.goal_strengths.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#2e7d32', display: 'block', marginBottom: 4 }}>
-                      Why this fits '{l2.user_goal}':
-                    </span>
-                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#1b5e20' }}>
-                      {l2.goal_strengths.map((gs, i) => <li key={i}>{gs}</li>)}
-                    </ul>
-                  </div>
+                {/* The one point that matters most; strengths, concerns and rule points on request */}
+                {(l2.goal_concerns?.[0] || l2.goal_strengths?.[0]) && (
+                  <p style={{ fontSize: '0.85rem', margin: '0 0 4px', color: l2.goal_concerns?.[0] ? '#b73800' : '#1b5e20' }}>
+                    {l2.goal_concerns?.[0] || l2.goal_strengths?.[0]}
+                  </p>
                 )}
-
-                {/* Goal Concerns */}
-                {l2.goal_concerns && l2.goal_concerns.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e65100', display: 'block', marginBottom: 4 }}>
-                      Concerns for '{l2.user_goal}':
-                    </span>
-                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#b73800' }}>
-                      {l2.goal_concerns.map((gc, i) => <li key={i}>{gc}</li>)}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Rules Applied */}
-                {l2.rules_applied && l2.rules_applied.length > 0 && (
-                  <div style={{ background: 'var(--color-surface-alt)', borderRadius: 8, padding: 10, marginTop: 12 }}>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
-                      Transparent Rule Points
-                    </span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                      {l2.rules_applied.map((r, i) => (
-                        <span key={i} style={{ fontSize: '0.72rem', background: '#fff', border: '1px solid var(--color-border)', padding: '2px 6px', borderRadius: 4 }}>
-                          {r}
-                        </span>
-                      ))}
+                <MoreDetails label="why">
+                  {/* Goal Strengths */}
+                  {l2.goal_strengths && l2.goal_strengths.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#2e7d32', display: 'block', marginBottom: 4 }}>
+                        Why this fits '{l2.user_goal}':
+                      </span>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#1b5e20' }}>
+                        {l2.goal_strengths.map((gs, i) => <li key={i}>{gs}</li>)}
+                      </ul>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {/* Goal Concerns */}
+                  {l2.goal_concerns && l2.goal_concerns.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e65100', display: 'block', marginBottom: 4 }}>
+                        Concerns for '{l2.user_goal}':
+                      </span>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', color: '#b73800' }}>
+                        {l2.goal_concerns.map((gc, i) => <li key={i}>{gc}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Rules Applied */}
+                  {l2.rules_applied && l2.rules_applied.length > 0 && (
+                    <div style={{ background: 'var(--color-surface-alt)', borderRadius: 8, padding: 10, marginTop: 12 }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
+                        How the score adds up
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                        {l2.rules_applied.map((r, i) => (
+                          <span key={i} style={{ fontSize: '0.72rem', background: '#fff', border: '1px solid var(--color-border)', padding: '2px 6px', borderRadius: 4 }}>
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </MoreDetails>
               </div>
             )}
           </div>
@@ -964,7 +928,7 @@ export default function ProductAssessment({
                   <th style={{ padding: '10px 14px', width: 60, color: 'var(--color-text-subtle)' }}>Step</th>
                   <th style={{ padding: '10px 14px', color: 'var(--color-text-subtle)' }}>Factor / Metric</th>
                   <th style={{ padding: '10px 14px', color: 'var(--color-text-subtle)' }}>Packaging Declaration</th>
-                  <th style={{ padding: '10px 14px', color: 'var(--color-text-subtle)' }}>Evaluation Rule Applied</th>
+                  <th style={{ padding: '10px 14px', color: 'var(--color-text-subtle)' }}>Criterion</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', color: 'var(--color-text-subtle)' }}>Points</th>
                   <th style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--color-text-subtle)' }}>Running Total</th>
                 </tr>
@@ -1092,24 +1056,20 @@ export default function ProductAssessment({
           </span>
         </div>
         
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: 12,
-          textAlign: 'center'
-        }}>
-          {[
-            { label: 'Energy', val: nuts.energy_kcal, unit: 'kcal' },
+        {(() => {
+          const items = [
+            { label: 'Energy', val: nuts.energy_kcal, unit: 'kcal', main: true },
             { label: 'Carbohydrates', val: nuts.carbohydrates_g, unit: 'g' },
-            { label: 'Total Sugars', val: nuts.sugars_g, unit: 'g', concern: nuts.sugars_g > 10 },
+            { label: 'Total Sugars', val: nuts.sugars_g, unit: 'g', concern: nuts.sugars_g > 10, main: true },
             { label: 'Added Sugars', val: nuts.added_sugars_g, unit: 'g' },
-            { label: 'Protein', val: nuts.protein_g, unit: 'g', good: nuts.protein_g >= 10 },
+            { label: 'Protein', val: nuts.protein_g, unit: 'g', good: nuts.protein_g >= 10, main: true },
             { label: 'Total Fat', val: nuts.total_fat_g, unit: 'g' },
-            { label: 'Saturated Fat', val: nuts.saturated_fat_g, unit: 'g', concern: nuts.saturated_fat_g > 4 },
+            { label: 'Saturated Fat', val: nuts.saturated_fat_g, unit: 'g', concern: nuts.saturated_fat_g > 4, main: true },
             { label: 'Trans Fat', val: nuts.trans_fat_g, unit: 'g', concern: nuts.trans_fat_g > 0.1 },
-            { label: 'Sodium', val: nuts.sodium_mg, unit: 'mg', concern: nuts.sodium_mg > 400 },
+            { label: 'Sodium', val: nuts.sodium_mg, unit: 'mg', concern: nuts.sodium_mg > 400, main: true },
             { label: 'Dietary Fibre', val: nuts.dietary_fibre_g, unit: 'g', good: nuts.dietary_fibre_g >= 6 }
-          ].map(item => (
+          ];
+          const tile = (item) => (
             <div key={item.label} style={{
               background: 'var(--color-surface-alt)',
               padding: '12px 10px',
@@ -1126,8 +1086,22 @@ export default function ProductAssessment({
                 {item.val != null ? `${item.val} ${item.unit}` : 'Not declared'}
               </strong>
             </div>
-          ))}
-        </div>
+          );
+          const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, textAlign: 'center' };
+          // The main five, plus anything flagged, by default; the rest on request.
+          const shown = items.filter((i) => i.main || i.concern);
+          const rest = items.filter((i) => !(i.main || i.concern));
+          return (
+            <>
+              <div style={grid}>{shown.map(tile)}</div>
+              {rest.length > 0 && (
+                <MoreDetails label="all nutrients">
+                  <div style={{ ...grid, marginTop: 4 }}>{rest.map(tile)}</div>
+                </MoreDetails>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Layer 3: Ingredients & Allergen Analysis */}
@@ -1136,234 +1110,259 @@ export default function ProductAssessment({
           Layer 3 — Ingredients, Allergens & Additive Safety
         </h3>
 
-        {/* Ingredients Text */}
-        <div style={{ marginBottom: 18 }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
-            Ingredients List
-          </span>
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-main)', background: 'var(--color-surface-alt)', padding: 12, borderRadius: 8, marginTop: 4, lineHeight: 1.5 }}>
-            {assessment.ingredients || 'Ingredients list not provided on package.'}
-          </p>
-        </div>
-
-        {/* Allergens Table */}
-        <div style={{ marginBottom: 20 }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
-            Allergen Status Breakdown
-          </span>
-
+        {/* Summary: allergens found and how many additives; full ingredients and evidence on request */}
+        <div className="l3-summary">
           {l3_allg.detected_allergens && l3_allg.detected_allergens.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-              {l3_allg.detected_allergens.map((allg, i) => (
-                <div key={i} style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  border: allg.conflicts_user ? '1px solid #c62828' : '1px solid var(--color-border)',
-                  background: allg.conflicts_user ? '#ffebee' : '#fff'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong style={{ fontSize: '0.85rem', color: allg.conflicts_user ? '#c62828' : 'inherit' }}>
-                      {allg.allergen}
-                    </strong>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: allg.conflicts_user ? '#c62828' : '#e65100' }}>
-                      {allg.status}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-                    {allg.evidence?.join(', ')}
-                  </div>
-                </div>
+            <div className="l3-allergen-chips">
+              <span>Contains:</span>
+              {l3_allg.detected_allergens.map((allg) => (
+                <span key={allg.allergen} className={`l3-chip${allg.conflicts_user ? ' is-conflict' : ''}`}>
+                  {allg.conflicts_user && <AlertTriangle size={12} aria-hidden="true" />}
+                  {allg.allergen}{allg.conflicts_user ? ' (your allergen)' : ''}
+                </span>
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: '0.82rem', color: '#2e7d32', background: '#e8f5e9', padding: 10, borderRadius: 6 }}>
-              ✓ No major declared allergens detected in text. (Always verify package markings for cross-contact).
+            <p style={{ fontSize: '0.82rem', color: '#2e7d32', margin: 0 }}>✓ No major allergens declared on the label.</p>
+          )}
+          <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', margin: '8px 0 0' }}>
+            {l3_add.additives_list?.length
+              ? `${l3_add.additives_list.length} permitted additive${l3_add.additives_list.length === 1 ? '' : 's'}`
+              : 'No additives identified'}
+            {assessment.ingredients ? '' : ' · ingredients list not provided'}
+          </p>
+        </div>
+
+        <MoreDetails label="ingredients, allergen details and additives">
+          {/* Ingredients Text */}
+          <div style={{ marginBottom: 18 }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase' }}>
+              Ingredients List
+            </span>
+            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-main)', background: 'var(--color-surface-alt)', padding: 12, borderRadius: 8, marginTop: 4, lineHeight: 1.5 }}>
+              {assessment.ingredients || 'Ingredients list not provided on package.'}
+            </p>
+          </div>
+
+          {/* Allergens Table */}
+          <div style={{ marginBottom: 20 }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+              Allergen Status Breakdown
+            </span>
+
+            {l3_allg.detected_allergens && l3_allg.detected_allergens.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                {l3_allg.detected_allergens.map((allg, i) => (
+                  <div key={i} style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    border: allg.conflicts_user ? '1px solid #c62828' : '1px solid var(--color-border)',
+                    background: allg.conflicts_user ? '#ffebee' : '#fff'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '0.85rem', color: allg.conflicts_user ? '#c62828' : 'inherit' }}>
+                        {allg.allergen}
+                      </strong>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, color: allg.conflicts_user ? '#c62828' : '#e65100' }}>
+                        {allg.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                      {allg.evidence?.join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.82rem', color: '#2e7d32', background: '#e8f5e9', padding: 10, borderRadius: 6 }}>
+                ✓ No major declared allergens detected in text. (Always verify package markings for cross-contact).
+              </div>
+            )}
+          </div>
+
+          {/* Additives List */}
+          {l3_add.additives_list && l3_add.additives_list.length > 0 && (
+            <div>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                Permitted Additives (Authoritative Regulatory Context)
+              </span>
+              <AdditiveList additives={l3_add.additives_list} />
             </div>
           )}
-        </div>
-
-        {/* Additives List */}
-        {l3_add.additives_list && l3_add.additives_list.length > 0 && (
-          <div>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-subtle)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
-              Permitted Additives (Authoritative Regulatory Context)
-            </span>
-            <AdditiveList additives={l3_add.additives_list} />
-          </div>
-        )}
+        </MoreDetails>
       </div>
 
-      {/* Front-of-Pack Marketing Claim Auditor */}
-      {claims.length > 0 && (
-        <div className="card" style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <h3 style={{ fontSize: '1.2rem', color: 'var(--color-primary)', margin: 0 }}>
-                Front-of-Pack Marketing Claim Auditor
-              </h3>
-              <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: '2px 0 0' }}>
-                Compares the claims printed on the pack with the nutrition values, using criteria informed by FSSAI and Codex documents.
-              </p>
+      {/* The visitor reads the pack's claims (photo or typing) and sees each one checked */}
+      <ClaimScanner
+        productId={!isCustom && assessment.product_id && assessment.product_id !== 'CUSTOM_SCAN' ? assessment.product_id : undefined}
+        product={claimProductValues(assessment)}
+        onChecked={(checked) => {
+          setCheckedClaims(checked);
+          setTimeout(() => document.getElementById('claim-auditor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+        }}
+      >
+          {/* Results of the claim check */}
+        {claims.length > 0 && (
+          <div id="claim-auditor" className="claim-results">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {claims.map((cl, i) => {
+                const compStatus = cl.compliance_status || cl.status;
+                const isConsistent = compStatus === 'Consistent with available data' || compStatus === 'Consistent with the checked criteria';
+                const isInconsistent = compStatus === 'Potential inconsistency' || compStatus === 'Potentially inconsistent with the checked criteria';
+                const isInsufficient = compStatus === 'Insufficient evidence to assess compliance' || compStatus === 'Needs verification';
+                const isReviewRequired = compStatus === 'Potential concern — review required';
+                const isSensory = compStatus?.includes('non-statutory sensory claim') || compStatus === 'Descriptive / Sensory Claim';
+
+                let borderColor = 'var(--color-border)';
+                let bgColor = '#fff';
+                let badgeColor = '#56695e';
+                let badgeBg = '#f1f5ef';
+
+                if (isConsistent) {
+                  borderColor = '#a5d6a7';
+                  bgColor = '#f1f8e9';
+                  badgeColor = '#2e7d32';
+                  badgeBg = '#e8f5e9';
+                } else if (isInconsistent) {
+                  borderColor = '#ef9a9a';
+                  bgColor = '#ffebee';
+                  badgeColor = '#c62828';
+                  badgeBg = '#ffebee';
+                } else if (isReviewRequired) {
+                  borderColor = '#ffcc80';
+                  bgColor = '#fff8e1';
+                  badgeColor = '#e65100';
+                  badgeBg = '#fff3e0';
+                } else if (isInsufficient) {
+                  borderColor = '#ffe082';
+                  bgColor = '#fffde7';
+                  badgeColor = '#f57f17';
+                  badgeBg = '#fff8e1';
+                } else if (isSensory) {
+                  borderColor = '#cfd8dc';
+                  bgColor = '#f8fafc';
+                  badgeColor = '#455a64';
+                  badgeBg = '#eceff1';
+                }
+
+                return (
+                  <div key={i} style={{
+                    border: `1px solid ${borderColor}`,
+                    background: bgColor,
+                    padding: '16px',
+                    borderRadius: 10,
+                    boxShadow: 'var(--shadow-sm)'
+                  }}>
+                    {/* Top Bar: Claim Text & Status Badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                      <div>
+                        <span style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--color-text-main)' }}>
+                          "{cl.claim || cl.original_claim}"
+                        </span>
+                        {/* Detected Taxonomy Types */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {(cl.detected_claim_types || [cl.primary_claim_type || "Marketing Claim"]).map((type, tIdx) => (
+                            <span key={tIdx} style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: 12,
+                              background: 'var(--color-primary)',
+                              color: '#fff'
+                            }}>
+                              {type}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <span style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 800,
+                        color: badgeColor,
+                        background: badgeBg,
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: `1px solid ${borderColor}`
+                      }}>
+                        {compStatus}
+                      </span>
+                    </div>
+
+                    {/* Evidence Available */}
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-main)', marginBottom: 4 }}>
+                      <strong>Evidence:</strong> {cl.evidence_available || cl.evidence}
+                    </div>
+
+                    {/* Explanation Narrative */}
+                    {cl.explanation && (
+                      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: '4px 0 6px', lineHeight: 1.45 }}>
+                        {cl.explanation}
+                      </p>
+                    )}
+
+                    {/* Missing Information Callout */}
+                    {cl.missing_information && cl.missing_information.length > 0 && (
+                      <div style={{ background: 'rgba(0,0,0,0.03)', padding: '6px 10px', borderRadius: 6, margin: '6px 0', fontSize: '0.74rem' }}>
+                        <strong style={{ color: '#b71c1c' }}>Missing for substantiation:</strong> {cl.missing_information.join('; ')}
+                      </div>
+                    )}
+
+                    {/* Expandable Regulatory Citation & Requirements */}
+                    {(cl.regulatory_source || cl.classification_rationale || cl.evidence_required) && (
+                      <div style={{ marginTop: 6, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedClaimIdx(prev => ({ ...prev, [i]: !prev[i] }))}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            color: 'var(--color-primary)',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <span>{expandedClaimIdx[i] ? 'Hide regulatory reference' : 'Regulatory reference & requirements ▾'}</span>
+                        </button>
+
+                        {expandedClaimIdx[i] && (
+                          <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
+                            {cl.classification_rationale && (
+                              <div style={{ marginBottom: 4 }}>
+                                <strong>Rationale:</strong> {cl.classification_rationale}
+                              </div>
+                            )}
+                            {cl.evidence_required && (
+                              <div style={{ marginBottom: 4 }}>
+                                <strong>Evidence Required:</strong> {cl.evidence_required}
+                              </div>
+                            )}
+                            {(cl.regulatory_source || cl.criterion_applied) && (
+                              <div>
+                                <strong>Statutory Benchmark:</strong> {cl.regulatory_source || cl.criterion_applied}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          
+            <div style={{ marginTop: 12, fontSize: '0.72rem', color: 'var(--color-text-subtle)', textAlign: 'right' }}>
+              Automated claim auditing evaluates available packaging data against benchmark criteria. It does not constitute a formal legal or regulatory determination.
             </div>
           </div>
+        )}
+      </ClaimScanner>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {claims.map((cl, i) => {
-              const compStatus = cl.compliance_status || cl.status;
-              const isConsistent = compStatus === 'Consistent with available data' || compStatus === 'Consistent with the checked criteria';
-              const isInconsistent = compStatus === 'Potential inconsistency' || compStatus === 'Potentially inconsistent with the checked criteria';
-              const isInsufficient = compStatus === 'Insufficient evidence to assess compliance' || compStatus === 'Needs verification';
-              const isReviewRequired = compStatus === 'Potential concern — review required';
-              const isSensory = compStatus?.includes('non-statutory sensory claim') || compStatus === 'Descriptive / Sensory Claim';
-
-              let borderColor = 'var(--color-border)';
-              let bgColor = '#fff';
-              let badgeColor = '#56695e';
-              let badgeBg = '#f1f5ef';
-
-              if (isConsistent) {
-                borderColor = '#a5d6a7';
-                bgColor = '#f1f8e9';
-                badgeColor = '#2e7d32';
-                badgeBg = '#e8f5e9';
-              } else if (isInconsistent) {
-                borderColor = '#ef9a9a';
-                bgColor = '#ffebee';
-                badgeColor = '#c62828';
-                badgeBg = '#ffebee';
-              } else if (isReviewRequired) {
-                borderColor = '#ffcc80';
-                bgColor = '#fff8e1';
-                badgeColor = '#e65100';
-                badgeBg = '#fff3e0';
-              } else if (isInsufficient) {
-                borderColor = '#ffe082';
-                bgColor = '#fffde7';
-                badgeColor = '#f57f17';
-                badgeBg = '#fff8e1';
-              } else if (isSensory) {
-                borderColor = '#cfd8dc';
-                bgColor = '#f8fafc';
-                badgeColor = '#455a64';
-                badgeBg = '#eceff1';
-              }
-
-              return (
-                <div key={i} style={{
-                  border: `1px solid ${borderColor}`,
-                  background: bgColor,
-                  padding: '16px',
-                  borderRadius: 10,
-                  boxShadow: 'var(--shadow-sm)'
-                }}>
-                  {/* Top Bar: Claim Text & Status Badge */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-                    <div>
-                      <span style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--color-text-main)' }}>
-                        "{cl.claim || cl.original_claim}"
-                      </span>
-                      {/* Detected Taxonomy Types */}
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                        {(cl.detected_claim_types || [cl.primary_claim_type || "Marketing Claim"]).map((type, tIdx) => (
-                          <span key={tIdx} style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: 12,
-                            background: 'var(--color-primary)',
-                            color: '#fff'
-                          }}>
-                            {type}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <span style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 800,
-                      color: badgeColor,
-                      background: badgeBg,
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      border: `1px solid ${borderColor}`
-                    }}>
-                      {compStatus}
-                    </span>
-                  </div>
-
-                  {/* Evidence Available */}
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-main)', marginBottom: 4 }}>
-                    <strong>Evidence:</strong> {cl.evidence_available || cl.evidence}
-                  </div>
-
-                  {/* Explanation Narrative */}
-                  {cl.explanation && (
-                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: '4px 0 6px', lineHeight: 1.45 }}>
-                      {cl.explanation}
-                    </p>
-                  )}
-
-                  {/* Missing Information Callout */}
-                  {cl.missing_information && cl.missing_information.length > 0 && (
-                    <div style={{ background: 'rgba(0,0,0,0.03)', padding: '6px 10px', borderRadius: 6, margin: '6px 0', fontSize: '0.74rem' }}>
-                      <strong style={{ color: '#b71c1c' }}>Missing for substantiation:</strong> {cl.missing_information.join('; ')}
-                    </div>
-                  )}
-
-                  {/* Expandable Regulatory Citation & Requirements */}
-                  {(cl.regulatory_source || cl.classification_rationale || cl.evidence_required) && (
-                    <div style={{ marginTop: 6, borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedClaimIdx(prev => ({ ...prev, [i]: !prev[i] }))}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: 0,
-                          fontSize: '0.74rem',
-                          fontWeight: 600,
-                          color: 'var(--color-primary)',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
-                      >
-                        <span>{expandedClaimIdx[i] ? 'Hide regulatory reference' : 'Regulatory reference & requirements ▾'}</span>
-                      </button>
-
-                      {expandedClaimIdx[i] && (
-                        <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
-                          {cl.classification_rationale && (
-                            <div style={{ marginBottom: 4 }}>
-                              <strong>Rationale:</strong> {cl.classification_rationale}
-                            </div>
-                          )}
-                          {cl.evidence_required && (
-                            <div style={{ marginBottom: 4 }}>
-                              <strong>Evidence Required:</strong> {cl.evidence_required}
-                            </div>
-                          )}
-                          {(cl.regulatory_source || cl.criterion_applied) && (
-                            <div>
-                              <strong>Statutory Benchmark:</strong> {cl.regulatory_source || cl.criterion_applied}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          
-          <div style={{ marginTop: 12, fontSize: '0.72rem', color: 'var(--color-text-subtle)', textAlign: 'right' }}>
-            Automated claim auditing evaluates available packaging data against benchmark criteria. It does not constitute a formal legal or regulatory determination.
-          </div>
-        </div>
-      )}
 
       {/* Healthier Alternatives */}
       {alternativesError && (
@@ -1455,14 +1454,13 @@ export default function ProductAssessment({
         </div>
       )}
 
-      {/* Rule-based product Q&A */}
+      {/* Product Q&A */}
       <section className="card assistant" aria-labelledby="assistant-title" style={{ marginBottom: 24 }}>
         <div className="assistant-head">
           <h3 id="assistant-title">Ask about this product</h3>
-          <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>Rule-based answers</span>
         </div>
         <p className="assistant-intro">
-          Answers come from fixed rules using this product&apos;s values, its category limits and your profile. Not written by an AI model, and not medical advice.
+          Answers use this product&apos;s values, its category limits and your profile. Not medical advice.
         </p>
 
         <div className="assistant-chips">
@@ -1639,7 +1637,7 @@ export default function ProductAssessment({
                     <option value="Packaged Beverages">Packaged Beverages</option>
                     <option value="Biscuits & Bakery">Biscuits & Bakery</option>
                     <option value="Chocolates & Sweets">Chocolates & Sweets</option>
-                    <option value="Condiments & Spreads">Condiments & Spreads (not graded)</option>
+                    <option value="Condiments & Spreads">Condiments & Spreads</option>
                     <option value="Dairy">Dairy</option>
                     <option value="Instant Foods">Instant Foods</option>
                   </select>
@@ -1803,6 +1801,65 @@ const ASSISTANT_SUGGESTIONS = [
 
 // Answers arrive as plain-text parts; {value} parts are numbers worth highlighting. Rendered as
 // text nodes, so nothing in an answer is ever interpreted as markup.
+// Each section shows what matters most; the rest opens from a "Show …" toggle.
+function MoreDetails({ label, children }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="more-details">
+      <button type="button" className="more-details-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen((v) => !v)}>
+        <Chevron open={open} />
+        <span>{open ? `Hide ${label}` : `Show ${label}`}</span>
+      </button>
+      <Collapse id={id} open={open}>{children}</Collapse>
+    </div>
+  );
+}
+
+const isConcernStatus = (status) => Boolean(status?.includes('Excessive') || status?.includes('Elevated') || status?.includes('Non-compliant'));
+
+function KeyNutrientCard({ nutKey, data }) {
+  const isConcern = isConcernStatus(data.status);
+  const isPositive = data.status?.includes('High') || data.status?.includes('Optimal') || data.status?.includes('Source') || data.status?.includes('Low');
+  return (
+    <div
+      style={{
+        padding: '8px 10px',
+        borderRadius: 8,
+        border: isConcern ? '1px solid #fed7aa' : (isPositive ? '1px solid #bbf7d0' : '1px solid var(--color-border)'),
+        background: isConcern ? '#fff7ed' : (isPositive ? '#f0fdf4' : 'var(--color-surface-alt)'),
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        gap: 2
+      }}
+    >
+      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-subtle)' }}>
+        {getNutrientLabel(nutKey)}
+      </span>
+      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+        {data.value != null ? `${data.value} ${data.unit || 'g'}` : '—'}
+      </div>
+      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: isConcern ? '#c2410c' : (isPositive ? '#15803d' : 'var(--color-text-muted)') }}>
+        {formatNutrientStatus(data.status)}
+      </span>
+    </div>
+  );
+}
+
+// The values a claim is checked against: what was entered for a scan, otherwise what the page shows.
+const claimProductValues = (a) => {
+  const nf = a?.nutrition_facts || {};
+  return a?.raw_input || {
+    product_name: a?.product_name || '',
+    category: a?.category || '',
+    measurement_basis: a?.measurement_basis || 'per 100g',
+    ingredients: a?.ingredients || '',
+    allergens_declared: a?.allergens_declared || '',
+    ...Object.fromEntries(Object.entries(nf).filter(([k, v]) => /_(g|mg|kcal)$/.test(k) && v != null)),
+  };
+};
+
 function AnswerText({ parts }) {
   return (parts || []).map((part, i) => (
     part.value !== undefined

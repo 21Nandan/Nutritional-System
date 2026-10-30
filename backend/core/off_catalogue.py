@@ -11,6 +11,7 @@ field filters, AND / OR / NOT, parentheses and [min TO max] ranges on nutriments
 import re
 from typing import Any
 
+from backend.core.known_brands import KNOWN_BRANDS_CLAUSE
 from backend.core.openfoodfacts import clean_search_text, search_openfoodfacts
 from backend.core.product_quality import rank_products
 from backend.core.semantic_search import CATEGORY_SYNONYMS, parse_semantic_intent
@@ -96,7 +97,7 @@ def build_catalogue_query(
             "keywords": words.split(),
         }
 
-    clauses = [NOT_ALCOHOLIC]
+    clauses = [NOT_ALCOHOLIC, KNOWN_BRANDS_CLAUSE]
     if india_only:
         clauses.append(INDIA)
     if category not in ("All", ""):
@@ -209,7 +210,7 @@ def alternative_candidates(product: dict[str, Any], limit: int = 40) -> dict[str
     category = product.get("category")
     if category not in CATEGORY_FILTERS:
         return {"status": "ok", "products": [], "count": 0}
-    query = " AND ".join([INDIA, CATEGORY_FILTERS[category], HAS_NUTRITION])  # filters only, no words
+    query = " AND ".join([INDIA, KNOWN_BRANDS_CLAUSE, CATEGORY_FILTERS[category], HAS_NUTRITION])  # filters only, no words
     result = search_openfoodfacts(query, limit=limit, page=1, sort_by=POPULAR_FIRST)
     if result["status"] == "ok":
         own = str(product.get("barcode") or "")

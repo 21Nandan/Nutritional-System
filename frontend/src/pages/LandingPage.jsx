@@ -213,7 +213,7 @@ export default function LandingPage({ setActivePage, onSelectProduct, activeProf
             </div>
             <h3 style={{ fontSize: '1.1rem', marginBottom: 8 }}>2. Personalized Goal Suitability</h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-              Tailored 0–100 suitability scores aligned to Reduce Sugar, Reduce Sodium, Increase Fibre, Increase Protein, or Balanced Choices with transparent rule deductions.
+              Tailored 0–100 suitability scores aligned to Reduce Sugar, Reduce Sodium, Increase Fibre, Increase Protein, or Balanced Choices with a clear point-by-point breakdown.
             </p>
           </div>
 

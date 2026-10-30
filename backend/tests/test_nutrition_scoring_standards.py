@@ -197,9 +197,11 @@ def test_unsupported_categories_explicit_refusal():
         "sodium_mg": 950.0
     }
     res_ketchup = assess_general_nutrition(ketchup)
-    assert res_ketchup["status"] == "Uncalibrated Category"
-    assert res_ketchup["grade"] == "N/A"
-    assert "culinary condiments" in res_ketchup["explanation"]
+    # Condiments & Spreads are graded with EATGOOD's own method (22 g sugar is under the 22.5 g limit;
+    # 900 mg sodium is over 600 mg but not double).
+    assert res_ketchup["status"] == "Calibrated"
+    assert res_ketchup["is_eatgood_method"] is True
+    assert res_ketchup["methodology_name"].startswith("EATGOOD Spreads & Condiments Method")
 
     # Unknown Category
     supp = {
@@ -210,8 +212,9 @@ def test_unsupported_categories_explicit_refusal():
         "sodium_mg": 10.0
     }
     res_supp = assess_general_nutrition(supp)
-    assert res_supp["status"] == "Uncalibrated Category"
-    assert res_supp["grade"] == "N/A"
+    assert res_supp["status"] == "Calibrated"
+    assert res_supp["category_calibrated"] == "General Packaged Food"
+    assert res_supp["grade_note"] == "EATGOOD's own method, not an official grade"
 
 
 def test_threshold_boundary_conditions():
@@ -411,30 +414,15 @@ def test_reproducibility_of_scoring():
 
 
 def test_uncalibrated_category_user_friendly_wording():
-    """
-    Verifies that uncalibrated categories (e.g. Condiments & Spreads):
-    - Display user-friendly labels ('Overall Grade Unavailable', 'Not yet rated')
-    - Format reference basis cleanly ('Per 100 g')
-    - Provide short, direct sentences without internal codes like PENDING or EXCLUSION
-    """
-    ketchup = {
-        "category": "Condiments & Spreads",
-        "energy_kcal": 110,
-        "sugars_g": 22.0,
-        "saturated_fat_g": 0.1,
-        "sodium_mg": 900.0,
-        "measurement_basis": "per 100g"
-    }
-    res = assess_general_nutrition(ketchup)
+    """The one category EATGOOD never grades (alcoholic drinks) uses plain wording, no internal codes."""
+    beer = {"category": "Alcoholic Drinks", "energy_kcal": 46, "sugars_g": 0.6, "saturated_fat_g": 0,
+            "sodium_mg": 0, "measurement_basis": "per 100ml"}
+    res = assess_general_nutrition(beer)
     assert res["status"] == "Uncalibrated Category"
     assert res["grade"] == "N/A"
     assert res["grade_label"] == "Overall Grade Unavailable"
     assert res["grade_status_badge"] == "Not yet rated"
-    assert res["reference_basis"] == "Per 100 g"
-    assert "PENDING" not in res["standards_version"]
-    assert "EXCLUSION" not in res["standards_version"]
-    assert len(res["explanation"].split(".")) <= 3  # concise, short sentences
-
+    assert res["explanation"] == "EATGOOD does not grade alcoholic drinks."
 
 def test_catalogue_nutrient_flags_use_category_thresholds():
     """Card colour coding comes from the same thresholds as the grade (single source of truth)."""
@@ -449,7 +437,8 @@ def test_catalogue_nutrient_flags_use_category_thresholds():
     assert ok["sodium_mg"]["level"] == "ok"
     beverage = nutrient_flags({"category": "Packaged Beverages", "sugars_g": 6, "sodium_mg": 10, "saturated_fat_g": 0})
     assert beverage["sugars_g"]["basis"] == "per 100ml"
-    assert nutrient_flags({"category": "Condiments & Spreads", "sugars_g": 50}) == {}
+    assert nutrient_flags({"category": "Condiments & Spreads", "sugars_g": 50})["sugars_g"]["level"] == "high"
+    assert nutrient_flags({"category": "Alcoholic Drinks", "sugars_g": 50}) == {}
     sweets = nutrient_flags({"category": "Chocolates & Sweets", "sugars_g": 50, "sodium_mg": 80, "saturated_fat_g": 2})
     assert sweets["sugars_g"]["level"] == "high" and sweets["saturated_fat_g"]["level"] == "ok"
 

@@ -431,6 +431,9 @@ def evaluate_single_claim(claim_raw: str, product_data: dict) -> dict[str, Any]:
             )
             added_sugar = product_data.get("added_sugars_g")
             hidden_found = [term for term in HIDDEN_SUGAR_TERMS if term in ingredients_text]
+            # Plain sugar itself, not only its syrups and derivatives ("sugar-free" sweetener names excluded).
+            if not hidden_found and re.search(r"\bsugar\b(?![\s-]*free)", ingredients_text):
+                hidden_found = ["sugar"]
 
             if (added_sugar is None or pd.isna(added_sugar)) and not hidden_found:
                 evidence_available = "Added sugars not separately declared; no obvious free sugar terms in ingredients."

@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.core.assistant import answer_product_question
+from backend.core.claims_detector import evaluate_claims
 from backend.core.nutrition_scoring import (
     assess_general_nutrition,
     assess_personalized_suitability,
@@ -26,7 +27,7 @@ from backend.core.standards_registry import CALIBRATED_CATEGORIES, nutrient_flag
 from backend.errors import off_unavailable_error, product_not_found_error
 from backend.products import OpenFoodFactsUnavailable, resolve_product, with_saved_record
 from backend.profile import get_request_profile
-from backend.schemas import AssistantQuery
+from backend.schemas import AssistantQuery, ClaimCheckRequest
 
 logger = logging.getLogger("eatgood.catalogue")
 router = APIRouter(prefix="/api")
@@ -270,3 +271,16 @@ def ask_assistant(query: AssistantQuery, profile: dict = Depends(get_request_pro
     """Rule-based answers grounded in the product's computed assessment."""
     product = _resolve_or_raise(query.product_id)
     return answer_product_question(product=product, question=query.question, user_profile=profile)
+
+
+@router.post("/claims/check")
+def check_claims(body: ClaimCheckRequest):
+    """Checks claims the visitor read off the pack (one per line or comma-separated) against the product."""
+    if body.product is not None:
+        product = body.product.model_dump()
+    elif body.product_id:
+        product = _resolve_or_raise(body.product_id)
+    else:
+        raise HTTPException(status_code=400, detail={"error_code": "NO_PRODUCT", "message": "Say which product to check the claims against."})
+    claims = ", ".join(line.strip() for line in body.claims.splitlines() if line.strip())
+    return {"claims": evaluate_claims(claims, product)}

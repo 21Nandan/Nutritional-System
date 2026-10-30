@@ -181,7 +181,7 @@ export default function LabelScanner({
           Find a Product
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Scan or type a barcode, search a world database of packaged foods, or enter the nutrition facts yourself.
+          Scan or type a barcode, search popular packaged foods, or enter the nutrition facts yourself.
         </p>
       </div>
 
@@ -633,7 +633,7 @@ export default function LabelScanner({
               <option value="Chocolates & Sweets">Chocolates & Sweets</option>
               <option value="Instant Foods">Instant Foods</option>
               <option value="Dairy">Dairy</option>
-              <option value="Condiments & Spreads">Condiments & Spreads (not graded)</option>
+              <option value="Condiments & Spreads">Condiments & Spreads</option>
             </select>
           </div>
         </div>

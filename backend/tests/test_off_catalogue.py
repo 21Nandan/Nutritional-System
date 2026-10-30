@@ -34,9 +34,8 @@ def test_words_are_placed_before_the_filters_without_and():
     words, filters, _ = build_catalogue_query("  Dairy   MILK ", category="Chocolates & Sweets")
     assert words == ["dairy", "milk"]
     query = compose_query(words, filters)
-    assert query.startswith(
-        'dairy milk NOT categories_tags:"en:alcoholic-beverages" AND countries_tags:"en:india" AND (categories_tags:"en:chocolates"'
-    )
+    assert query.startswith('dairy milk NOT categories_tags:"en:alcoholic-beverages" AND brands_tags:(')
+    assert 'AND countries_tags:"en:india" AND (categories_tags:"en:chocolates"' in query
     assert "milk AND" not in query
 
 
@@ -112,3 +111,12 @@ def test_catalogue_endpoint_validates_paging_and_category():
     data = client.get("/api/products?query=%20bhujia%20").json()
     assert data["query"] == "bhujia"
     assert [p["product_name"] for p in data["products"]] == ["Masala Bhujia Test"]
+
+
+def test_listings_only_include_well_known_brands():
+    from backend.core.known_brands import KNOWN_BRANDS, KNOWN_BRANDS_CLAUSE
+
+    _, filters, _ = build_catalogue_query("", category="All")
+    assert KNOWN_BRANDS_CLAUSE in filters
+    assert {"amul", "britannia", "haldiram-s", "parle", "maggi"} <= set(KNOWN_BRANDS)
+    assert len(KNOWN_BRANDS) == len(set(KNOWN_BRANDS))

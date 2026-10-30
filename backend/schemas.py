@@ -61,3 +61,21 @@ class ProductContributionRequest(NutritionFields):
 class AssistantQuery(BaseModel):
     product_id: str = Field(min_length=1, max_length=64)
     question: str = Field(min_length=1, max_length=500)
+
+
+class ClaimProductValues(NutritionFields):
+    """The values shown on a product page; any category, since claims don't depend on it."""
+
+    product_name: str = Field(default="", max_length=200)
+    category: str = Field(default="", max_length=80)
+    measurement_basis: BASES = "per 100g"
+    ingredients: str | None = Field(default="", max_length=5000)
+    allergens_declared: str | None = Field(default="", max_length=1000)
+
+
+class ClaimCheckRequest(BaseModel):
+    """Claims read from a pack, checked against a catalogue product (product_id) or the page's values (product)."""
+
+    claims: str = Field(min_length=1, max_length=2000)
+    product_id: str | None = Field(default=None, max_length=64)
+    product: ClaimProductValues | None = None

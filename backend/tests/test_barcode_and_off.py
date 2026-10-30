@@ -423,3 +423,34 @@ def test_direct_barcode_lookup_on_product_endpoint():
     assert data["product_id"] == "OFF_2000000000015"
     assert data["barcode"] == "2000000000015"
 
+
+
+def test_barcode_variants_cover_upc_ean_and_upce():
+    from backend.core.barcode_utils import barcode_candidates, expand_upce
+
+    assert barcode_candidates("028400376877") == ["028400376877", "0028400376877"]
+    assert barcode_candidates("0028400376877") == ["0028400376877", "028400376877"]
+    assert barcode_candidates("8901058901511") == ["8901058901511"]
+    assert expand_upce("04252614") == "042100005264"
+    assert barcode_candidates("04252614") == ["04252614", "042100005264", "0042100005264"]
+
+
+def test_lookup_finds_a_product_stored_under_another_form_of_its_barcode():
+    stored = "0028400376877"
+    calls = []
+
+    def fake_fetch(code):
+        calls.append(code)
+        if code == stored:
+            return {"status": "success", "product": {
+                "product_id": f"OFF_{code}", "barcode": code, "product_name": "Test Chips", "brand": "Test",
+                "category": "Snacks", "measurement_basis": "per 100g", "energy_kcal": 500, "sugars_g": 2,
+                "saturated_fat_g": 3, "sodium_mg": 500, "ingredients": "", "allergens_declared": "",
+            }}
+        return {"status": "not_found", "error_code": "OFF_PRODUCT_NOT_FOUND"}
+
+    with patch("backend.routes.scan.fetch_off_product", side_effect=fake_fetch):
+        res = client.get("/api/products/barcode/028400376877")
+    assert res.status_code == 200
+    assert res.json()["product"]["product_name"] == "Test Chips"
+    assert calls == ["028400376877", stored]

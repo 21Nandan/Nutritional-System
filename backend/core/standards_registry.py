@@ -656,20 +656,70 @@ CATEGORY_CALIBRATION_SPECS: dict[str, dict[str, Any]] = {
         "source_citations": [],
     },
     "Condiments & Spreads": {
-        "status": "Unsupported",
+        "status": "Calibrated",
+        "method_type": "EATGOOD",
         "canonical_name": "Condiments & Spreads",
-        "methodology_name": None,
-        "standards_version": "FSSAI Portion-Size Guidance Pending",
-        "regulatory_category": "Category 8: Sauces, Dips and Culinary Condiments",
+        "methodology_name": "EATGOOD Spreads & Condiments Method (EATGOOD's own method, not an official WHO or FSSAI grade)",
+        "standards_version": "EATGOOD-SPREADS-2026.1",
+        "regulatory_category": "EATGOOD category: Condiments & Spreads",
         "reference_basis": "per 100g",
-        "mandatory_fields": ["energy_kcal", "sugars_g", "sodium_mg"],
-        "unsupported_reason": (
-            "An overall grade is unavailable because standard 100 g profiling is not calibrated for typical culinary condiments and table sauces portion sizes (10–15 g)."
+        "mandatory_fields": ["energy_kcal", "sugars_g", "saturated_fat_g", "sodium_mg"],
+        "optional_fields": ["dietary_fibre_g", "protein_g", "trans_fat_g", "added_sugars_g"],
+        "thresholds": {
+            "sugars_g": 22.5,
+            "saturated_fat_g": 5.0,
+            "sodium_mg": 600.0,
+            "trans_fat_g": 0.1
+        },
+        "positive_benchmarks": {
+            "fibre_high_g": 6.0,
+            "fibre_source_g": 3.0,
+            "protein_high_g": 10.0,
+            "protein_source_g": 6.0
+        },
+        "method_notice": (
+            "This grade uses EATGOOD's own method for spreads, sauces and condiments, judged per 100 g although "
+            "portions are usually small (10–30 g). It is not an official WHO or FSSAI grade."
         ),
         "source_citations": [
-            "WHO SEARO Nutrient Profile Model (Cat 8: Sauces and Condiments serving considerations)",
-            "Codex Alimentarius Guidelines on Nutrition Labelling (CAC/GL 2-1985)"
-        ]
+            "EATGOOD Spreads & Condiments Method: EATGOOD's own limits, not an official grade",
+            "Reference points: UK Department of Health / Food Standards Agency front-of-pack guidance (2016), "
+            "'high' per 100 g: total sugars > 22.5 g, saturated fat > 5 g, salt > 1.5 g (sodium > 600 mg)"
+        ],
+        "source_check": "EATGOOD's own method; reference cut-offs not yet re-checked against the guidance document",
+    },
+    "General Packaged Food": {
+        "status": "Calibrated",
+        "method_type": "EATGOOD",
+        "canonical_name": "General Packaged Food",
+        "methodology_name": "EATGOOD General Method (EATGOOD's own method, not an official WHO or FSSAI grade)",
+        "standards_version": "EATGOOD-GENERAL-2026.1",
+        "regulatory_category": "EATGOOD category: General Packaged Food",
+        "reference_basis": "per 100g",
+        "mandatory_fields": ["energy_kcal", "sugars_g", "saturated_fat_g", "sodium_mg"],
+        "optional_fields": ["dietary_fibre_g", "protein_g", "trans_fat_g", "added_sugars_g"],
+        "thresholds": {
+            "sugars_g": 22.5,
+            "saturated_fat_g": 5.0,
+            "sodium_mg": 600.0,
+            "trans_fat_g": 0.1
+        },
+        "positive_benchmarks": {
+            "fibre_high_g": 6.0,
+            "fibre_source_g": 3.0,
+            "protein_high_g": 10.0,
+            "protein_source_g": 6.0
+        },
+        "method_notice": (
+            "This product's food type isn't one of EATGOOD's categories, so it is graded with EATGOOD's general "
+            "limits for packaged foods. It is not an official WHO or FSSAI grade."
+        ),
+        "source_citations": [
+            "EATGOOD General Method: EATGOOD's own limits, not an official grade",
+            "Reference points: UK Department of Health / Food Standards Agency front-of-pack guidance (2016), "
+            "'high' per 100 g: total sugars > 22.5 g, saturated fat > 5 g, salt > 1.5 g (sodium > 600 mg)"
+        ],
+        "source_check": "EATGOOD's own method; reference cut-offs not yet re-checked against the guidance document",
     }
 }
 
@@ -681,6 +731,7 @@ CALIBRATED_CATEGORIES = [
 
 CATEGORY_ALIASES = {
     "alcoholic drinks": "Alcoholic Drinks",  # matched exactly, before "drinks" below
+    "general packaged food": "General Packaged Food",
     "biscuits": "Biscuits & Bakery",
     "bakery": "Biscuits & Bakery",
     "cookies": "Biscuits & Bakery",

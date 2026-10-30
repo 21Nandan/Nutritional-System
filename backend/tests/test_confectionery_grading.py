@@ -166,10 +166,11 @@ def test_per_serving_values_are_converted_before_grading():
 # ---------- regressions ----------
 
 def test_other_categories_are_unchanged():
-    assert CATEGORY_CALIBRATION_SPECS["Condiments & Spreads"]["status"] == "Unsupported"
+    # Condiments & Spreads use the same limits as sweets (22.5 g sugar, 5 g saturated fat, 600 mg sodium):
+    # 900 mg sodium costs 2 points, no saturated fat earns 1, so 50 - 14 + 8 = 44.
     sauce = assess_general_nutrition({"category": "Condiments & Spreads", "measurement_basis": "per 100g", "energy_kcal": 100,
                                       "sugars_g": 20, "saturated_fat_g": 0, "sodium_mg": 900})
-    assert sauce["grade"] == "N/A" and sauce["is_eatgood_method"] is False
+    assert (sauce["general_nutrition_score"], sauce["grade"], sauce["is_eatgood_method"]) == (44, "D", True)
     snack = assess_general_nutrition({"category": "Snacks", "measurement_basis": "per 100g", "energy_kcal": 450,
                                       "sugars_g": 6, "saturated_fat_g": 3, "sodium_mg": 300})
     assert (snack["general_nutrition_score"], snack["grade"], snack["grade_note"]) == (50, "C", None)
