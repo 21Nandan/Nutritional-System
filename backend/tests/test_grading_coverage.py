@@ -15,7 +15,10 @@ from backend.main import app
 client = TestClient(app)
 
 CALIBRATED = [name for name, spec in CATEGORY_CALIBRATION_SPECS.items() if spec["status"] == "Calibrated"]
-UNSUPPORTED = [name for name, spec in CATEGORY_CALIBRATION_SPECS.items() if spec["status"] != "Calibrated"]
+# Alcoholic drinks have their own reason (see test_alcoholic_drinks_are_never_graded_or_scored).
+UNSUPPORTED = [
+    name for name, spec in CATEGORY_CALIBRATION_SPECS.items() if spec["status"] != "Calibrated" and name != "Alcoholic Drinks"
+]
 
 
 def neutral(category, **overrides):
@@ -167,6 +170,18 @@ def test_unsupported_categories_keep_na_with_their_reason(category):
     assert result["grade_reason"] == f"Not graded: no validated grading method for {category} yet."
 
 
+def test_alcoholic_drinks_are_never_graded_or_scored():
+    from backend.core.nutrition_scoring import assess_personalized_suitability
+    from backend.core.openfoodfacts import is_alcoholic
+
+    beer = snack(category="Alcoholic Drinks", sugars_g=0.6, sodium_mg=0)
+    assert grade(beer)["grade_reason"] == "Not graded: EATGOOD does not grade alcoholic drinks."
+    assert assess_personalized_suitability(beer, {"goal": "Balanced Choices"})["personalized_score"] is None
+    assert is_alcoholic({"categories_tags": ["en:beverages", "en:alcoholic-beverages", "en:beers"]})
+    assert is_alcoholic({"categories_tags": ["en:beverages"], "nutriments": {"alcohol_100g": 7}})
+    assert not is_alcoholic({"categories_tags": ["en:beverages", "en:juices"], "nutriments": {"alcohol_100g": 0}})
+
+
 def test_uncategorised_products_say_the_category_is_unknown():
     result = grade(snack(category="Uncategorised"))
     assert result["grade"] == "N/A"
@@ -282,6 +297,10 @@ def test_tags_win_over_the_product_name():
         (["en:cereals-and-their-products", "en:breakfast-cereals"], "Breakfast Cereals"),
         (["en:cereals-and-their-products", "en:breakfast-cereals", "en:rolled-oats"], "Breakfast Cereals"),
         (["en:fermented-milk-products", "en:dahi"], "Dairy"),
+        # Milk drinks are Dairy, not soft drinks; a "dairy by-products" tag doesn't make crisps Dairy.
+        (["en:beverages", "en:dairies", "en:dairy-drinks", "en:fermented-milk-drinks", "en:yogurt-drinks"], "Dairy"),
+        (["en:beverages", "en:dairies", "en:lassi"], "Dairy"),
+        (["en:dairies", "en:salty-snacks", "en:potato-crisps", "en:barbecue-crisps", "en:dairy-by-products"], "Snacks"),
     ],
 )
 def test_category_tags(tags, expected):

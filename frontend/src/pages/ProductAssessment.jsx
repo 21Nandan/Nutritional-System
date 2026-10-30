@@ -26,7 +26,8 @@ const getGradeSummary = (l1) => {
   if (grade === 'E') return over ? `Well above the category limits for ${over}.` : 'Higher in sugar, sodium, or saturated fat relative to category benchmarks.';
   if (l1.status === 'Insufficient Data') return 'Incomplete nutritional declarations on the packaging prevent an overall grade.';
   if (l1.status === 'Data Contradiction') return 'Conflicting nutrition values on packaging prevent an accurate grade.';
-  if (l1.status === 'Uncalibrated Category') return 'Category benchmarks are not yet established for this food type; nutrition panel is displayed without an estimated grade.';
+  // The server says why: an ungraded category (condiments, alcohol) or an unknown one.
+  if (l1.status === 'Uncalibrated Category') return l1.explanation || 'This food category has no grading limits, so no grade is given.';
   return l1.explanation || 'Nutritional assessment based on category benchmarks.';
 };
 
@@ -93,7 +94,8 @@ export default function ProductAssessment({
   onSelectProduct, 
   activeProfile,
   onEditCustomData,
-  onUpdateAssessment
+  onUpdateAssessment,
+  onAssessmentGenerated
 }) {
   const [assessment, setAssessment] = useState(initialAssessment || null);
   const [loading, setLoading] = useState(!initialAssessment);
@@ -254,13 +256,21 @@ export default function ProductAssessment({
   );
 
 
+  // A catalogue product without a grade because values or its category are missing can be completed
+  // from the pack; the result opens as the visitor's own entry, like Manual Entry.
+  const canCompleteValues = !isCustom && Boolean(onAssessmentGenerated) && (
+    l1.status === 'Insufficient Data' ||
+    l1.status === 'Data Contradiction' ||
+    ['', 'Uncategorised', 'Unspecified'].includes(assessment?.category || '')
+  );
+
   const openEditModal = () => {
     const raw = assessment?.raw_input || {};
     const nf = assessment?.nutrition_facts || {};
     setEditForm({
       product_name: assessment?.product_name || raw.product_name || '',
       brand: (assessment?.brand && assessment.brand !== 'Custom') ? assessment.brand : (raw.brand || ''),
-      category: assessment?.category || raw.category || 'Snacks',
+      category: ['Uncategorised', 'Unspecified'].includes(assessment?.category) ? '' : (assessment?.category || raw.category || 'Snacks'),
       serving_size: String(assessment?.serving_size || raw.serving_size || 100),
       serving_size_unit: assessment?.serving_size_unit || raw.serving_size_unit || 'g',
       measurement_basis: assessment?.measurement_basis || raw.measurement_basis || 'per 100g',
@@ -313,6 +323,11 @@ export default function ProductAssessment({
 
     try {
       const newAssessment = await apiFetch('/api/products/assess', { method: 'POST', body: payload });
+      if (canCompleteValues) {
+        setShowEditModal(false);
+        onAssessmentGenerated(newAssessment, editForm);
+        return;
+      }
       setAssessment(newAssessment);
       recordHistory(newAssessment);
       if (onUpdateAssessment) {
@@ -597,6 +612,22 @@ export default function ProductAssessment({
               </div>
             )}
 
+            {canCompleteValues && (
+              <div className="complete-values" role="note">
+                <p>
+                  {l1.status === 'Data Contradiction'
+                    ? 'Some values in this product\u2019s data contradict each other. Correct them from the pack to get a grade.'
+                    : l1.status === 'Insufficient Data'
+                      ? 'Values needed for a grade are missing from this product\u2019s data. Add them from the pack to get a grade.'
+                      : 'This product\u2019s food category is unknown. Choose it, and add any missing values from the pack, to get a grade.'}
+                </p>
+                <button type="button" className="btn-primary btn-compact" onClick={openEditModal}>
+                  <Edit3 size={14} aria-hidden="true" />
+                  <span>{l1.status === 'Data Contradiction' ? 'Correct values' : 'Add missing values'}</span>
+                </button>
+              </div>
+            )}
+
             {/* Key Nutrient Summary Cards */}
             {l1.key_contributing_nutrients && Object.keys(l1.key_contributing_nutrients).length > 0 && (
               <div style={{ marginBottom: 16 }}>
@@ -807,7 +838,7 @@ export default function ProductAssessment({
                   </div>
                 )}
 
-                {isCustom && (
+                {(isCustom || canCompleteValues) && (
                   <button 
                     className="btn-primary" 
                     onClick={openEditModal}
@@ -1597,16 +1628,18 @@ export default function ProductAssessment({
                     Category
                   </label>
                   <select
+                    required
                     value={editForm.category}
                     onChange={e => setEditForm({ ...editForm, category: e.target.value })}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: '0.88rem' }}
                   >
+                    <option value="" disabled>Choose a category</option>
                     <option value="Snacks">Snacks</option>
                     <option value="Breakfast Cereals">Breakfast Cereals</option>
                     <option value="Packaged Beverages">Packaged Beverages</option>
                     <option value="Biscuits & Bakery">Biscuits & Bakery</option>
                     <option value="Chocolates & Sweets">Chocolates & Sweets</option>
-                    <option value="Condiments & Spreads">Condiments & Spreads</option>
+                    <option value="Condiments & Spreads">Condiments & Spreads (not graded)</option>
                     <option value="Dairy">Dairy</option>
                     <option value="Instant Foods">Instant Foods</option>
                   </select>
@@ -1714,7 +1747,7 @@ export default function ProductAssessment({
 
               {/* Modal Actions */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
-                {onEditCustomData ? (
+                {onEditCustomData && !canCompleteValues ? (
                   <button
                     type="button"
                     onClick={() => {

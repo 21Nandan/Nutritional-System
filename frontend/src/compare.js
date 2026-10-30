@@ -1,6 +1,7 @@
 // Comparison rules for the Product Comparison Matrix. Pure functions over the /api/compare rows,
 // so highlights, the "Differences only" filter and the verdict always agree and update together.
-// Nothing here scores products: Goal Match and grades come from the server's existing scoring.
+// Goal Match and grades come from the server's existing scoring; the only score made here is the
+// relative nutrient score, which ranks the compared products against each other and nothing else.
 
 import { formatNutrient, basisLabel } from './format';
 
@@ -94,6 +95,51 @@ export function compareMetric(metric, products, comparable) {
   return { metric, meaningful, cells };
 }
 
+// Relative nutrient score, 0–100, within this comparison only. For each nutrient with a preferable
+// direction, the best value among the products scores 1 and the worst 0, others in proportion; a
+// difference too small to point out (isMeaningful) is a tie. The score is the average over the
+// nutrients a product states, equally weighted. Energy is left out (direction: null).
+// The page shows only each product's priority (1 = best balance); scores closer than
+// RELATIVE_SCORE_MIN_LEAD share a priority.
+export const RELATIVE_SCORE_MIN_LEAD = 5;
+
+export function relativeScores(products, comparable) {
+  const empty = { available: false, cells: products.map(() => ({ score: null, isBest: false })), metrics: [] };
+  if (!comparable || products.length < 2) return empty;
+  const totals = products.map(() => ({ sum: 0, count: 0 }));
+  const metrics = [];
+  for (const metric of COMPARE_METRICS) {
+    if (!metric.direction) continue;
+    const values = products.map((p) => displayedNumber(metric.key, p[metric.key]));
+    const stated = values.filter((v) => v !== null);
+    if (stated.length < 2) continue;
+    const max = Math.max(...stated);
+    const min = Math.min(...stated);
+    const differs = isMeaningful(metric, max, min);
+    metrics.push(metric.label);
+    values.forEach((v, i) => {
+      if (v === null) return;
+      const part = !differs ? 1 : metric.direction === 'lower' ? (max - v) / (max - min) : (v - min) / (max - min);
+      totals[i].sum += part;
+      totals[i].count += 1;
+    });
+  }
+  if (metrics.length === 0) return empty;
+  const scores = totals.map((t) => (t.count ? Math.round((t.sum / t.count) * 100) : null));
+  const order = scores.map((score, i) => ({ score, i })).filter((r) => r.score !== null).sort((a, b) => b.score - a.score);
+  const ranks = scores.map(() => null);
+  order.forEach((r, n) => {
+    const prev = order[n - 1];
+    ranks[r.i] = prev && prev.score - r.score < RELATIVE_SCORE_MIN_LEAD ? ranks[prev.i] : n + 1;
+  });
+  const firsts = ranks.filter((r) => r === 1).length;
+  return {
+    available: true,
+    metrics,
+    cells: scores.map((score, i) => ({ score, rank: ranks[i], tied: ranks.filter((r) => r === ranks[i]).length > 1, isBest: ranks[i] === 1 && firsts === 1 })),
+  };
+}
+
 export function compareGrades(products) {
   const ranks = products.map((p) => GRADE_RANK[p.general_grade] ?? null);
   const sameCategory = new Set(products.map((p) => p.category)).size === 1;
@@ -159,6 +205,8 @@ function names(list) {
 export function buildVerdict(products, goal, profileAllergens) {
   const { comparable } = basisComparison(products);
   const goalMatch = compareGoalMatch(products);
+  const relative = relativeScores(products, comparable);
+  const rankOf = (p) => relative.cells[products.indexOf(p)]?.rank ?? Infinity;
   const conflicts = products.filter((p) => p.has_allergen_conflict);
   const unknownAllergens = profileAllergens ? products.filter((p) => !p.has_allergen_conflict && p.allergen_status_unknown) : [];
   const unscored = products.filter((p) => p.personalized_score == null && !p.has_allergen_conflict);
@@ -186,12 +234,28 @@ export function buildVerdict(products, goal, profileAllergens) {
     comparedWith = runnerUp;
     headline = `${leader.product_name} is the better match for your goal (${goal}): Goal Match ${leader.personalized_score} vs ${runnerUp.personalized_score} for ${runnerUp.product_name}.`;
     ({ advantages, tradeoffs } = nutrientDifferences(leader, runnerUp, comparable, goal));
+    const nutrientFirst = products.find((p, i) => relative.cells[i].isBest);
+    if (nutrientFirst && nutrientFirst !== leader) {
+      notes.unshift(`On nutrients alone, ${nutrientFirst.product_name} ranks #1; ${leader.product_name} fits your goal better.`);
+    }
   } else if (goalMatch.leaders.length > 1) {
     const scores = goalMatch.leaders.map((p) => p.personalized_score).join(' vs ');
-    headline = `${names(goalMatch.leaders)} match your goal (${goal}) about equally (Goal Match ${scores}).`;
-    if (goalMatch.leaders.length === 2) {
-      [subject, comparedWith] = goalMatch.leaders;
-      ({ advantages, tradeoffs } = nutrientDifferences(goalMatch.leaders[0], goalMatch.leaders[1], comparable, goal));
+    const best = relative.cells.findIndex((c) => c.isBest) >= 0 ? products[relative.cells.findIndex((c) => c.isBest)] : null;
+    if (best && goalMatch.leaders.includes(best)) {
+      // Goal Match ties, so the nutrient priority decides; the headline says so.
+      const second = goalMatch.leaders
+        .filter((p) => p !== best)
+        .sort((a, b) => rankOf(a) - rankOf(b))[0];
+      subject = best;
+      comparedWith = second;
+      headline = `${best.product_name} is the best pick here: ${names(goalMatch.leaders)} match your goal (${goal}) equally (Goal Match ${scores}), and it ranks #1 on nutrients.`;
+      ({ advantages, tradeoffs } = nutrientDifferences(best, second, comparable, goal));
+    } else {
+      headline = `${names(goalMatch.leaders)} match your goal (${goal}) about equally (Goal Match ${scores}).`;
+      if (goalMatch.leaders.length === 2) {
+        [subject, comparedWith] = goalMatch.leaders;
+        ({ advantages, tradeoffs } = nutrientDifferences(goalMatch.leaders[0], goalMatch.leaders[1], comparable, goal));
+      }
     }
   } else if (goalMatch.eligible.length === 1) {
     const only = goalMatch.eligible[0];

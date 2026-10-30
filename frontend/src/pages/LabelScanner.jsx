@@ -9,6 +9,23 @@ import BarcodeCameraScanner from '../components/BarcodeCameraScanner';
 import ProductSearch from '../components/ProductSearch';
 import ProductContributionModal from '../components/ProductContributionModal';
 
+// Large barcode mark for the barcode lookup card: 13 bars of mixed widths, drawn like the lucide icons.
+const BARCODE_BARS = [2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 1, 2, 1];
+
+function BarcodeGlyph() {
+  let x = 2;
+  const bars = BARCODE_BARS.map((w) => {
+    const bar = { x: x + w / 2, w };
+    x += w + 2;
+    return bar;
+  });
+  return (
+    <svg width={76} height={44} viewBox={`0 0 ${x} 24`} fill="none" stroke="var(--color-primary)" strokeLinecap="round" aria-hidden="true" style={{ display: 'block', margin: '0 auto 12px' }}>
+      {bars.map((b) => <line key={b.x} x1={b.x} y1={5} x2={b.x} y2={19} strokeWidth={b.w} />)}
+    </svg>
+  );
+}
+
 export default function LabelScanner({ 
   onAssessmentGenerated, 
   onSelectProduct,
@@ -17,7 +34,7 @@ export default function LabelScanner({
   mode: propMode,
   setMode: propSetMode
 }) {
-  const [internalMode, setInternalMode] = useState('search'); // 'search', 'barcode', 'manual'
+  const [internalMode, setInternalMode] = useState('barcode'); // 'barcode', 'search', 'manual'
   const mode = propMode !== undefined ? propMode : internalMode;
   const setMode = propSetMode || setInternalMode;
 
@@ -164,12 +181,24 @@ export default function LabelScanner({
           Find a Product
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-          Search a world database of packaged foods, scan or type a barcode, or enter the nutrition facts yourself.
+          Scan or type a barcode, search a world database of packaged foods, or enter the nutrition facts yourself.
         </p>
       </div>
 
       {/* Mode Switcher */}
       <div className="scanner-modes" style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
+        <button
+          className={`btn-secondary ${mode === 'barcode' ? 'active' : ''}`}
+          onClick={() => setMode('barcode')}
+          style={{ 
+            background: mode === 'barcode' ? 'var(--color-primary)' : '#fff', 
+            color: mode === 'barcode' ? '#fff' : 'inherit',
+            minHeight: 44
+          }}
+        >
+          <Barcode size={16} />
+          <span>Barcode Lookup</span>
+        </button>
         <button
           className={`btn-secondary ${mode === 'search' ? 'active' : ''}`}
           onClick={() => setMode('search')}
@@ -182,18 +211,6 @@ export default function LabelScanner({
         >
           <Search size={16} />
           <span>Search Products</span>
-        </button>
-        <button
-          className={`btn-secondary ${mode === 'barcode' ? 'active' : ''}`}
-          onClick={() => setMode('barcode')}
-          style={{ 
-            background: mode === 'barcode' ? 'var(--color-primary)' : '#fff', 
-            color: mode === 'barcode' ? '#fff' : 'inherit',
-            minHeight: 44
-          }}
-        >
-          <Barcode size={16} />
-          <span>Barcode Lookup</span>
         </button>
         <button
           className={`btn-secondary ${mode === 'manual' ? 'active' : ''}`}
@@ -452,7 +469,7 @@ export default function LabelScanner({
           {/* Default State: Barcode Hub Controls */}
           {!barcodeFoundResult && !barcodeNotFoundInfo && !barcodeSearching && (
             <div className="card" style={{ textAlign: 'center', padding: '30px 20px' }}>
-              <Barcode size={44} color="var(--color-primary)" style={{ margin: '0 auto 12px' }} />
+              <BarcodeGlyph />
               <h2 style={{ fontSize: '1.25rem', color: 'var(--color-primary)', marginBottom: 6 }}>
                 Barcode Scanner & Product Discovery
               </h2>
@@ -616,7 +633,7 @@ export default function LabelScanner({
               <option value="Chocolates & Sweets">Chocolates & Sweets</option>
               <option value="Instant Foods">Instant Foods</option>
               <option value="Dairy">Dairy</option>
-              <option value="Condiments & Spreads">Condiments & Spreads</option>
+              <option value="Condiments & Spreads">Condiments & Spreads (not graded)</option>
             </select>
           </div>
         </div>

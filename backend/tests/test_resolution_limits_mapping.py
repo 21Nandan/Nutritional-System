@@ -274,3 +274,18 @@ def test_off_most_specific_category_wins():
              "en:fruit-based-beverages", "en:juices-and-nectars", "en:fruit-juices"]
     assert map_off_category_to_eatgood(None, juice) == "Packaged Beverages"
     assert map_off_category_to_eatgood("Snacks, Sweet snacks, Biscuits and cakes, Biscuits", []) == "Biscuits & Bakery"
+
+
+def test_search_results_use_the_saved_current_record_when_there_is_one(monkeypatch):
+    from backend import products
+
+    search_copy = {"barcode": "8901058901511", "product_name": "2-minute noodles", "trans_fat_g": None,
+                   "sodium_mg": 468.8, "nutrition_summary": {"sodium_mg": 468.8, "serving_size": 48}}
+    current = {"barcode": "8901058901511", "product_name": "2-minute Noodles Masala", "trans_fat_g": 0.13, "sodium_mg": 468.8}
+    monkeypatch.setattr(products, "get_cached_lookup", lambda code: {"status": "success", "product": current})
+    merged = products.with_saved_record(search_copy)
+    assert merged["trans_fat_g"] == 0.13 and merged["product_name"] == "2-minute Noodles Masala"
+    assert merged["nutrition_summary"]["serving_size"] == 48
+
+    monkeypatch.setattr(products, "get_cached_lookup", lambda code: None)
+    assert products.with_saved_record(search_copy) is search_copy

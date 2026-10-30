@@ -24,7 +24,7 @@ from backend.core.rate_limiter import enforce_rate_limit
 from backend.core.recommender import get_healthier_alternatives
 from backend.core.standards_registry import CALIBRATED_CATEGORIES, nutrient_flags
 from backend.errors import off_unavailable_error, product_not_found_error
-from backend.products import OpenFoodFactsUnavailable, resolve_product
+from backend.products import OpenFoodFactsUnavailable, resolve_product, with_saved_record
 from backend.profile import get_request_profile
 from backend.schemas import AssistantQuery
 
@@ -94,7 +94,7 @@ def list_products(
         "query": query.strip(),
         "total": min(count, MAX_RESULT_WINDOW) if count is not None else len(result["products"]),
         "total_is_capped": count is not None and count >= MAX_RESULT_WINDOW,
-        "products": [_with_scores(p, profile) for p in result["products"]],
+        "products": [_with_scores(with_saved_record(p), profile) for p in result["products"]],
         "interpreted_intent": result["interpreted_intent"],
         "match_mode": result["match_mode"],
         "searched_pool": result.get("searched_pool"),
@@ -185,7 +185,8 @@ def get_alternatives(
     candidates = alternative_candidates(product)
     if candidates["status"] == "error":
         raise _off_error(candidates)
-    alts = get_healthier_alternatives(product, profile, candidates["products"], limit=limit)
+    saved = [with_saved_record(p) for p in candidates["products"]]
+    alts = get_healthier_alternatives(product, profile, saved, limit=limit)
     return {
         "product_id": product_id,
         "category": product.get("category"),

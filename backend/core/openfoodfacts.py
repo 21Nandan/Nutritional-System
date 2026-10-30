@@ -127,6 +127,23 @@ OFF_REQUEST_FIELDS = (
 
 
 UNCATEGORISED = "Uncategorised"
+# Alcoholic drinks are not graded or listed anywhere in EATGOOD.
+ALCOHOLIC = "Alcoholic Drinks"
+_ALCOHOL_TAGS = {
+    "en:alcoholic-beverages", "en:beers", "en:wines", "en:spirits", "en:ciders", "en:liqueurs",
+    "en:whiskies", "en:vodkas", "en:rums", "en:gins", "en:sparkling-wines", "en:meads",
+}
+
+
+def is_alcoholic(off_product: dict[str, Any]) -> bool:
+    """True for a record tagged as an alcoholic drink, or stating more than 0.5% alcohol."""
+    if _ALCOHOL_TAGS & set(off_product.get("categories_tags") or []):
+        return True
+    alcohol = (off_product.get("nutriments") or {}).get("alcohol_100g")
+    try:
+        return float(alcohol) > 0.5
+    except (TypeError, ValueError):
+        return False
 
 _MASS_UNITS_IN_G = {"g": 1.0, "mg": 0.001, "µg": 0.000001, "μg": 0.000001, "mcg": 0.000001}
 
@@ -134,6 +151,9 @@ _MASS_UNITS_IN_G = {"g": 1.0, "mg": 0.001, "µg": 0.000001, "μg": 0.000001, "mc
 _CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Checked first so "Peanut butters" is a spread, not dairy butter.
     ("Condiments & Spreads", ("peanut butter", "nut butter")),
+    # Also checked before drinks: buttermilk, lassi and other milk drinks are graded with Dairy, like milk.
+    ("Dairy", ("buttermilk", "lassi", "chaas", "chaach", "chhach", "dairy drink", "milk drink", "yogurt drink",
+               "yoghurt drink", "flavoured milk", "flavored milk", "milkshake", "milk shake")),
     ("Packaged Beverages", ("beverage", "drink", "soda", "juice", "tea", "coffee", "water", "cola", "nectar")),
     ("Breakfast Cereals", ("breakfast cereal", "cereal bar", "cereal flake", "muesli", "granola", "oats", "oat flake",
                            "corn flakes", "porridge")),
@@ -203,6 +223,10 @@ def map_off_category_to_eatgood(
         # Whole-word matching: "chocolates" must not match "cola", nor "steak" match "tea".
         words = re.sub(r"[^a-z]+", " ", entry.lower()).strip()
         if "food" in words and "beverage" in words:
+            continue
+        # "Dairy by-products" and similar name what a food is made from, not the type of food:
+        # some crisps carry it, and it must not make them Dairy.
+        if re.search(r"\bby products?\b", words):
             continue
         # The plain "Meals" entry (ready meals and other convenience dishes); "meal replacements" and
         # similar longer names are not included.
@@ -298,7 +322,7 @@ def map_off_product_to_eatgood(requested_barcode: str, off_product: dict[str, An
     ).strip()
 
     # Category determination
-    category = map_off_category_to_eatgood(
+    category = ALCOHOLIC if is_alcoholic(off_product) else map_off_category_to_eatgood(
         off_product.get("categories"),
         off_product.get("categories_tags"),
         product_name,
@@ -596,6 +620,8 @@ def search_openfoodfacts(
         if isinstance(raw.get("brands"), list):
             # The search service returns brands as a list; the product API returns a comma-separated string.
             raw = {**raw, "brands": ", ".join(str(b) for b in raw["brands"])}
+        if is_alcoholic(raw):
+            continue
         mapped = map_off_product_to_eatgood(code, raw)
         mapped["nutrient_flags"] = nutrient_flags(mapped)
         mapped["is_local"] = False
